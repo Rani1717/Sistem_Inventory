@@ -122,6 +122,9 @@ class PageController
             $data['pending_user_count'] = $authModelForAdmin->countPendingUsers();
         }
         $data['accessible_pages'] = AuthController::accessiblePages();
+        if ($page === 'log-barang') {
+            $data['log_division_options'] = $this->fetchInventoryDivisionOptions();
+        }
         if ($page === 'data-inventaris') {
             $data['is_admin_spmt'] = AuthController::isAdminSpmt();
             if (AuthController::isAdminSpmt()) {

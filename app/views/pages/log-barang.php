@@ -110,6 +110,8 @@ $flash = $data['flash'] ?? null;
                 <th>Qty</th>
                 <th>No. PO</th>
                 <th>File PDF</th>
+                <th>Divisi</th>
+                <th>Waktu Input</th>
                 <th>Status</th>
                 <th>Action</th>
             </tr>
@@ -138,6 +140,8 @@ $flash = $data['flash'] ?? null;
                                 -
                             <?php endif; ?>
                         </td>
+                        <td><?= e((string) ($row['division'] ?? '-')); ?></td>
+                        <td><?= e((string) ($row['created_time'] ?? '-')); ?></td>
                         <td><span class="badge badge--<?= e((string) $row['status_class']); ?>"><?= e((string) $row['status']); ?></span></td>
                         <td>
                             <div class="table-actions">
@@ -194,8 +198,17 @@ $flash = $data['flash'] ?? null;
                 <label><span>Nama Barang</span><input type="text" name="nama_barang" id="logNamaBarang" placeholder="Masukkan nama barang" required></label>
                 <label><span>Qty</span><input type="number" min="1" name="qty" id="logQty" value="1" required></label>
                 <label><span>No. PO</span><input type="text" name="no_po" id="logNoPo" placeholder="Masukkan No. PO"></label>
-                <label><span>Divisi</span><input type="text" name="divisi" id="logDivisi"  placeholder="Divisi terkait"></label>
-                <label class="log-modal__field--full"><span>Surat Pemesanan (PDF)</span><input type="file" name="surat_pemesanan_pdf" id="logPdf" accept="application/pdf"><small id="logPdfHint">Upload PDF jika ada.</small></label>
+                <label><span>Divisi</span>
+                    <select name="divisi" id="logDivisi">
+                        <option value="">-- Pilih Divisi --</option>
+                        <?php foreach (($data['log_division_options'] ?? []) as $opt): ?>
+                            <option value="<?= e((string) ($opt['division_label'] ?? '')); ?>">
+                                <?= e((string) ($opt['division_label'] ?? '')); ?>
+                            </option>
+                        <?php endforeach; ?>
+                        
+                    </select>
+                </label>
                 <label class="log-modal__field--full"><span>Keterangan</span><textarea name="keterangan" id="logKeterangan"  placeholder="Masukkan keterangan" rows="3"></textarea></label>
             </div>
             <div class="log-modal__actions">

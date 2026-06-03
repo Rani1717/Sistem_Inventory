@@ -1899,6 +1899,11 @@ SQL);
                     'id' => (int) ($row['id'] ?? 0),
                     'no' => $number++,
                     'date' => $this->formatDateShort((string) ($row['tanggal'] ?? '')),
+                    'created_time' => (function($dt) {
+                        if (!$dt) return '-';
+                        $ts = strtotime($dt);
+                        return $ts ? date('d/m/Y H:i', $ts) : '-';
+                    })((string) ($row['created_at'] ?? '')),
                     'raw_date' => (string) ($row['tanggal'] ?? ''),
                     'datetime' => trim((string) (($row['tanggal'] ?? '') . ' ' . ($row['created_at'] ?? ''))),
                     'item' => (string) ($row['nama_barang'] ?? '-'),
