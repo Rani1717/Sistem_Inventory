@@ -2021,7 +2021,7 @@ SQL);
         }
 
         $action = (string) ($_POST['action'] ?? '');
-        if (!in_array($action, ['save_pc_new', 'save_other_new'], true)) {
+        if (!in_array($action, ['save_pc_new', 'save_other_new', 'save_cctv_inventaris_new', 'save_printer_inventaris_new'], true)) {
             return;
         }
 
@@ -2031,6 +2031,21 @@ SQL);
             header('Location: index.php?page=' . urlencode($page));
             exit;
         }
+          if ($action === 'save_cctv_inventaris_new') {
+                $this->insertCctvInventaris($pdo, $_POST);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Inventaris CCTV baru berhasil ditambahkan.'];
+                header('Location: index.php?page=inventory-other&inv_tab=cctv');
+                exit;
+            }
+ 
+            // Printer Inventaris
+            if ($action === 'save_printer_inventaris_new') {
+                $savedPath = $this->saveUploadedImage($_FILES['printer_gambar_file'] ?? null, 'printer');
+                $this->insertPrinterInventaris($pdo, $_POST, $savedPath);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Inventaris Printer baru berhasil ditambahkan.'];
+                header('Location: index.php?page=inventory-other&inv_tab=printer');
+                exit;
+            }
 
         try {
             $divisionCode = trim((string) ($_POST['division_code'] ?? ''));
@@ -5248,5 +5263,114 @@ startxref
             }, $html, count($links)) ?? $html;
         }
         return $html;
+    }
+    private function ensureCctvInventarisSchema(PDO $pdo): void
+    {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `inventaris_cctv` (
+            `id`             bigint(20)   NOT NULL AUTO_INCREMENT,
+            `nama_cctv`      varchar(255) NOT NULL,
+            `kode_cctv`      varchar(100) NOT NULL,
+            `lokasi`         varchar(255) DEFAULT NULL,
+            `jumlah`         int(11)      NOT NULL DEFAULT 1,
+            `status`         varchar(50)  NOT NULL DEFAULT 'AKTIF',
+            `division_code`  varchar(100) DEFAULT NULL,
+            `division_label` varchar(255) DEFAULT NULL,
+            `keterangan`     text         DEFAULT NULL,
+            `created_at`     datetime     NOT NULL DEFAULT current_timestamp(),
+            `updated_at`     datetime     NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `uq_inventaris_cctv_kode` (`kode_cctv`),
+            KEY `idx_inventaris_cctv_status` (`status`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    }
+ 
+    /**
+     * Pastikan tabel inventaris_printer ada di db_spmt_app_backend
+     */
+    private function ensurePrinterInventarisSchema(PDO $pdo): void
+    {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `inventaris_printer` (
+            `id`             bigint(20)   NOT NULL AUTO_INCREMENT,
+            `id_inventaris`  varchar(255) DEFAULT NULL,
+            `merk`           varchar(255) DEFAULT NULL,
+            `tipe_model`     varchar(255) DEFAULT NULL,
+            `unit_kerja`     varchar(255) DEFAULT NULL,
+            `status`         varchar(50)  NOT NULL DEFAULT 'AKTIF',
+            `division_code`  varchar(100) DEFAULT NULL,
+            `division_label` varchar(255) DEFAULT NULL,
+            `gambar`         varchar(255) DEFAULT NULL,
+            `keterangan`     text         DEFAULT NULL,
+            `created_at`     datetime     NOT NULL DEFAULT current_timestamp(),
+            `updated_at`     datetime     NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+            PRIMARY KEY (`id`),
+            KEY `idx_inventaris_printer_status` (`status`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    }
+ 
+    /**
+     * Insert satu baris inventaris CCTV
+     */
+    private function insertCctvInventaris(PDO $pdo, array $payload): void
+    {
+        $this->ensureCctvInventarisSchema($pdo);
+ 
+        $namaCctv  = $this->requiredText(trim((string) ($payload['nama_cctv'] ?? '')), 'Nama CCTV wajib diisi.');
+        $kodeCctv  = $this->requiredText(trim((string) ($payload['kode_cctv'] ?? '')), 'Kode CCTV wajib diisi.');
+        $lokasi    = $this->clean((string) ($payload['lokasi'] ?? ''));
+        $jumlah    = max(1, (int) ($payload['jumlah'] ?? 1));
+        $status    = in_array(strtoupper(trim((string) ($payload['status'] ?? 'AKTIF'))), ['AKTIF', 'RUSAK', 'NONAKTIF'], true)
+                     ? strtoupper(trim((string) ($payload['status'] ?? 'AKTIF')))
+                     : 'AKTIF';
+        $divCode   = $this->clean((string) ($payload['division_code'] ?? ''));
+        $divLabel  = $this->clean((string) ($payload['division_label'] ?? ''));
+        $ket       = $this->clean((string) ($payload['keterangan'] ?? ''));
+ 
+        $stmt = $pdo->prepare('INSERT INTO `inventaris_cctv`
+            (nama_cctv, kode_cctv, lokasi, jumlah, status, division_code, division_label, keterangan)
+            VALUES (:nama_cctv, :kode_cctv, :lokasi, :jumlah, :status, :division_code, :division_label, :keterangan)');
+        $stmt->execute([
+            'nama_cctv'      => $namaCctv,
+            'kode_cctv'      => $kodeCctv,
+            'lokasi'         => $lokasi,
+            'jumlah'         => $jumlah,
+            'status'         => $status,
+            'division_code'  => $divCode,
+            'division_label' => $divLabel,
+            'keterangan'     => $ket,
+        ]);
+    }
+ 
+    /**
+     * Insert satu baris inventaris Printer
+     */
+    private function insertPrinterInventaris(PDO $pdo, array $payload, ?string $gambarPath): void
+    {
+        $this->ensurePrinterInventarisSchema($pdo);
+ 
+        $merk      = $this->requiredText(trim((string) ($payload['merk'] ?? '')), 'Merk printer wajib diisi.');
+        $tipe      = $this->requiredText(trim((string) ($payload['tipe_model'] ?? '')), 'Tipe/model printer wajib diisi.');
+        $idInv     = $this->clean((string) ($payload['id_inventaris'] ?? ''));
+        $unitKerja = $this->clean((string) ($payload['unit_kerja'] ?? ''));
+        $status    = in_array(strtoupper(trim((string) ($payload['status'] ?? 'AKTIF'))), ['AKTIF', 'RUSAK', 'NONAKTIF'], true)
+                     ? strtoupper(trim((string) ($payload['status'] ?? 'AKTIF')))
+                     : 'AKTIF';
+        $divCode   = $this->clean((string) ($payload['division_code'] ?? ''));
+        $divLabel  = $this->clean((string) ($payload['division_label'] ?? ''));
+        $ket       = $this->clean((string) ($payload['keterangan'] ?? ''));
+ 
+        $stmt = $pdo->prepare('INSERT INTO `inventaris_printer`
+            (id_inventaris, merk, tipe_model, unit_kerja, status, division_code, division_label, gambar, keterangan)
+            VALUES (:id_inventaris, :merk, :tipe_model, :unit_kerja, :status, :division_code, :division_label, :gambar, :keterangan)');
+        $stmt->execute([
+            'id_inventaris'  => $idInv,
+            'merk'           => $merk,
+            'tipe_model'     => $tipe,
+            'unit_kerja'     => $unitKerja,
+            'status'         => $status,
+            'division_code'  => $divCode,
+            'division_label' => $divLabel,
+            'gambar'         => $gambarPath,
+            'keterangan'     => $ket,
+        ]);
     }
 }

@@ -238,12 +238,82 @@ if (!function_exists('renderDocInput')) {
 
 if (!function_exists('renderTabRow')) {
     function renderTabRow(string $active): void
-    {
+   {
         ?>
         <div class="tab-row">
-            <button class="tab-btn <?= $active === 'pc' ? 'is-active' : 'is-muted'; ?> js-route" data-page="inventory-pc">PC</button>
-            <button class="tab-btn <?= $active === 'other' ? 'is-active' : 'is-muted'; ?> js-route" data-page="inventory-other">Perangkat Lain</button>
+            <?php /* Dropdown: PC | CCTV */ ?>
+            <div class="tab-dropdown" id="tabDropdownWrap">
+                <button type="button"
+                        class="tab-btn <?= in_array($active, ['pc', 'cctv'], true) ? 'is-active' : 'is-muted'; ?> tab-btn--has-arrow js-tab-dropdown-toggle"
+                        aria-haspopup="true"
+                        aria-expanded="false"
+                        aria-controls="tabDropdownMenu">
+                    <?= $active === 'cctv' ? 'CCTV' : 'PC'; ?>
+                    <i class="fa-solid fa-chevron-down tab-btn__chevron"></i>
+                </button>
+                <div class="tab-dropdown__menu" id="tabDropdownMenu" hidden role="menu">
+                    <a href="index.php?page=inventory-pc"
+                       class="tab-dropdown__item <?= $active === 'pc' ? 'tab-dropdown__item--active' : ''; ?>"
+                       role="menuitem">
+                        <i class="fa-solid fa-desktop"></i> PC
+                    </a>
+                    <a href="index.php?page=inventory-other&inv_tab=cctv"
+                       class="tab-dropdown__item <?= $active === 'cctv' ? 'tab-dropdown__item--active' : ''; ?>"
+                       role="menuitem">
+                        <i class="fa-solid fa-video"></i> CCTV
+                    </a>
+                </div>
+            </div>
+ 
+            <?php /* Tombol Perangkat Lain — tetap seperti semula */ ?>
+            <button class="tab-btn <?= $active === 'other' ? 'is-active' : 'is-muted'; ?> js-route"
+                    data-page="inventory-other">Perangkat Lain</button>
         </div>
+ 
+        <style>
+        .tab-btn--has-arrow { display: inline-flex; align-items: center; gap: 6px; }
+        .tab-btn__chevron   { font-size: 0.65rem; transition: transform .2s; }
+        .tab-btn--has-arrow[aria-expanded="true"] .tab-btn__chevron { transform: rotate(180deg); }
+ 
+        .tab-dropdown       { position: relative; display: inline-block; }
+        .tab-dropdown__menu {
+            position: absolute; top: calc(100% + 6px); left: 0;
+            min-width: 160px; background: #fff;
+            border: 1.5px solid #e2e8f0; border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.10);
+            z-index: 300; overflow: hidden; padding: 4px 0;
+        }
+        .tab-dropdown__item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 16px; font-size: .88rem; font-weight: 600;
+            color: #334155; text-decoration: none;
+            transition: background .12s, color .12s;
+        }
+        .tab-dropdown__item:hover        { background: #eff6ff; color: #1f5f9f; }
+        .tab-dropdown__item--active      { background: #dbeafe; color: #1e40af; }
+        </style>
+ 
+        <script>
+        (function () {
+            var btn  = document.querySelector('.js-tab-dropdown-toggle');
+            var menu = document.getElementById('tabDropdownMenu');
+            if (!btn || !menu) return;
+ 
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var open = !menu.hidden;
+                menu.hidden = open;
+                btn.setAttribute('aria-expanded', String(!open));
+            });
+            document.addEventListener('click', function () {
+                if (!menu.hidden) {
+                    menu.hidden = true;
+                    btn.setAttribute('aria-expanded', 'false');
+                }
+            });
+            menu.addEventListener('click', function (e) { e.stopPropagation(); });
+        })();
+        </script>
         <?php
     }
 }
