@@ -21,3 +21,21 @@ Sistem Pengelolaan & Monitoring IT Asset berbasis web yang dibangun menggunakan 
 - **Server**: Apache
 
 ## 📁 Struktur Proyek
+spmt_it_asset_management/
+├── app/
+│   ├── config/        # Konfigurasi database
+│   ├── controllers/   # Logic controller
+│   ├── models/        # Model & query database
+│   └── views/         # Tampilan halaman
+├── database/          # File SQL database
+└── public/            # Assets (CSS, JS, uploads)
+
+## 🚀 Cara Instalasi
+1. Clone repository ini
+```bash
+   git clone https://github.com/Rani1717/Sistem_Inventory.git
+```
+2. Import file `database/db_spmt_subreg.sql` ke MySQL
+3. Sesuaikan konfigurasi database di `app/config/database.php`
+4. Jalankan di local server (XAMPP/Laragon)
+5. Akses melalui browser
