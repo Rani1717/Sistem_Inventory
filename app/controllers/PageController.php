@@ -134,6 +134,9 @@ class PageController
         if ($page === 'inventaris-detail') {
             $data['inventory_division_options'] = $this->fetchInventoryDivisionOptions();
         }
+        if ($page === 'log-barang') {
+            $data['log_division_options'] = $this->fetchInventoryDivisionOptions();
+        }
         if ($page === 'routine-monitoring') {
             $data['routine_monitoring'] = $this->buildRoutineMonitoringData($filters);
         }
@@ -193,6 +196,9 @@ class PageController
         }
 
         $page = trim((string) ($_GET['page'] ?? 'dashboard'));
+        if ($page === 'log-barang') {
+            $data['log_division_options'] = $this->fetchInventoryDivisionOptions();
+        }
         if ($page === 'data-inventaris') {
             foreach (['division_code', 'division_id', 'display_division', 'user_page', 'user', 'email', 'focus_item'] as $inventoryKey) {
                 unset($persisted[$inventoryKey]);

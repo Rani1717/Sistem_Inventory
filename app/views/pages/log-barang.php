@@ -93,14 +93,16 @@ $flash = $data['flash'] ?? null;
         <div class="log-table-scroll">
         <table class="data-table data-table--log data-table--log-compact">
             <colgroup>
-                <col style="width: 6%;">
+                <col style="width: 5%;">
+                <col style="width: 10%;">
+                <col style="width: 20%;">
+                <col style="width: 5%;">
+                <col style="width: 10%;">
+                <col style="width: 8%;">
+                <col style="width: 13%;">
                 <col style="width: 12%;">
-                <col style="width: 25%;">
-                <col style="width: 6%;">
-                <col style="width: 14%;">
-                <col style="width: 10%;">
-                <col style="width: 11%;">
-                <col style="width: 10%;">
+                <col style="width: 9%;">
+                <col style="width: 8%;">
             </colgroup>
             <thead>
             <tr>
@@ -165,11 +167,11 @@ $flash = $data['flash'] ?? null;
                     </tr>
                 <?php endforeach; ?>
                 <tr class="js-log-empty-search" hidden>
-                    <td colspan="8" class="empty-state">Data yang dicari tidak ditemukan pada tabel.</td>
+                    <td colspan="10" class="empty-state">Data yang dicari tidak ditemukan pada tabel.</td>
                 </tr>
             <?php else: ?>
                 <tr>
-                    <td colspan="8" class="empty-state">Data log barang tidak ditemukan.</td>
+                    <td colspan="10" class="empty-state">Data log barang tidak ditemukan.</td>
                 </tr>
             <?php endif; ?>
             </tbody>

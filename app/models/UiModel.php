@@ -1914,6 +1914,11 @@ SQL);
                     'pdf' => $pdf,
                     'pdf_name' => $pdf !== '' ? basename($pdf) : '',
                     'division' => (string) ($row['divisi'] ?? '-'),
+                    'created_time' => (function($dt) {
+                        if (!$dt) return '-';
+                        $ts = strtotime((string) $dt);
+                        return $ts ? date('d/m/Y H:i', $ts) : '-';
+                    })($row['created_at'] ?? ''),
                     'log_no' => (string) ($row['log_no'] ?? '-'),
                     'keterangan' => (string) ($row['keterangan'] ?? ''),
                 ];
