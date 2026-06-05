@@ -12295,3 +12295,59 @@ button,
         overflow-y: auto !important;
     }
 }
+
+/* =============================================================
+   CSS TAMBAHAN — Chart PC Dashboard (POIN 3)
+   Tambahkan di bagian bawah: public/assets/css/style.css
+   ============================================================= */
+
+/* ── Card PC chart — sejajar dengan card CCTV ── */
+.dashboard-pc-card {
+    grid-column: span 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 18px 16px 14px;
+}
+
+/* ── Wrap canvas bar chart PC ── */
+.donut-card__chart-wrap--pc {
+    width: 100%;
+    height: 160px;
+    position: relative;
+}
+
+/* ── Total pill kecil di pojok kanan judul ── */
+.donut-card__total-pill {
+    display: inline-block;
+    background: #e0f2fe;
+    color: #0369a1;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+/* ── Legend aktif/rusak ── */
+.pc-chart-legend {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+.pc-chart-legend__item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+    color: #475569;
+}
+.pc-chart-legend__dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}

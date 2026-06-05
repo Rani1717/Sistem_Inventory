@@ -40,6 +40,7 @@ class UiModel
             $flowFilters = $page === 'dashboard' ? [] : $filters;
             $data['inventory_flow'] = $this->buildInventoryFlow($pdo, $flowFilters);
             $data['cctv_breakdown'] = $this->buildCctvBreakdown($pdo, $data['cctv_breakdown']);
+            $data['pc_chart'] = $this->buildPcChartData($pdo);
             $data['log_rows'] = $this->fetchLogRows($pdo, $filters);
             $data['log_filters'] = $this->buildLogFilters($pdo, $filters);
         } catch (Throwable $e) {
@@ -1909,11 +1910,6 @@ SQL);
                     'pdf' => $pdf,
                     'pdf_name' => $pdf !== '' ? basename($pdf) : '',
                     'division' => (string) ($row['divisi'] ?? '-'),
-                    'created_time' => (function($dt) {
-                        if (!$dt) return '-';
-                        $ts = strtotime((string) $dt);
-                        return $ts ? date('d/m/Y H:i', $ts) : '-';
-                    })($row['created_at'] ?? ''),
                     'log_no' => (string) ($row['log_no'] ?? '-'),
                     'keterangan' => (string) ($row['keterangan'] ?? ''),
                 ];
@@ -2398,5 +2394,72 @@ SQL);
     private function startsWith(string $haystack, string $needle): bool
     {
         return strpos($haystack, $needle) === 0;
+    }
+
+    private function buildPcChartData(PDO $pdo): array
+    {
+        $empty = ['labels' => [], 'aktif' => [], 'rusak' => [], 'total' => 0];
+
+        try {
+            $stmt = $pdo->query(
+                'SELECT division_label, division_code, inventory_db_name
+                 FROM master_divisi WHERE is_active = 1 ORDER BY id ASC'
+            );
+            $divisions = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            if (!$divisions) {
+                return $empty;
+            }
+
+            $labels = [];
+            $aktif  = [];
+            $rusak  = [];
+            $total  = 0;
+
+            foreach ($divisions as $division) {
+                $db = (string) ($division['inventory_db_name'] ?? '');
+                if (!$this->isSafeIdentifier($db)) {
+                    continue;
+                }
+
+                $label = strtoupper(trim((string) (
+                    ($division['division_label'] ?? '') !== ''
+                        ? $division['division_label']
+                        : ($division['division_code'] ?? $db)
+                )));
+                if (mb_strlen($label) > 14) {
+                    $label = mb_substr($label, 0, 14) . '…';
+                }
+
+                try {
+                    $sql = sprintf(
+                        "SELECT COUNT(*) AS total_pc,
+                            SUM(CASE WHEN UPPER(TRIM(COALESCE(status,''))) = 'AKTIF' THEN 1 ELSE 0 END) AS jml_aktif,
+                            SUM(CASE WHEN UPPER(TRIM(COALESCE(status,''))) = 'RUSAK' THEN 1 ELSE 0 END) AS jml_rusak
+                         FROM `%s`.pc",
+                        $db
+                    );
+                    $row = $pdo->query($sql);
+                    if (!$row) {
+                        continue;
+                    }
+                    $counts     = $row->fetch(PDO::FETCH_ASSOC);
+                    $countTotal = (int) ($counts['total_pc'] ?? 0);
+                    if ($countTotal === 0) {
+                        continue;
+                    }
+
+                    $labels[] = $label;
+                    $aktif[]  = (int) ($counts['jml_aktif'] ?? 0);
+                    $rusak[]  = (int) ($counts['jml_rusak'] ?? 0);
+                    $total   += $countTotal;
+                } catch (Throwable $e) {
+                    continue;
+                }
+            }
+
+            return ['labels' => $labels, 'aktif' => $aktif, 'rusak' => $rusak, 'total' => $total];
+        } catch (Throwable $e) {
+            return $empty;
+        }
     }
 }
