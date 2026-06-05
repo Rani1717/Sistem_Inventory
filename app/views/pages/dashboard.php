@@ -41,7 +41,7 @@
         }
         $pcColors = ['#5B8DEF','#6FCF97','#F2A541','#34B3D8','#F58B82','#7D72F8','#3AA0FF','#6D5BD0','#41B8D5','#F3A43B','#4C7BE8','#E879A0'];
     ?>
-    <article class="donut-card dashboard-hover-card dashboard-pc-card js-open-modal" data-modal="pcModal" tabindex="0" role="button" aria-label="Lihat rekap PC per divisi">
+    <article class="donut-card dashboard-hover-card dashboard-cctv-card dashboard-pc-card js-open-modal" data-modal="pcModal" tabindex="0" role="button" aria-label="Lihat rekap PC per divisi">
         <div class="donut-card__title-row">
             <h2>JUMLAH PC<br>PER DIVISI</h2>
             <span class="donut-card__edit-hint"><i class="fa-solid fa-chart-pie"></i> Rekap</span>
