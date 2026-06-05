@@ -258,11 +258,21 @@ if (!empty($days)) {
                                             $selectedStatus = (string) ($cell['condition_status'] ?? '');
                                             ?>
                                             <td>
-                                                <select class="routine-cell-select routine-cell-select--<?= e(strtolower(str_replace(' ', '-', $selectedStatus !== '' ? $selectedStatus : 'empty'))); ?>" name="items[<?= $itemId; ?>][<?= e($dateKey); ?>][condition_status]" onchange="this.className='routine-cell-select routine-cell-select--'+(this.value ? this.value.toLowerCase().replace(/\s+/g,'-') : 'empty')">
+                                                <?php
+                                                $keteranganVal = (string) ($cell['keterangan'] ?? '');
+                                                $needsNote = in_array($selectedStatus, ['KURANG BAIK', 'BURUK'], true);
+                                                ?>
+                                                <select class="routine-cell-select routine-cell-select--<?= e(strtolower(str_replace(' ', '-', $selectedStatus !== '' ? $selectedStatus : 'empty'))); ?>" name="items[<?= $itemId; ?>][<?= e($dateKey); ?>][condition_status]" onchange="routineCellChange(this)">
                                                     <?php foreach ($statusOptions as $value => $metaStatus): ?>
                                                         <option value="<?= e($value); ?>" <?= $selectedStatus === $value ? 'selected' : ''; ?>><?= e($metaStatus['label']); ?></option>
                                                     <?php endforeach; ?>
                                                 </select>
+                                                <input type="text"
+                                                    class="routine-cell-note<?= ($needsNote || $keteranganVal !== '') ? '' : ' routine-cell-note--hidden'; ?>"
+                                                    name="items[<?= $itemId; ?>][<?= e($dateKey); ?>][keterangan]"
+                                                    value="<?= e($keteranganVal); ?>"
+                                                    placeholder="Catatan..."
+                                                    maxlength="255">
                                             </td>
                                         <?php endforeach; ?>
                                     </tr>
@@ -362,7 +372,8 @@ if (!empty($days)) {
             } else {
                 ['BAIK', 'KURANG BAIK', 'BURUK'].forEach(function (status) {
                     (rows[status] || []).forEach(function (row) {
-                        html += '<tr><td><strong>' + (row.item_name || '-') + '</strong></td><td><span class="routine-badge routine-badge--' + status.toLowerCase().replace(/\s+/g, '-') + '">' + status + '</span></td></tr>';
+                        var noteHtml = row.keterangan ? '<br><small class="routine-recap-note">' + row.keterangan + '</small>' : '';
+                        html += '<tr><td><strong>' + (row.item_name || '-') + '</strong>' + noteHtml + '</td><td><span class="routine-badge routine-badge--' + status.toLowerCase().replace(/\s+/g, '-') + '">' + status + '</span></td></tr>';
                     });
                 });
             }

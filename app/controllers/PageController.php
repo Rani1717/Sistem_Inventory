@@ -173,7 +173,7 @@ class PageController
 
     private function resolveFilters(): array
     {
-        $keys = ['division_code', 'division_id', 'user', 'email', 'display_division', 'user_page', 'focus_item', 'log_year', 'log_month', 'log_date', 'log_status', 'log_sort', 'log_search', 'complaint_status', 'complaint_division', 'complaint_search', 'complaint_date_from', 'complaint_date_to', 'report_date_from', 'report_date_to', 'report_division', 'report_month', 'report_year', 'report_user_role', 'report_user_division', 'report_all', 'routine_period', 'routine_date', 'routine_week'];
+        $keys = ['division_code', 'division_id', 'user', 'email', 'display_division', 'user_page', 'focus_item', 'log_year', 'log_month', 'log_date', 'log_status', 'log_sort', 'log_search', 'complaint_status', 'complaint_division', 'complaint_search', 'complaint_date_from', 'complaint_date_to', 'report_date_from', 'report_date_to', 'report_division', 'report_month', 'report_year', 'report_user_role', 'report_user_division', 'report_all', 'routine_period', 'routine_date', 'routine_week', 'routine_month', 'routine_year'];
         $persisted = $_SESSION['spmt_context'] ?? [];
 
         if (isset($_GET['reset_context']) && $_GET['reset_context'] === '1') {
@@ -1032,14 +1032,12 @@ class PageController
                 if (!is_array($itemRows) || empty($itemRows)) {
                     continue;
                 }
+                $deleteStmt = $pdo->prepare('DELETE FROM routine_monitoring WHERE period_type = :period_type AND period_key = :period_key AND item_id = :item_id');
                 foreach ($itemRows as $monitorDate => $posted) {
                     if (!is_array($posted)) {
                         continue;
                     }
                     $statusRaw = trim((string) ($posted['condition_status'] ?? ''));
-                    if ($statusRaw === '') {
-                        continue;
-                    }
                     try {
                         $dateObj = new DateTimeImmutable((string) $monitorDate, $tz);
                     } catch (Throwable $e) {
@@ -1049,16 +1047,25 @@ class PageController
                     if ($dateKey < $context['start_date'] || $dateKey > $context['end_date']) {
                         continue;
                     }
+                    if ($statusRaw === '') {
+                        // User set ke "-": hapus data yang ada agar tampil kembali kosong
+                        $deleteStmt->execute([
+                            'period_type' => 'daily',
+                            'period_key'  => $dateKey,
+                            'item_id'     => $itemId,
+                        ]);
+                        continue;
+                    }
                     $params = [
-                        'period_type' => 'daily',
-                        'period_key' => $dateKey,
-                        'monitor_date' => $dateKey,
-                        'item_id' => $itemId,
-                        'item_name' => $itemName,
-                        'condition_status' => $this->normalizeRoutineStatus($statusRaw),
-                        'keterangan' => null,
+                        'period_type'       => 'daily',
+                        'period_key'        => $dateKey,
+                        'monitor_date'      => $dateKey,
+                        'item_id'           => $itemId,
+                        'item_name'         => $itemName,
+                        'condition_status'  => $this->normalizeRoutineStatus($statusRaw),
+                        'keterangan'        => trim((string) ($posted['keterangan'] ?? '')) !== '' ? trim((string) ($posted['keterangan'] ?? '')) : null,
                         'checked_by_user_id' => (int) ($auth['id'] ?? 0) ?: null,
-                        'checked_by_name' => (string) ($auth['nama_lengkap'] ?? $auth['username'] ?? ''),
+                        'checked_by_name'   => (string) ($auth['nama_lengkap'] ?? $auth['username'] ?? ''),
                     ];
                     $upsert->execute($params);
                     $savedCount++;
@@ -2219,6 +2226,7 @@ SQL);
         try {
             $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS no_po VARCHAR(50) NULL AFTER qty');
             $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS surat_pemesanan_pdf VARCHAR(255) NULL AFTER no_po');
+            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER surat_pemesanan_pdf');
         } catch (Throwable $e) {
         }
     }

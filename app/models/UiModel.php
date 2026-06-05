@@ -1912,6 +1912,7 @@ SQL);
                     'division' => (string) ($row['divisi'] ?? '-'),
                     'log_no' => (string) ($row['log_no'] ?? '-'),
                     'keterangan' => (string) ($row['keterangan'] ?? ''),
+                    'created_time' => $this->formatCreatedTime((string) ($row['created_at'] ?? '')),
                 ];
             }
 
@@ -2328,6 +2329,20 @@ SQL);
             return $date->format('d/m/Y');
         } catch (Throwable $e) {
             return $value;
+        }
+    }
+
+    private function formatCreatedTime(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '' || $value === '0000-00-00 00:00:00') {
+            return '-';
+        }
+        try {
+            $date = new DateTimeImmutable($value);
+            return $date->format('H:i:s');
+        } catch (Throwable $e) {
+            return '-';
         }
     }
 

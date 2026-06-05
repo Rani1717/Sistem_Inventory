@@ -95,25 +95,25 @@ $flash = $data['flash'] ?? null;
             <colgroup>
                 <col style="width: 5%;">
                 <col style="width: 10%;">
+                <col style="width: 9%;">
                 <col style="width: 20%;">
                 <col style="width: 5%;">
                 <col style="width: 10%;">
                 <col style="width: 8%;">
-                <col style="width: 13%;">
-                <col style="width: 12%;">
+                <col style="width: 14%;">
+                <col style="width: 10%;">
                 <col style="width: 9%;">
-                <col style="width: 8%;">
             </colgroup>
             <thead>
             <tr>
                 <th>No.</th>
                 <th>Tanggal</th>
+                <th>Waktu Input</th>
                 <th>Nama Barang</th>
                 <th>Qty</th>
                 <th>No. PO</th>
                 <th>File PDF</th>
                 <th>Divisi</th>
-                <th>Waktu Input</th>
                 <th>Status</th>
                 <th>Action</th>
             </tr>
@@ -132,6 +132,7 @@ $flash = $data['flash'] ?? null;
                         ]))); ?>">
                         <td><?= e((string) $row['no']); ?></td>
                         <td><?= e((string) $row['date']); ?></td>
+                        <td><?= e((string) ($row['created_time'] ?? '-')); ?></td>
                         <td><?= e((string) $row['item']); ?></td>
                         <td><?= e((string) $row['qty']); ?></td>
                         <td><?= e((string) ($row['no_po'] ?: '-')); ?></td>
@@ -143,7 +144,6 @@ $flash = $data['flash'] ?? null;
                             <?php endif; ?>
                         </td>
                         <td><?= e((string) ($row['division'] ?? '-')); ?></td>
-                        <td><?= e((string) ($row['created_time'] ?? '-')); ?></td>
                         <td><span class="badge badge--<?= e((string) $row['status_class']); ?>"><?= e((string) $row['status']); ?></span></td>
                         <td>
                             <div class="table-actions">
