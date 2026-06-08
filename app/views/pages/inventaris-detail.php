@@ -56,31 +56,6 @@ $editUrlBase = 'index.php?' . http_build_query([
                 <button class="icon-square icon-square--lg js-open-modal" type="button" data-modal="modalDeleteInventory" title="Hapus data user inventaris"><i class="fa-solid fa-trash"></i></button>
             </div>
     </div>
-
-    <?php
-    $brokenPages = array_filter($pagination['pages'] ?? [], function($p) {
-        return !empty($p['has_rusak']);
-    });
-    ?>
-    <?php if (count($brokenPages) > 0): ?>
-        <div class="broken-pc-alert">
-            <div class="broken-pc-alert__icon">
-                <i class="fa-solid fa-circle-exclamation"></i>
-            </div>
-            <div class="broken-pc-alert__content">
-                <span class="broken-pc-alert__title">Terdapat <?= count($brokenPages); ?> PC Rusak di divisi ini:</span>
-                <div class="broken-pc-alert__list">
-                    <?php foreach ($brokenPages as $bp): ?>
-                        <a href="<?= e($bp['href']); ?>" class="broken-pc-alert__link <?= $bp['is_active'] ? 'is-active' : ''; ?>">
-                            <i class="fa-solid fa-desktop"></i>
-                            <span><?= e($bp['user_label']); ?> (Halaman <?= $bp['number']; ?>)</span>
-                        </a>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        </div>
-    <?php endif; ?>
-
     <div class="summary-table summary-table--sticky">
         <div class="summary-table__row summary-table__row--head">
             <span>Computer Name</span><span>User</span><span>Processor</span><span>RAM</span><span>Harddisk</span>
@@ -270,71 +245,6 @@ $editUrlBase = 'index.php?' . http_build_query([
         background-color: #dc2626 !important;
         border-color: #dc2626 !important;
         color: #ffffff !important;
-    }
-
-    /* Broken PC Alert Banner */
-    .broken-pc-alert {
-        display: flex;
-        gap: 16px;
-        background: #fff5f5;
-        border: 1px solid #fecaca;
-        border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 20px;
-        align-items: flex-start;
-        box-shadow: 0 2px 4px rgba(220, 38, 38, 0.05);
-    }
-    .broken-pc-alert__icon {
-        font-size: 1.5rem;
-        color: #dc2626;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding-top: 2px;
-    }
-    .broken-pc-alert__content {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-    .broken-pc-alert__title {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: #991b1b;
-    }
-    .broken-pc-alert__list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-    }
-    .broken-pc-alert__link {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: #ffffff;
-        border: 1px solid #fee2e2;
-        border-radius: 8px;
-        padding: 6px 12px;
-        font-size: 0.85rem;
-        color: #dc2626;
-        font-weight: 600;
-        text-decoration: none;
-        transition: all 0.2s ease;
-    }
-    .broken-pc-alert__link:hover {
-        background: #fee2e2;
-        border-color: #fca5a5;
-        transform: translateY(-1px);
-    }
-    .broken-pc-alert__link.is-active {
-        background: #dc2626;
-        border-color: #dc2626;
-        color: #ffffff;
-    }
-    .broken-pc-alert__link.is-active:hover {
-        background: #b91c1c;
-        border-color: #b91c1c;
     }
     </style>
 
