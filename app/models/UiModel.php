@@ -12,6 +12,13 @@ class UiModel
             return $data;
         }
 
+        // Selalu fetch pc_chart — tidak bergantung pada resolveContext
+        try {
+            $data['pc_chart'] = $this->buildPcChartData($pdo);
+        } catch (Throwable $e) {
+            // biarkan default kosong
+        }
+
         try {
             $context = $this->resolveContext($pdo, $filters);
             $this->ensureInventoryMetaTables($pdo);
@@ -41,7 +48,6 @@ class UiModel
             $flowFilters = $page === 'dashboard' ? [] : $filters;
             $data['inventory_flow'] = $this->buildInventoryFlow($pdo, $flowFilters);
             $data['cctv_breakdown'] = $this->buildCctvBreakdown($pdo, $data['cctv_breakdown']);
-            $data['pc_chart'] = $this->buildPcChartData($pdo);
             $data['log_rows'] = $this->fetchLogRows($pdo, $filters);
             $data['log_filters'] = $this->buildLogFilters($pdo, $filters);
         } catch (Throwable $e) {
@@ -155,6 +161,7 @@ class UiModel
             'raw_other_items' => [],
             'standalone_items' => [],
             'division_meta' => [],
+            'pc_chart' => ['labels' => [], 'aktif' => [], 'rusak' => [], 'total' => 0, 'full_labels' => [], 'division_urls' => []],
         ];
     }
 
