@@ -38,13 +38,14 @@
     </article>
 
     <?php
-        $pcChart       = $data['pc_chart'] ?? ['labels' => [], 'aktif' => [], 'rusak' => [], 'total' => 0, 'full_labels' => [], 'division_urls' => []];
+        $pcChart       = $data['pc_chart'] ?? ['labels' => [], 'aktif' => [], 'rusak' => [], 'total' => 0, 'full_labels' => [], 'division_urls' => [], 'broken_pcs' => []];
         $pcTotal       = (int) ($pcChart['total'] ?? 0);
         $pcLabels      = $pcChart['labels'] ?? [];
         $pcFullLabels  = $pcChart['full_labels'] ?? $pcLabels;
         $pcAktif       = $pcChart['aktif'] ?? [];
         $pcRusak       = $pcChart['rusak'] ?? [];
         $pcUrls        = $pcChart['division_urls'] ?? [];
+        $pcBrokenPcs   = $pcChart['broken_pcs'] ?? [];
         $pcDonutValues = [];
         foreach ($pcLabels as $i => $label) {
             $pcDonutValues[] = (int) ($pcAktif[$i] ?? 0) + (int) ($pcRusak[$i] ?? 0);
@@ -140,47 +141,102 @@
 
 
 
-<?php /* ── Modal Rekap PC per Divisi ── */ ?>
 <div id="pcModal" class="modal cctv-modal" aria-hidden="true">
     <div class="modal__backdrop js-close-modal"></div>
-    <div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="pcModalTitle">
+    <div class="modal__dialog dashboard-recap-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="pcModalTitle">
         <div class="modal__header">
             <h2 id="pcModalTitle">Rekap Jumlah PC Per Divisi</h2>
             <button type="button" class="modal__close js-close-modal" aria-label="Tutup"><i class="fa-solid fa-xmark"></i></button>
         </div>
-        <div class="cctv-modal__body">
-            <div class="pc-modal-summary">
-                <span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#3dae4f;margin-right:4px;"></i>Aktif: <strong><?= array_sum($pcAktif); ?></strong></span>
-                <span><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f05252;margin-right:4px;"></i>Rusak: <strong><?= array_sum($pcRusak); ?></strong></span>
-                <span>Total: <strong><?= $pcTotal; ?></strong> unit</span>
+        <div class="dashboard-recap-modal__body" style="padding-top: 10px;">
+            <div class="dashboard-recap-total-card">
+                <span>Total Data</span>
+                <strong><?= $pcTotal; ?></strong>
             </div>
-            <div class="pc-modal-list">
-                <?php foreach ($pcLabels as $i => $label): ?>
-                    <?php
-                        $colorPc  = $pcColors[$i % count($pcColors)];
-                        $jmlAktif = (int) ($pcAktif[$i] ?? 0);
-                        $jmlRusak = (int) ($pcRusak[$i] ?? 0);
-                        $jmlTotal = $jmlAktif + $jmlRusak;
-                        $hasRusak = $jmlRusak > 0;
-                        $fullLbl  = (string) ($pcFullLabels[$i] ?? $label);
-                        $divUrl   = (string) ($pcUrls[$i] ?? '#');
-                    ?>
-                    <a href="<?= e($divUrl); ?>" class="pc-modal-row<?= $hasRusak ? ' pc-modal-row--rusak' : ''; ?>">
-                        <span class="pc-modal-row__label">
-                            <i style="background:<?= e($colorPc); ?>"></i>
-                            <?= e($fullLbl); ?>
-                        </span>
-                        <span class="pc-modal-row__stats">
-                            <span style="color:#3dae4f;font-weight:600;">✓ <?= $jmlAktif; ?></span>
-                            <?php if ($hasRusak): ?><span style="color:#f05252;font-weight:600;">✗ <?= $jmlRusak; ?></span><?php endif; ?>
-                            <strong><?= $jmlTotal; ?></strong>
-                        </span>
-                        <i class="fa-solid fa-arrow-right pc-modal-row__arrow"></i>
-                    </a>
-                <?php endforeach; ?>
-                <?php if (empty($pcLabels)): ?>
-                    <div style="padding:16px;color:#64748b;text-align:center;">Belum ada data PC.</div>
-                <?php endif; ?>
+            <div class="dashboard-recap-groups">
+                <div class="dashboard-recap-pill dashboard-recap-pill--ok">
+                    <span>Aktif</span>
+                    <strong><?= array_sum($pcAktif); ?></strong>
+                </div>
+                <div class="dashboard-recap-pill dashboard-recap-pill--bad">
+                    <span>Rusak</span>
+                    <strong><?= array_sum($pcRusak); ?></strong>
+                </div>
+            </div>
+            
+            <div class="dashboard-recap-section">
+                <div class="dashboard-recap-table-wrap">
+                    <table class="dashboard-recap-table">
+                        <thead>
+                            <tr>
+                                <th style="text-align:left;">DIVISI</th>
+                                <th style="text-align:center;border-left:1px solid rgba(42,102,165,.15);">✓ AKTIF</th>
+                                <th style="text-align:center;border-left:1px solid rgba(42,102,165,.15);">✗ RUSAK</th>
+                                <th style="text-align:center;border-left:1px solid rgba(42,102,165,.15);">TOTAL PC</th>
+                                <th style="text-align:center;border-left:1px solid rgba(42,102,165,.15);">AKSI</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($pcLabels as $i => $label): ?>
+                                <?php
+                                    $colorPc  = $pcColors[$i % count($pcColors)];
+                                    $jmlAktif = (int) ($pcAktif[$i] ?? 0);
+                                    $jmlRusak = (int) ($pcRusak[$i] ?? 0);
+                                    $jmlTotal = $jmlAktif + $jmlRusak;
+                                    $hasRusak = $jmlRusak > 0;
+                                    $fullLbl  = (string) ($pcFullLabels[$i] ?? $label);
+                                    $divUrl   = (string) ($pcUrls[$i] ?? '#');
+                                ?>
+                                <tr <?= $hasRusak ? 'style="background:#fff5f5"' : ''; ?>>
+                                    <td style="padding:12px 14px;border-bottom:1px solid rgba(42,102,165,.10);text-align:left;vertical-align:middle;">
+                                        <span class="pc-modal-row__label" style="font-weight:600;color:#1e293b;display:flex;align-items:center;gap:8px;">
+                                            <i style="display:inline-block;width:12px;height:12px;border-radius:50%;background:<?= e($colorPc); ?>;flex-shrink:0;"></i>
+                                            <?= e($fullLbl); ?>
+                                        </span>
+                                    </td>
+                                    <td style="padding:12px 14px;border-bottom:1px solid rgba(42,102,165,.10);border-left:1px solid rgba(42,102,165,.15);text-align:center;vertical-align:middle;color:#16a34a;font-weight:600;">
+                                        <?= $jmlAktif; ?>
+                                    </td>
+                                    <td style="padding:12px 14px;border-bottom:1px solid rgba(42,102,165,.10);border-left:1px solid rgba(42,102,165,.15);text-align:center;vertical-align:middle;color:#dc2626;font-weight:600;">
+                                        <?= $jmlRusak > 0 ? $jmlRusak : '—'; ?>
+                                    </td>
+                                    <td style="padding:12px 14px;border-bottom:1px solid rgba(42,102,165,.10);border-left:1px solid rgba(42,102,165,.15);text-align:center;vertical-align:middle;font-weight:700;color:#0f172a;">
+                                        <?= $jmlTotal; ?>
+                                    </td>
+                                    <td style="padding:12px 14px;border-bottom:1px solid rgba(42,102,165,.10);border-left:1px solid rgba(42,102,165,.15);text-align:center;vertical-align:middle;">
+                                        <?php
+                                            $brokenPcs = $pcBrokenPcs[$i] ?? [];
+                                        ?>
+                                        <?php if (empty($brokenPcs)): ?>
+                                            <a href="<?= e($divUrl); ?>" class="cctv-camera-btn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;" title="Lihat Detail Divisi">
+                                                Detail <i class="fa-solid fa-arrow-right" style="margin-left:6px;"></i>
+                                            </a>
+                                        <?php else: ?>
+                                            <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch;max-width:140px;margin:0 auto;">
+                                                <a href="<?= e($divUrl); ?>" class="cctv-camera-btn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;padding:5px 8px;font-size:0.78rem;font-weight:600;" title="Lihat Detail Semua Data Divisi">
+                                                    Semua Data <i class="fa-solid fa-arrow-right" style="margin-left:4px;"></i>
+                                                </a>
+                                                <?php foreach ($brokenPcs as $bp): ?>
+                                                    <?php
+                                                        $dispLabel = mb_strlen($bp['label']) > 12 ? mb_substr($bp['label'], 0, 10) . '..' : $bp['label'];
+                                                    ?>
+                                                    <a href="<?= e($bp['url']); ?>" class="cctv-camera-btn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;padding:4px 6px;font-size:0.72rem;background:#fee2e2;border-color:#fca5a5;color:#dc2626;font-weight:600;" title="Lihat PC Rusak: <?= e($bp['label']); ?>">
+                                                        <i class="fa-solid fa-triangle-exclamation" style="margin-right:3px;font-size:0.7rem;"></i> <?= e($dispLabel); ?>
+                                                    </a>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($pcLabels)): ?>
+                                <tr>
+                                    <td colspan="5" style="padding:16px;color:#64748b;text-align:center;">Belum ada data PC.</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
         <div class="modal__footer" style="justify-content:flex-end;">
@@ -290,6 +346,22 @@
 /* Recap table: tambah kolom status */
 .dashboard-recap-table th:last-child,
 .dashboard-recap-table td:last-child { text-align: center; }
+
+/* ── Title Note for Last Update ── */
+.recap-title-note {
+    font-size: 0.9rem;
+    color: #64748b;
+    font-weight: normal;
+    margin-left: 8px;
+    display: inline-block;
+}
+@media (max-width: 576px) {
+    .recap-title-note {
+        display: block;
+        margin-left: 0;
+        margin-top: 4px;
+    }
+}
 </style>
 
 <script>
@@ -371,7 +443,10 @@
             if (divRows.length) {
                 divisionSection.hidden = false;
                 if (key === 'CCTV') {
-                    if (divisionTitle) divisionTitle.textContent = 'Daftar Kamera per Lokasi';
+                    if (divisionTitle) {
+                        var lastUpdate = item.last_update || '-';
+                        divisionTitle.innerHTML = 'Daftar CCTV per Lokasi <span class="recap-title-note">(Dipantau berkala via Routine Monitoring -> Terakhir diupdate: ' + escapeHtml(lastUpdate) + ')</span>';
+                    }
                     divisionHead.innerHTML = '<tr><th style="text-align:left;">NAMA CCTV</th><th style="text-align:center;border-left:1px solid rgba(42,102,165,.15);">STATUS</th><th style="text-align:center;border-left:1px solid rgba(42,102,165,.15);">LOKASI</th><th style="text-align:center;border-left:1px solid rgba(42,102,165,.15);">JUMLAH</th></tr>';
                     
                     var grouped = {};

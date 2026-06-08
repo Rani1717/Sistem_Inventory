@@ -55,8 +55,31 @@ $editUrlBase = 'index.php?' . http_build_query([
                 <button class="icon-square icon-square--lg js-open-modal" type="button" data-modal="modalEditInventory" title="Edit data inventaris"><i class="fa-solid fa-pen-to-square"></i></button>
                 <button class="icon-square icon-square--lg js-open-modal" type="button" data-modal="modalDeleteInventory" title="Hapus data user inventaris"><i class="fa-solid fa-trash"></i></button>
             </div>
-        </div>
     </div>
+
+    <?php
+    $brokenPages = array_filter($pagination['pages'] ?? [], function($p) {
+        return !empty($p['has_rusak']);
+    });
+    ?>
+    <?php if (count($brokenPages) > 0): ?>
+        <div class="broken-pc-alert">
+            <div class="broken-pc-alert__icon">
+                <i class="fa-solid fa-circle-exclamation"></i>
+            </div>
+            <div class="broken-pc-alert__content">
+                <span class="broken-pc-alert__title">Terdapat <?= count($brokenPages); ?> PC Rusak di divisi ini:</span>
+                <div class="broken-pc-alert__list">
+                    <?php foreach ($brokenPages as $bp): ?>
+                        <a href="<?= e($bp['href']); ?>" class="broken-pc-alert__link <?= $bp['is_active'] ? 'is-active' : ''; ?>">
+                            <i class="fa-solid fa-desktop"></i>
+                            <span><?= e($bp['user_label']); ?> (Halaman <?= $bp['number']; ?>)</span>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <div class="summary-table summary-table--sticky">
         <div class="summary-table__row summary-table__row--head">
@@ -133,10 +156,17 @@ $editUrlBase = 'index.php?' . http_build_query([
             <span class="pagination__btn pagination__btn--disabled"><span>Previous</span></span>
         <?php endif; ?>
         <?php foreach (($pagination['pages'] ?? []) as $pageItem): ?>
+            <?php
+                $titleAttr = 'User: ' . ($pageItem['user_label'] ?: 'Komputer #' . $pageItem['number']);
+                if (!empty($pageItem['has_rusak'])) {
+                    $titleAttr .= ' (Status: RUSAK)';
+                }
+                $rusakClass = !empty($pageItem['has_rusak']) ? ' is-rusak' : '';
+            ?>
             <?php if (!empty($pageItem['is_active'])): ?>
-                <span class="pagination__num is-active"><?= e((string) $pageItem['number']); ?></span>
+                <span class="pagination__num is-active<?= $rusakClass; ?>" title="<?= e($titleAttr); ?>"><?= e((string) $pageItem['number']); ?></span>
             <?php else: ?>
-                <a class="pagination__num" href="<?= e($pageItem['href']); ?>"><?= e((string) $pageItem['number']); ?></a>
+                <a class="pagination__num<?= $rusakClass; ?>" href="<?= e($pageItem['href']); ?>" title="<?= e($titleAttr); ?>"><?= e((string) $pageItem['number']); ?></a>
             <?php endif; ?>
         <?php endforeach; ?>
         <?php if (!empty($pagination['next']['href'])): ?>
@@ -191,6 +221,7 @@ $editUrlBase = 'index.php?' . http_build_query([
             </table>
         </div>
     </div>
+    <?php endif; ?>
 
     <style>
     .standalone-section {
@@ -227,8 +258,85 @@ $editUrlBase = 'index.php?' . http_build_query([
         color: #64748b;
         margin: 0;
     }
+
+    /* Highlight page number when PC is broken */
+    .pagination__num.is-rusak {
+        background-color: #fee2e2 !important;
+        border-color: #fca5a5 !important;
+        color: #dc2626 !important;
+        font-weight: bold;
+    }
+    .pagination__num.is-rusak.is-active {
+        background-color: #dc2626 !important;
+        border-color: #dc2626 !important;
+        color: #ffffff !important;
+    }
+
+    /* Broken PC Alert Banner */
+    .broken-pc-alert {
+        display: flex;
+        gap: 16px;
+        background: #fff5f5;
+        border: 1px solid #fecaca;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 20px;
+        align-items: flex-start;
+        box-shadow: 0 2px 4px rgba(220, 38, 38, 0.05);
+    }
+    .broken-pc-alert__icon {
+        font-size: 1.5rem;
+        color: #dc2626;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding-top: 2px;
+    }
+    .broken-pc-alert__content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .broken-pc-alert__title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #991b1b;
+    }
+    .broken-pc-alert__list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .broken-pc-alert__link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #ffffff;
+        border: 1px solid #fee2e2;
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 0.85rem;
+        color: #dc2626;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.2s ease;
+    }
+    .broken-pc-alert__link:hover {
+        background: #fee2e2;
+        border-color: #fca5a5;
+        transform: translateY(-1px);
+    }
+    .broken-pc-alert__link.is-active {
+        background: #dc2626;
+        border-color: #dc2626;
+        color: #ffffff;
+    }
+    .broken-pc-alert__link.is-active:hover {
+        background: #b91c1c;
+        border-color: #b91c1c;
+    }
     </style>
-    <?php endif; ?>
 
 </div><!-- /.detail-page -->
 
@@ -370,20 +478,8 @@ $editUrlBase = 'index.php?' . http_build_query([
     </div>
 </div>
 <script>
-(function () {
-    try {
-        var url = new URL(window.location.href);
-        var isAfterAdd = url.searchParams.get('after_add_inventory') === '1';
-        var hasFocusTarget = (url.searchParams.get('user') || url.searchParams.get('focus_item') || '').trim() !== '';
-        var userPage = parseInt(url.searchParams.get('user_page') || '1', 10);
-        if (!isAfterAdd && !hasFocusTarget && userPage > 1) {
-            url.searchParams.set('user_page', '1');
-            window.history.replaceState({}, document.title, url.toString());
-        }
-    } catch (error) {
-        // abaikan jika browser tidak mendukung URL API
-    }
-})();
+// Menjaga parameter user_page di URL address bar agar mendukung reload (F5),
+// bookmarking, dan direct navigation ke PC yang rusak dari dashboard.
 window.SPMT_INVENTORY_DETAIL = {
     otherItems: <?= json_encode(array_values($rawOtherItems), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>,
     focusItem: <?= json_encode($focusItem, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>

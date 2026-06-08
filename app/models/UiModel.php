@@ -635,6 +635,10 @@ class UiModel
                     ];
                 }
 
+                $cctvLastUpdateStmt = $pdo->query('SELECT MAX(updated_at) AS last_update FROM cctv_inventaris');
+                $cctvLastUpdate = $cctvLastUpdateStmt ? $cctvLastUpdateStmt->fetchColumn() : null;
+                $cctvLastUpdateStr = $cctvLastUpdate ? $this->formatHistoryDateTime($cctvLastUpdate) : '-';
+
                 $empty['CCTV'] = [
                     'title' => 'CCTV Lapangan',
                     'total' => $cctvTotal,
@@ -646,7 +650,8 @@ class UiModel
                     ],
                     // Show all locations (set limit to 100 to show all)
                     'top_values' => $this->dashboardRecapTopValues($cctvLocationCounts, 100),
-                    'division_rows' => $cctvCameraRows
+                    'division_rows' => $cctvCameraRows,
+                    'last_update' => $cctvLastUpdateStr
                 ];
             } catch (Throwable $e) {
                 // Ignore CCTV error
@@ -1319,6 +1324,7 @@ class UiModel
                 'page_key' => $pageKey,
                 'user' => trim((string) ($row['user'] ?? '')),
                 'computer_name' => trim((string) ($row['computer_name'] ?? '')),
+                'status' => strtoupper(trim((string) ($row['status'] ?? 'AKTIF'))),
             ];
         }
 
@@ -1377,11 +1383,22 @@ class UiModel
         };
 
         $pages = [];
+        $userPages = $context['user_pages'] ?? [];
         for ($i = 1; $i <= $total; $i++) {
+            $userPageMeta = $userPages[$i - 1] ?? null;
+            $hasRusak = false;
+            $userLabel = '';
+            if ($userPageMeta) {
+                $status = strtoupper(trim((string) ($userPageMeta['status'] ?? 'AKTIF')));
+                $hasRusak = ($status === 'RUSAK');
+                $userLabel = $userPageMeta['user'] !== '' ? $userPageMeta['user'] : $userPageMeta['computer_name'];
+            }
             $pages[] = [
                 'number' => $i,
                 'href' => $makeHref($i),
                 'is_active' => $i === $current,
+                'has_rusak' => $hasRusak,
+                'user_label' => $userLabel,
             ];
         }
 
@@ -2669,6 +2686,7 @@ SQL);
             $aktif  = [];
             $rusak  = [];
             $total  = 0;
+            $brokenPcsList = [];
 
             foreach ($divisions as $division) {
                 $db = (string) ($division['inventory_db_name'] ?? '');
@@ -2683,11 +2701,6 @@ SQL);
                 )));
                 $label = mb_strlen($fullLabel) > 14 ? mb_substr($fullLabel, 0, 14) . '…' : $fullLabel;
                 $divCode = (string) ($division['division_code'] ?? '');
-                $divUrl  = 'index.php?' . http_build_query([
-                    'page'             => 'inventaris-detail',
-                    'division_code'    => $divCode,
-                    'display_division' => $fullLabel,
-                ]);
 
                 try {
                     $sql = sprintf(
@@ -2707,13 +2720,66 @@ SQL);
                         continue;
                     }
 
+                    $jmlRusak = (int) ($counts['jml_rusak'] ?? 0);
+                    $targetPage = 1;
+                    $brokenPcs = [];
+
+                    if ($countTotal > 0) {
+                        $pcListSql = sprintf('SELECT `status`, `user`, `computer_name` FROM `%s`.pc ORDER BY %s', $db, $this->pcDetailOrderSql());
+                        $pcListStmt = $pdo->query($pcListSql);
+                        $pcRows = $pcListStmt ? $pcListStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                        
+                        $seenKeys = [];
+                        $pageNum = 0;
+                        $firstBrokenFound = false;
+                        foreach ($pcRows as $pcRowItem) {
+                            $pageKey = $this->buildPageKeyFromPcRow($pcRowItem);
+                            if ($pageKey === '' || isset($seenKeys[$pageKey])) {
+                                continue;
+                            }
+                            $seenKeys[$pageKey] = true;
+                            $pageNum++;
+                            if (strtoupper(trim((string) ($pcRowItem['status'] ?? ''))) === 'RUSAK') {
+                                if (!$firstBrokenFound) {
+                                    $targetPage = $pageNum;
+                                    $firstBrokenFound = true;
+                                }
+                                $pcLabel = trim((string) ($pcRowItem['user'] ?? ''));
+                                if ($pcLabel === '') {
+                                    $pcLabel = trim((string) ($pcRowItem['computer_name'] ?? ''));
+                                }
+                                if ($pcLabel === '') {
+                                    $pcLabel = 'Komputer #' . $pageNum;
+                                }
+                                $brokenPcs[] = [
+                                    'label' => $pcLabel,
+                                    'page'  => $pageNum,
+                                    'url'   => 'index.php?' . http_build_query([
+                                        'page'             => 'inventaris-detail',
+                                        'division_code'    => $divCode,
+                                        'display_division' => $fullLabel,
+                                        'user_page'        => $pageNum
+                                    ])
+                                ];
+                            }
+                        }
+                    }
+
+                    $divUrl  = 'index.php?' . http_build_query([
+                        'page'             => 'inventaris-detail',
+                        'division_code'    => $divCode,
+                        'display_division' => $fullLabel,
+                        'user_page'        => $targetPage
+                    ]);
+
                     $labels[]        = $label;
                     $fullLabels[]    = $fullLabel;
                     $divisionCodes[] = $divCode;
                     $divisionUrls[]  = $divUrl;
                     $aktif[]  = (int) ($counts['jml_aktif'] ?? 0);
-                    $rusak[]  = (int) ($counts['jml_rusak'] ?? 0);
+                    $rusak[]  = $jmlRusak;
                     $total   += $countTotal;
+                    $brokenPcsList[] = $brokenPcs;
                 } catch (Throwable $e) {
                     continue;
                 }
@@ -2727,6 +2793,7 @@ SQL);
                 'aktif'          => $aktif,
                 'rusak'          => $rusak,
                 'total'          => $total,
+                'broken_pcs'     => $brokenPcsList,
             ];
         } catch (Throwable $e) {
             return $empty;
