@@ -546,7 +546,7 @@ class PageController
         }
 
         $action = trim((string) ($_POST['dashboard_action'] ?? $_POST['action'] ?? ''));
-        if (!in_array($action, ['save_cctv', 'delete_cctv'], true)) {
+        if (!in_array($action, ['save_cctv', 'delete_cctv', 'edit_cctv_camera', 'delete_cctv_camera'], true)) {
             return;
         }
 
@@ -557,7 +557,31 @@ class PageController
 
         try {
             $this->model->ensureCctvTable($pdo);
-            if ($action === 'delete_cctv') {
+
+            if ($action === 'delete_cctv_camera') {
+                $id = max(0, (int) ($_POST['cctv_cam_id'] ?? 0));
+                if ($id <= 0) {
+                    throw new RuntimeException('ID kamera tidak valid.');
+                }
+                $stmt = $pdo->prepare('DELETE FROM cctv_inventaris WHERE id = :id');
+                $stmt->execute(['id' => $id]);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Kamera CCTV berhasil dihapus.'];
+
+            } elseif ($action === 'edit_cctv_camera') {
+                $id     = max(0, (int) ($_POST['cctv_cam_id'] ?? 0));
+                $nama   = trim((string) ($_POST['nama_cctv'] ?? ''));
+                $status = strtoupper(trim((string) ($_POST['status'] ?? 'AKTIF')));
+                if (!in_array($status, ['AKTIF', 'RUSAK', 'NONAKTIF'], true)) {
+                    $status = 'AKTIF';
+                }
+                if ($id <= 0 || $nama === '') {
+                    throw new RuntimeException('Data kamera tidak valid.');
+                }
+                $stmt = $pdo->prepare('UPDATE cctv_inventaris SET nama_cctv = :nama, status = :status WHERE id = :id');
+                $stmt->execute(['nama' => $nama, 'status' => $status, 'id' => $id]);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Data kamera CCTV berhasil diperbarui.'];
+
+            } elseif ($action === 'delete_cctv') {
                 $id = max(0, (int) ($_POST['cctv_id'] ?? 0));
                 if ($id <= 0) {
                     throw new RuntimeException('Data CCTV tidak valid.');
@@ -587,7 +611,7 @@ class PageController
                 }
             }
         } catch (Throwable $e) {
-            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Data CCTV gagal disimpan: ' . $e->getMessage()];
+            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Aksi CCTV gagal: ' . $e->getMessage()];
         }
 
         header('Location: index.php?page=dashboard');

@@ -416,10 +416,10 @@ class UiModel
     private function buildDashboardRecap(PDO $pdo): array
     {
         $empty = [
-            'SYSTEM OS' => ['title' => 'SYSTEM OS', 'total' => 0, 'safe_total' => 0, 'bad_total' => 0, 'groups' => [], 'top_values' => []],
-            'MS OFFICE' => ['title' => 'MS OFFICE', 'total' => 0, 'licensed_total' => 0, 'unlicensed_total' => 0, 'other_total' => 0, 'groups' => [], 'top_values' => []],
-            'PROCESSOR' => ['title' => 'PROCESSOR', 'total' => 0, 'safe_total' => 0, 'bad_total' => 0, 'groups' => [], 'top_values' => []],
-            'RAM/HARDDISK' => ['title' => 'RAM/HARDDISK', 'total' => 0, 'safe_total' => 0, 'bad_total' => 0, 'groups' => [], 'top_values' => []],
+            'SYSTEM OS' => ['title' => 'SYSTEM OS', 'total' => 0, 'safe_total' => 0, 'bad_total' => 0, 'groups' => [], 'top_values' => [], 'division_rows' => []],
+            'MS OFFICE' => ['title' => 'MS OFFICE', 'total' => 0, 'licensed_total' => 0, 'unlicensed_total' => 0, 'other_total' => 0, 'groups' => [], 'top_values' => [], 'division_rows' => []],
+            'PROCESSOR' => ['title' => 'PROCESSOR', 'total' => 0, 'safe_total' => 0, 'bad_total' => 0, 'groups' => [], 'top_values' => [], 'division_rows' => []],
+            'RAM/HARDDISK' => ['title' => 'RAM/HARDDISK', 'total' => 0, 'safe_total' => 0, 'bad_total' => 0, 'groups' => [], 'top_values' => [], 'division_rows' => []],
         ];
 
         try {
@@ -436,6 +436,9 @@ class UiModel
                 'RAM/HARDDISK' => [],
             ];
             $divisionCounts = [];
+            $osDivisionCounts = [];
+            $processorDivisionCounts = [];
+            $ramDivisionCounts = [];
             $total = 0;
             $safe = ['SYSTEM OS' => 0, 'PROCESSOR' => 0, 'RAM/HARDDISK' => 0];
             $bad = ['SYSTEM OS' => 0, 'PROCESSOR' => 0, 'RAM/HARDDISK' => 0];
@@ -491,6 +494,7 @@ class UiModel
                         }
 
                         if ($divisionLabel !== '') {
+                            // MS Office per divisi
                             if (!isset($divisionCounts[$divisionLabel])) {
                                 $divisionCounts[$divisionLabel] = ['division' => $divisionLabel, 'total' => 0, 'licensed' => 0, 'unlicensed' => 0, 'other' => 0];
                             }
@@ -498,6 +502,42 @@ class UiModel
                             if ($officeStatus === 'LICENSED') { $divisionCounts[$divisionLabel]['licensed']++; }
                             elseif ($officeStatus === 'UNLICENSED') { $divisionCounts[$divisionLabel]['unlicensed']++; }
                             else { $divisionCounts[$divisionLabel]['other']++; }
+
+                            // System OS per divisi
+                            if (!isset($osDivisionCounts[$divisionLabel])) {
+                                $osDivisionCounts[$divisionLabel] = ['division' => $divisionLabel, 'total' => 0, 'safe' => 0, 'bad' => 0, 'bad_versions' => []];
+                            }
+                            $osDivisionCounts[$divisionLabel]['total']++;
+                            if ($this->dashboardSpecIsSafe('SYSTEM OS', $os)) {
+                                $osDivisionCounts[$divisionLabel]['safe']++;
+                            } else {
+                                $osDivisionCounts[$divisionLabel]['bad']++;
+                                if ($os !== '' && $os !== '-') {
+                                    $osDivisionCounts[$divisionLabel]['bad_versions'][$os] = ($osDivisionCounts[$divisionLabel]['bad_versions'][$os] ?? 0) + 1;
+                                }
+                            }
+
+                            // Processor per divisi
+                            if (!isset($processorDivisionCounts[$divisionLabel])) {
+                                $processorDivisionCounts[$divisionLabel] = ['division' => $divisionLabel, 'total' => 0, 'safe' => 0, 'bad' => 0];
+                            }
+                            $processorDivisionCounts[$divisionLabel]['total']++;
+                            if ($this->dashboardSpecIsSafe('PROCESSOR', $processor)) {
+                                $processorDivisionCounts[$divisionLabel]['safe']++;
+                            } else {
+                                $processorDivisionCounts[$divisionLabel]['bad']++;
+                            }
+
+                            // RAM/Harddisk per divisi
+                            if (!isset($ramDivisionCounts[$divisionLabel])) {
+                                $ramDivisionCounts[$divisionLabel] = ['division' => $divisionLabel, 'total' => 0, 'safe' => 0, 'bad' => 0];
+                            }
+                            $ramDivisionCounts[$divisionLabel]['total']++;
+                            if ($this->dashboardSpecIsSafe('RAM/HARDDISK', $ramDisk)) {
+                                $ramDivisionCounts[$divisionLabel]['safe']++;
+                            } else {
+                                $ramDivisionCounts[$divisionLabel]['bad']++;
+                            }
                         }
                     }
                 } catch (Throwable $e) {
@@ -513,6 +553,7 @@ class UiModel
                 ['label' => 'Perlu Update', 'total' => $bad['SYSTEM OS'], 'type' => 'bad'],
             ];
             $empty['SYSTEM OS']['top_values'] = $this->dashboardRecapTopValues($valueCounts['SYSTEM OS']);
+            $empty['SYSTEM OS']['division_rows'] = array_values($osDivisionCounts);
 
             $empty['MS OFFICE']['total'] = $total;
             $empty['MS OFFICE']['licensed_total'] = $licensed;
@@ -531,9 +572,10 @@ class UiModel
             $empty['PROCESSOR']['bad_total'] = $bad['PROCESSOR'];
             $empty['PROCESSOR']['groups'] = [
                 ['label' => 'Aman / i5-i7', 'total' => $safe['PROCESSOR'], 'type' => 'ok'],
-                ['label' => 'Perlu Update', 'total' => $bad['PROCESSOR'], 'type' => 'bad'],
+                ['label' => 'Perlu Upgrade (i3/lainnya)', 'total' => $bad['PROCESSOR'], 'type' => 'bad'],
             ];
             $empty['PROCESSOR']['top_values'] = $this->dashboardRecapTopValues($valueCounts['PROCESSOR']);
+            $empty['PROCESSOR']['division_rows'] = array_values($processorDivisionCounts);
 
             $empty['RAM/HARDDISK']['total'] = $total;
             $empty['RAM/HARDDISK']['safe_total'] = $safe['RAM/HARDDISK'];
@@ -543,6 +585,7 @@ class UiModel
                 ['label' => 'Perlu Upgrade', 'total' => $bad['RAM/HARDDISK'], 'type' => 'bad'],
             ];
             $empty['RAM/HARDDISK']['top_values'] = $this->dashboardRecapTopValues($valueCounts['RAM/HARDDISK']);
+            $empty['RAM/HARDDISK']['division_rows'] = array_values($ramDivisionCounts);
 
             return $empty;
         } catch (Throwable $e) {
@@ -626,11 +669,36 @@ class UiModel
             $processorValue = strtoupper($processor !== '' ? $processor : $defaults[2]['value']);
             $ramDiskValue = strtoupper($ramDisk !== '' ? $ramDisk : $defaults[3]['value']);
 
+            // Hitung safe/bad total untuk semua divisi (untuk tampilan card angka)
+            $cardSafe = ['SYSTEM OS' => 0, 'MS OFFICE' => 0, 'PROCESSOR' => 0, 'RAM/HARDDISK' => 0];
+            $cardBad  = ['SYSTEM OS' => 0, 'MS OFFICE' => 0, 'PROCESSOR' => 0, 'RAM/HARDDISK' => 0];
+            foreach ($divisions as $division) {
+                $db2 = (string) ($division['inventory_db_name'] ?? '');
+                if (!$this->isSafeIdentifier($db2)) { continue; }
+                try {
+                    $sql2 = sprintf('SELECT sistem_operasi, licensed_office, microsoft_office, processor, ram, kapasitas_harddisk FROM `%s`.pc', $db2);
+                    $rows2 = $pdo->query($sql2);
+                    if (!$rows2) { continue; }
+                    foreach ($rows2 as $row2) {
+                        $os2 = strtoupper($this->majorityNormalize($row2['sistem_operasi'] ?? ''));
+                        $ol2 = $this->majorityNormalize($row2['licensed_office'] ?? '');
+                        $on2 = $this->majorityNormalize($row2['microsoft_office'] ?? '');
+                        $off2 = strtoupper($ol2 !== '' ? $ol2 : ($on2 !== '' ? $on2 : '-'));
+                        $pr2 = strtoupper($this->majorityNormalize($row2['processor'] ?? ''));
+                        $rd2 = strtoupper(trim($this->majorityNormalize($row2['ram'] ?? '') . '/' . $this->majorityNormalize($row2['kapasitas_harddisk'] ?? ''), '/'));
+                        if ($this->dashboardSpecIsSafe('SYSTEM OS', $os2))  { $cardSafe['SYSTEM OS']++; }  else { $cardBad['SYSTEM OS']++; }
+                        if ($this->dashboardSpecIsSafe('MS OFFICE', $off2)) { $cardSafe['MS OFFICE']++; } else { $cardBad['MS OFFICE']++; }
+                        if ($this->dashboardSpecIsSafe('PROCESSOR', $pr2))  { $cardSafe['PROCESSOR']++; }  else { $cardBad['PROCESSOR']++; }
+                        if ($this->dashboardSpecIsSafe('RAM/HARDDISK', $rd2)) { $cardSafe['RAM/HARDDISK']++; } else { $cardBad['RAM/HARDDISK']++; }
+                    }
+                } catch (Throwable $e) { continue; }
+            }
+
             return [
-                ['title' => 'SYSTEM OS', 'value' => $osValue, 'value_class' => $this->dashboardSpecIsSafe('SYSTEM OS', $osValue) ? 'ok' : 'bad', 'status' => $this->dashboardSpecStatus('SYSTEM OS', $osValue)],
-                ['title' => 'MS OFFICE', 'value' => $officeValue, 'value_class' => $this->dashboardSpecIsSafe('MS OFFICE', $officeValue) ? 'ok' : 'bad', 'status' => $this->dashboardSpecStatus('MS OFFICE', $officeValue)],
-                ['title' => 'PROCESSOR', 'value' => $processorValue, 'value_class' => $this->dashboardSpecIsSafe('PROCESSOR', $processorValue) ? 'ok' : 'bad', 'status' => $this->dashboardSpecStatus('PROCESSOR', $processorValue)],
-                ['title' => 'RAM/HARDDISK', 'value' => $ramDiskValue, 'value_class' => $this->dashboardSpecIsSafe('RAM/HARDDISK', $ramDiskValue) ? 'ok' : 'bad', 'status' => $this->dashboardSpecStatus('RAM/HARDDISK', $ramDiskValue)],
+                ['title' => 'SYSTEM OS',    'value' => $osValue,        'value_class' => $this->dashboardSpecIsSafe('SYSTEM OS', $osValue) ? 'ok' : 'bad',        'status' => $this->dashboardSpecStatus('SYSTEM OS', $osValue),        'safe_total' => $cardSafe['SYSTEM OS'],    'bad_total' => $cardBad['SYSTEM OS']],
+                ['title' => 'MS OFFICE',    'value' => $officeValue,    'value_class' => $this->dashboardSpecIsSafe('MS OFFICE', $officeValue) ? 'ok' : 'bad',    'status' => $this->dashboardSpecStatus('MS OFFICE', $officeValue),    'safe_total' => $cardSafe['MS OFFICE'],    'bad_total' => $cardBad['MS OFFICE']],
+                ['title' => 'PROCESSOR',    'value' => $processorValue, 'value_class' => $this->dashboardSpecIsSafe('PROCESSOR', $processorValue) ? 'ok' : 'bad', 'status' => $this->dashboardSpecStatus('PROCESSOR', $processorValue), 'safe_total' => $cardSafe['PROCESSOR'],    'bad_total' => $cardBad['PROCESSOR']],
+                ['title' => 'RAM/HARDDISK', 'value' => $ramDiskValue,   'value_class' => $this->dashboardSpecIsSafe('RAM/HARDDISK', $ramDiskValue) ? 'ok' : 'bad','status' => $this->dashboardSpecStatus('RAM/HARDDISK', $ramDiskValue),'safe_total' => $cardSafe['RAM/HARDDISK'], 'bad_total' => $cardBad['RAM/HARDDISK']],
             ];
         } catch (Throwable $e) {
             return [];
@@ -1546,6 +1614,7 @@ SQL);
     {
         try {
             $this->ensureCctvTable($pdo);
+            $this->ensureCctvInventarisTable($pdo);
             $stmt = $pdo->query('SELECT id, lokasi, jumlah, color FROM dashboard_cctv ORDER BY id ASC');
             $rows = $stmt ? $stmt->fetchAll() : [];
             if (!$rows) {
@@ -1553,22 +1622,65 @@ SQL);
                 $stmt = $pdo->query('SELECT id, lokasi, jumlah, color FROM dashboard_cctv ORDER BY id ASC');
                 $rows = $stmt ? $stmt->fetchAll() : [];
             }
+
+            // Load kamera individual per lokasi
+            $cameraStmt = $pdo->query('SELECT id, nama_cctv, kode_cctv, lokasi, status FROM cctv_inventaris ORDER BY lokasi ASC, nama_cctv ASC');
+            $allCameras = $cameraStmt ? $cameraStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            $camerasByLokasi = [];
+            foreach ($allCameras as $cam) {
+                $loc = strtoupper(trim((string) ($cam['lokasi'] ?? '')));
+                if ($loc !== '') {
+                    $camerasByLokasi[$loc][] = [
+                        'id'     => (int) ($cam['id'] ?? 0),
+                        'nama'   => (string) ($cam['nama_cctv'] ?? ''),
+                        'kode'   => (string) ($cam['kode_cctv'] ?? ''),
+                        'lokasi' => (string) ($cam['lokasi'] ?? ''),
+                        'status' => strtoupper(trim((string) ($cam['status'] ?? 'AKTIF'))),
+                    ];
+                }
+            }
+
             $result = [];
             foreach ($rows as $row) {
                 $label = trim((string) ($row['lokasi'] ?? ''));
                 if ($label === '') {
                     continue;
                 }
+                $cameras = $camerasByLokasi[strtoupper($label)] ?? [];
+                // Jika ada data kamera nyata, gunakan count kamera; jika tidak, pakai jumlah dari dashboard_cctv
+                $total = count($cameras) > 0 ? count($cameras) : (int) ($row['jumlah'] ?? 0);
                 $result[] = [
-                    'id' => (int) ($row['id'] ?? 0),
-                    'label' => $label,
-                    'value' => (int) ($row['jumlah'] ?? 0),
-                    'color' => preg_match('/^#[0-9A-Fa-f]{6}$/', (string) ($row['color'] ?? '')) ? (string) $row['color'] : '#5B8DEF',
+                    'id'      => (int) ($row['id'] ?? 0),
+                    'label'   => $label,
+                    'value'   => $total,
+                    'color'   => preg_match('/^#[0-9A-Fa-f]{6}$/', (string) ($row['color'] ?? '')) ? (string) $row['color'] : '#5B8DEF',
+                    'cameras' => $cameras,
                 ];
             }
             return $result ?: $fallback;
         } catch (Throwable $e) {
             return $fallback;
+        }
+    }
+
+    private function ensureCctvInventarisTable(PDO $pdo): void
+    {
+        try {
+            $pdo->exec('CREATE TABLE IF NOT EXISTS cctv_inventaris (
+                id INT NOT NULL AUTO_INCREMENT,
+                nama_cctv VARCHAR(200) NOT NULL,
+                kode_cctv VARCHAR(100) NOT NULL,
+                lokasi VARCHAR(150) NOT NULL DEFAULT "",
+                status ENUM("AKTIF","RUSAK","NONAKTIF") NOT NULL DEFAULT "AKTIF",
+                keterangan TEXT NULL,
+                gambar VARCHAR(255) NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY idx_cctv_lokasi (lokasi)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+        } catch (Throwable $e) {
+            // ignore jika sudah ada
         }
     }
 
@@ -2457,7 +2569,7 @@ SQL);
 
     private function buildPcChartData(PDO $pdo): array
     {
-        $empty = ['labels' => [], 'aktif' => [], 'rusak' => [], 'total' => 0];
+        $empty = ['labels' => [], 'aktif' => [], 'rusak' => [], 'total' => 0, 'division_codes' => [], 'division_urls' => [], 'full_labels' => []];
 
         try {
             $stmt = $pdo->query(
@@ -2469,7 +2581,10 @@ SQL);
                 return $empty;
             }
 
-            $labels = [];
+            $labels        = [];
+            $fullLabels    = [];
+            $divisionCodes = [];
+            $divisionUrls  = [];
             $aktif  = [];
             $rusak  = [];
             $total  = 0;
@@ -2480,14 +2595,18 @@ SQL);
                     continue;
                 }
 
-                $label = strtoupper(trim((string) (
+                $fullLabel = strtoupper(trim((string) (
                     ($division['division_label'] ?? '') !== ''
                         ? $division['division_label']
                         : ($division['division_code'] ?? $db)
                 )));
-                if (mb_strlen($label) > 14) {
-                    $label = mb_substr($label, 0, 14) . '…';
-                }
+                $label = mb_strlen($fullLabel) > 14 ? mb_substr($fullLabel, 0, 14) . '…' : $fullLabel;
+                $divCode = (string) ($division['division_code'] ?? '');
+                $divUrl  = 'index.php?' . http_build_query([
+                    'page'             => 'inventaris-detail',
+                    'division_code'    => $divCode,
+                    'display_division' => $fullLabel,
+                ]);
 
                 try {
                     $sql = sprintf(
@@ -2507,7 +2626,10 @@ SQL);
                         continue;
                     }
 
-                    $labels[] = $label;
+                    $labels[]        = $label;
+                    $fullLabels[]    = $fullLabel;
+                    $divisionCodes[] = $divCode;
+                    $divisionUrls[]  = $divUrl;
                     $aktif[]  = (int) ($counts['jml_aktif'] ?? 0);
                     $rusak[]  = (int) ($counts['jml_rusak'] ?? 0);
                     $total   += $countTotal;
@@ -2516,7 +2638,15 @@ SQL);
                 }
             }
 
-            return ['labels' => $labels, 'aktif' => $aktif, 'rusak' => $rusak, 'total' => $total];
+            return [
+                'labels'         => $labels,
+                'full_labels'    => $fullLabels,
+                'division_codes' => $divisionCodes,
+                'division_urls'  => $divisionUrls,
+                'aktif'          => $aktif,
+                'rusak'          => $rusak,
+                'total'          => $total,
+            ];
         } catch (Throwable $e) {
             return $empty;
         }
