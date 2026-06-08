@@ -24,9 +24,9 @@
         $cctvItems = array_values(is_array($data['cctv_breakdown'] ?? null) ? $data['cctv_breakdown'] : []);
         $cctvTotal = array_sum(array_map(static fn($item) => (int) ($item['value'] ?? 0), $cctvItems));
     ?>
-    <article class="donut-card dashboard-hover-card dashboard-cctv-card js-open-modal" data-modal="cctvModal" tabindex="0" role="button" aria-label="Lihat detail CCTV">
+    <article class="donut-card dashboard-hover-card dashboard-cctv-card js-open-dashboard-recap" data-recap-key="CCTV" tabindex="0" role="button" aria-label="Lihat detail CCTV">
         <div class="donut-card__title-row">
-            <h2>JUMLAH CCTV<br>LAPANGAN</h2>
+            <h2>JUMLAH CCTV LAPANGAN</h2>
             <span class="donut-card__edit-hint"><i class="fa-solid fa-list"></i> Detail</span>
         </div>
         <div class="donut-card__content donut-card__content--cctv">
@@ -51,9 +51,9 @@
         }
         $pcColors = ['#5B8DEF','#6FCF97','#F2A541','#34B3D8','#F58B82','#7D72F8','#3AA0FF','#6D5BD0','#41B8D5','#F3A43B','#4C7BE8','#E879A0'];
     ?>
-    <article class="donut-card dashboard-hover-card dashboard-cctv-card dashboard-pc-card js-open-modal" data-modal="pcModal" tabindex="0" role="button" aria-label="Lihat rekap PC per divisi">
+    <article class="donut-card dashboard-hover-card dashboard-pc-card js-open-modal" data-modal="pcModal" tabindex="0" role="button" aria-label="Lihat rekap PC per divisi">
         <div class="donut-card__title-row">
-            <h2>JUMLAH PC<br>PER DIVISI</h2>
+            <h2>JUMLAH PC PER DIVISI</h2>
             <span class="donut-card__edit-hint"><i class="fa-solid fa-chart-pie"></i> Rekap</span>
         </div>
         <div class="donut-card__content donut-card__content--cctv">
@@ -138,93 +138,7 @@
     </div>
 </div>
 
-<?php /* ── Modal Detail CCTV (Accordion) ── */ ?>
-<div id="cctvModal" class="modal cctv-modal" aria-hidden="true">
-    <div class="modal__backdrop js-close-modal"></div>
-    <div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="cctvModalTitle">
-        <div class="modal__header">
-            <h2 id="cctvModalTitle">Detail CCTV Lapangan</h2>
-            <button type="button" class="modal__close js-close-modal" aria-label="Tutup"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        <div class="cctv-modal__body cctv-modal__body--accordion">
-            <?php if (empty($cctvItems)): ?>
-                <div class="cctv-accordion__empty">Belum ada data CCTV.</div>
-            <?php else: ?>
-                <div class="cctv-accordion" id="cctvAccordion">
-                    <?php foreach ($cctvItems as $itemIdx => $item): ?>
-                        <?php $cameras = is_array($item['cameras'] ?? null) ? $item['cameras'] : []; ?>
-                        <div class="cctv-accordion__item" id="cctv-loc-<?= $itemIdx; ?>">
-                            <button type="button" class="cctv-accordion__header js-cctv-accordion-toggle" aria-expanded="false" data-target="cctv-body-<?= $itemIdx; ?>">
-                                <span class="cctv-accordion__dot" style="background:<?= e($item['color']); ?>"></span>
-                                <span class="cctv-accordion__label"><?= e($item['label']); ?></span>
-                                <span class="cctv-accordion__count"><?= e((string) $item['value']); ?> unit</span>
-                                <i class="fa-solid fa-chevron-down cctv-accordion__chevron"></i>
-                            </button>
-                            <div class="cctv-accordion__body" id="cctv-body-<?= $itemIdx; ?>" hidden>
-                                <?php if (empty($cameras)): ?>
-                                    <div class="cctv-camera-empty">
-                                        Belum ada data kamera individual.
-                                        <a href="index.php?page=inventory-other&inv_tab=cctv" class="cctv-camera-add-link">+ Tambah CCTV baru</a>
-                                    </div>
-                                <?php else: ?>
-                                    <?php foreach ($cameras as $cam): ?>
-                                        <div class="cctv-camera-row" id="cctv-cam-<?= (int)($cam['id']); ?>">
-                                            <div class="cctv-camera-row__info">
-                                                <span class="cctv-camera-row__name"><?= e($cam['nama']); ?></span>
-                                                <span class="cctv-camera-row__status cctv-camera-row__status--<?= strtolower(e($cam['status'])); ?>"><?= e($cam['status']); ?></span>
-                                            </div>
-                                            <div class="cctv-camera-row__actions">
-                                                <button type="button" class="cctv-camera-btn js-cctv-cam-edit" title="Edit"
-                                                    data-cam-id="<?= (int)($cam['id']); ?>"
-                                                    data-cam-nama="<?= e($cam['nama']); ?>"
-                                                    data-cam-kode="<?= e($cam['kode']); ?>"
-                                                    data-cam-lokasi="<?= e($cam['lokasi']); ?>"
-                                                    data-cam-status="<?= e($cam['status']); ?>">
-                                                    <i class="fa-solid fa-pen"></i>
-                                                </button>
-                                                <button type="button" class="cctv-camera-btn cctv-camera-btn--danger js-cctv-cam-delete" title="Hapus"
-                                                    data-cam-id="<?= (int)($cam['id']); ?>"
-                                                    data-cam-nama="<?= e($cam['nama']); ?>">
-                                                    <i class="fa-solid fa-trash"></i>
-                                                </button>
-                                            </div>
-                                            <div class="cctv-camera-inline-edit" id="cctv-edit-<?= (int)($cam['id']); ?>" hidden>
-                                                <form method="post" action="index.php?page=dashboard" class="cctv-inline-form">
-                                                    <input type="hidden" name="dashboard_action" value="edit_cctv_camera">
-                                                    <input type="hidden" name="cctv_cam_id" value="<?= (int)($cam['id']); ?>">
-                                                    <div class="cctv-inline-form__row">
-                                                        <label>Nama CCTV<input type="text" name="nama_cctv" value="<?= e($cam['nama']); ?>" required></label>
-                                                        <label>Status
-                                                            <select name="status">
-                                                                <option value="AKTIF" <?= $cam['status'] === 'AKTIF' ? 'selected' : ''; ?>>Aktif</option>
-                                                                <option value="RUSAK" <?= $cam['status'] === 'RUSAK' ? 'selected' : ''; ?>>Rusak</option>
-                                                                <option value="NONAKTIF" <?= $cam['status'] === 'NONAKTIF' ? 'selected' : ''; ?>>Nonaktif</option>
-                                                            </select>
-                                                        </label>
-                                                        <div class="cctv-inline-form__btns">
-                                                            <button type="submit" class="btn btn--primary btn--sm">Simpan</button>
-                                                            <button type="button" class="btn btn--ghost btn--sm js-cctv-cam-cancel" data-cam-id="<?= (int)($cam['id']); ?>">Batal</button>
-                                                        </div>
-                                                    </div>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                    <div class="cctv-camera-add-row">
-                                        <a href="index.php?page=inventory-other&inv_tab=cctv" class="cctv-camera-add-link"><i class="fa-solid fa-plus"></i> Tambah CCTV baru</a>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-        </div>
-        <div class="modal__footer" style="justify-content:flex-end;">
-            <button type="button" class="btn btn--primary btn--lg js-close-modal">Tutup</button>
-        </div>
-    </div>
-</div>
+
 
 <?php /* ── Modal Rekap PC per Divisi ── */ ?>
 <div id="pcModal" class="modal cctv-modal" aria-hidden="true">
@@ -426,6 +340,12 @@
                 statusHtml = isLic
                     ? '<span style="color:#16a34a;font-size:.8rem;">✓ Licensed</span>'
                     : (isUnl ? '<span style="color:#dc2626;font-size:.8rem;">✗ Unlicensed</span>' : '<span style="color:#94a3b8;font-size:.8rem;">—</span>');
+            } else if (recapKey === 'CCTV') {
+                var safe = row.safe || 0;
+                var bad = row.bad || 0;
+                statusHtml = bad === 0 
+                    ? '<span style="color:#16a34a;font-size:.8rem;font-weight:700;">✓ Aman</span>'
+                    : '<span style="color:#dc2626;font-size:.8rem;font-weight:700;">⚠ ' + bad + ' Perlu Perbaikan</span>';
             }
             return '<tr><td>' + label + '</td><td><strong>' + total + '</strong></td><td>' + statusHtml + '</td></tr>';
         }).join('');
@@ -441,13 +361,55 @@
                 return '<div class="dashboard-recap-pill dashboard-recap-pill--' + escapeHtml(row.type||'neutral') + '"><span>' + escapeHtml(row.label||'-') + '</span><strong>' + escapeHtml(row.total||0) + '</strong></div>';
             }).join('') : '<div class="dashboard-recap-empty">Belum ada rekap.</div>';
         }
+        var topSection = topValues ? topValues.closest('.dashboard-recap-section') : null;
+        if (topSection) topSection.hidden = (key === 'CCTV');
+        
         if (topValues) topValues.innerHTML = renderTopValueRows(item.top_values || [], key);
 
         if (divisionSection && divisionRows && divisionHead) {
             var divRows = item.division_rows || [];
             if (divRows.length) {
                 divisionSection.hidden = false;
-                if (key === 'MS OFFICE') {
+                if (key === 'CCTV') {
+                    if (divisionTitle) divisionTitle.textContent = 'Daftar Kamera per Lokasi';
+                    divisionHead.innerHTML = '<tr><th style="text-align:left;">NAMA CCTV</th><th style="text-align:center;border-left:1px solid rgba(42,102,165,.15);">STATUS</th><th style="text-align:center;border-left:1px solid rgba(42,102,165,.15);">LOKASI</th><th style="text-align:center;border-left:1px solid rgba(42,102,165,.15);">JUMLAH</th></tr>';
+                    
+                    var grouped = {};
+                    divRows.forEach(function(row) {
+                        var loc = row.lokasi || '-';
+                        if (!grouped[loc]) grouped[loc] = [];
+                        grouped[loc].push(row);
+                    });
+                    
+                    var html = '';
+                    for (var loc in grouped) {
+                        var cams = grouped[loc];
+                        cams.forEach(function(row, index) {
+                            var statusStr = escapeHtml(row.status || '');
+                            var isBad = statusStr !== 'AKTIF';
+                            var statHtml = isBad 
+                                ? '<span style="color:#dc2626;font-weight:700;font-size:.7rem;border:1px solid #fecaca;background:#fef2f2;padding:2px 6px;border-radius:4px;vertical-align:middle;display:inline-block;">' + statusStr + '</span>'
+                                : '<span style="color:#16a34a;font-weight:700;font-size:.7rem;border:1px solid #bbf7d0;background:#f0fdf4;padding:2px 6px;border-radius:4px;vertical-align:middle;display:inline-block;">' + statusStr + '</span>';
+                            
+                            html += '<tr' + (isBad ? ' style="background:#fff5f5"' : '') + '>';
+                            
+                            // 1. NAMA CCTV (Kode - Nama)
+                            html += '<td style="padding:12px 14px;border-bottom:1px solid rgba(42,102,165,.10);text-align:left;"><strong style="color:#1e293b">' + escapeHtml(row.kode||'-') + '</strong> - <span style="color:#475569">' + escapeHtml(row.nama||'-') + '</span></td>';
+                            
+                            // 2. STATUS
+                            html += '<td style="padding:12px 14px;border-bottom:1px solid rgba(42,102,165,.10);border-left:1px solid rgba(42,102,165,.15);text-align:center;vertical-align:middle;">' + statHtml + '</td>';
+                            
+                            // 3 & 4. LOKASI & JUMLAH (rowspan for first item in group)
+                            if (index === 0) {
+                                html += '<td rowspan="' + cams.length + '" style="vertical-align:middle;font-weight:600;color:#1e3a8a;background:#fbfcfd;border-left:1px solid rgba(42,102,165,.15);border-bottom:1px solid rgba(42,102,165,.15);text-align:center;">' + escapeHtml(loc) + '</td>';
+                                html += '<td rowspan="' + cams.length + '" style="vertical-align:middle;font-weight:700;color:#0f172a;background:#fbfcfd;border-left:1px solid rgba(42,102,165,.15);border-bottom:1px solid rgba(42,102,165,.15);text-align:center;">' + cams.length + '</td>';
+                            }
+                            
+                            html += '</tr>';
+                        });
+                    }
+                    divisionRows.innerHTML = html;
+                } else if (key === 'MS OFFICE') {
                     if (divisionTitle) divisionTitle.textContent = 'Rekap MS Office per Divisi';
                     divisionHead.innerHTML = '<tr><th>Divisi</th><th>Total</th><th>Licensed</th><th>Unlicensed</th><th>Lainnya</th></tr>';
                     divisionRows.innerHTML = divRows.map(function(row) {
@@ -489,62 +451,7 @@
 })();
 </script>
 
-<script>
-/* ── CCTV Accordion JS ── */
-(function () {
-    document.querySelectorAll('.js-cctv-accordion-toggle').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var targetId = btn.getAttribute('data-target');
-            var body = document.getElementById(targetId);
-            if (!body) return;
-            var expanded = btn.getAttribute('aria-expanded') === 'true';
-            btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-            body.hidden = expanded;
-        });
-    });
 
-    // Inline edit toggle
-    document.querySelectorAll('.js-cctv-cam-edit').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var camId = btn.getAttribute('data-cam-id');
-            var editDiv = document.getElementById('cctv-edit-' + camId);
-            if (editDiv) editDiv.hidden = !editDiv.hidden;
-        });
-    });
-
-    // Batal inline edit
-    document.querySelectorAll('.js-cctv-cam-cancel').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var camId = btn.getAttribute('data-cam-id');
-            var editDiv = document.getElementById('cctv-edit-' + camId);
-            if (editDiv) editDiv.hidden = true;
-        });
-    });
-
-    // Delete kamera
-    document.querySelectorAll('.js-cctv-cam-delete').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            var nama = btn.getAttribute('data-cam-nama') || 'kamera ini';
-            var camId = btn.getAttribute('data-cam-id');
-            if (!confirm('Hapus ' + nama + '?')) return;
-            var form = document.createElement('form');
-            form.method = 'POST';
-            form.action = 'index.php?page=dashboard';
-            var inputs = [
-                ['dashboard_action', 'delete_cctv_camera'],
-                ['cctv_cam_id', camId],
-            ];
-            inputs.forEach(function(pair) {
-                var inp = document.createElement('input');
-                inp.type = 'hidden'; inp.name = pair[0]; inp.value = pair[1];
-                form.appendChild(inp);
-            });
-            document.body.appendChild(form);
-            form.submit();
-        });
-    });
-})();
-</script>
 
 <script>
 (function () {

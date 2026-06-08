@@ -954,9 +954,10 @@ button {
 
 .dashboard-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.45fr) minmax(340px, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-areas:
-        "summary donut"
+        "summary summary"
+        "donut-cctv donut-pc"
         "complaints flow";
     gap: clamp(14px, 1.6vw, 20px);
     width: 100%;
@@ -965,7 +966,7 @@ button {
 .dashboard-summary {
     grid-area: summary;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: clamp(12px, 1.4vw, 18px);
 }
 
@@ -1008,8 +1009,16 @@ button {
 }
 
 .donut-card {
-    grid-area: donut;
     padding: clamp(16px, 1.8vw, 22px);
+    position: relative;
+}
+
+.dashboard-cctv-card {
+    grid-area: donut-cctv;
+}
+
+.dashboard-pc-card {
+    grid-area: donut-pc;
 }
 
 .donut-card h2,
@@ -1028,12 +1037,25 @@ button {
     margin-bottom: 12px;
 }
 
+.donut-card__title-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
 .donut-card__content {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(180px, 1.1fr) minmax(0, 1fr);
     align-items: center;
     gap: 12px;
     height: auto;
+}
+
+.donut-card__content--cctv {
+    grid-template-columns: 1fr;
+    justify-items: center;
 }
 
 .donut-card__legend {
@@ -5348,12 +5370,17 @@ button.doc-thumb {
 
 .donut-card__title-row {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
     gap: 12px;
 }
 
 .donut-card__edit-hint {
+    position: absolute;
+    top: 16px;
+    right: 16px;
     display: inline-flex;
     align-items: center;
     gap: 7px;
@@ -5823,7 +5850,6 @@ button.doc-thumb {
     }
 
     .dashboard-grid,
-    .dashboard-summary,
     .category-grid,
     .report-card-grid,
     .log-layout,
@@ -6062,7 +6088,7 @@ button.doc-thumb {
 
 @media (max-width: 1360px) and (min-width: 1181px) {
     .dashboard-grid {
-        grid-template-columns: minmax(0, 1.25fr) minmax(280px, .85fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 14px;
     }
     .dashboard-summary {
@@ -6088,7 +6114,8 @@ button.doc-thumb {
         grid-template-columns: minmax(0, 1fr) !important;
         grid-template-areas:
             "summary"
-            "donut"
+            "donut-cctv"
+            "donut-pc"
             "complaints"
             "flow" !important;
         gap: 14px;
@@ -6098,8 +6125,11 @@ button.doc-thumb {
         grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important;
         gap: 12px;
     }
-    .donut-card {
-        grid-area: donut !important;
+    .dashboard-cctv-card {
+        grid-area: donut-cctv !important;
+    }
+    .dashboard-pc-card {
+        grid-area: donut-pc !important;
     }
     .chart-card--wide {
         grid-area: complaints !important;
@@ -6184,8 +6214,9 @@ button.doc-thumb {
         text-align: center;
     }
     .donut-card__edit-hint {
-        justify-content: center;
-        width: 100%;
+        top: 12px;
+        right: 12px;
+        padding: 6px 10px;
     }
     .donut-card__legend {
         grid-template-columns: 1fr;
@@ -8928,8 +8959,6 @@ button[aria-label*="filter"]:focus-visible i {
 }
 .dashboard-cctv-card .donut-card__title-row {
     margin-bottom: 4px;
-    position: relative;
-    z-index: 3;
 }
 .dashboard-cctv-card .donut-card__content--cctv {
     min-height: clamp(170px, 17vw, 220px);

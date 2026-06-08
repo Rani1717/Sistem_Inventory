@@ -594,6 +594,64 @@ class UiModel
             $empty['RAM/HARDDISK']['top_values'] = $this->dashboardRecapTopValues($valueCounts['RAM/HARDDISK']);
             $empty['RAM/HARDDISK']['division_rows'] = array_values($ramDivisionCounts);
 
+            // CCTV RECAP
+            $cctvTotal = 0;
+            $cctvSafe = 0;
+            $cctvBad = 0;
+            $cctvLocationCounts = [];
+            $cctvCameraRows = [];
+
+            try {
+                $cctvStmt = $pdo->query('SELECT id, nama_cctv, kode_cctv, lokasi, status FROM cctv_inventaris ORDER BY lokasi ASC, nama_cctv ASC');
+                $cctvRows = $cctvStmt ? $cctvStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                foreach ($cctvRows as $cam) {
+                    $cctvTotal++;
+                    $loc = strtoupper(trim((string) ($cam['lokasi'] ?? '')));
+                    $status = strtoupper(trim((string) ($cam['status'] ?? 'AKTIF')));
+                    
+                    if ($status === 'AKTIF') {
+                        $cctvSafe++;
+                    } else {
+                        $cctvBad++;
+                    }
+                    
+                    if ($loc !== '') {
+                        if (!isset($cctvLocationCounts[$loc])) {
+                            $cctvLocationCounts[$loc] = ['label' => $loc, 'total' => 0, 'safe' => 0, 'bad' => 0];
+                        }
+                        $cctvLocationCounts[$loc]['total']++;
+                        if ($status === 'AKTIF') {
+                            $cctvLocationCounts[$loc]['safe']++;
+                        } else {
+                            $cctvLocationCounts[$loc]['bad']++;
+                        }
+                    }
+
+                    $cctvCameraRows[] = [
+                        'lokasi' => $loc,
+                        'kode' => $cam['kode_cctv'],
+                        'nama' => $cam['nama_cctv'],
+                        'status' => $status
+                    ];
+                }
+
+                $empty['CCTV'] = [
+                    'title' => 'CCTV Lapangan',
+                    'total' => $cctvTotal,
+                    'safe_total' => $cctvSafe,
+                    'bad_total' => $cctvBad,
+                    'groups' => [
+                        ['label' => 'Aman / Aktif', 'total' => $cctvSafe, 'type' => 'ok'],
+                        ['label' => 'Perlu Perbaikan / Nonaktif', 'total' => $cctvBad, 'type' => 'bad'],
+                    ],
+                    // Show all locations (set limit to 100 to show all)
+                    'top_values' => $this->dashboardRecapTopValues($cctvLocationCounts, 100),
+                    'division_rows' => $cctvCameraRows
+                ];
+            } catch (Throwable $e) {
+                // Ignore CCTV error
+            }
+
             return $empty;
         } catch (Throwable $e) {
             return $empty;
@@ -1173,6 +1231,22 @@ class UiModel
         foreach ($columns as $column => $template) {
             try {
                 $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = :schema AND table_name = "pc" AND column_name = :column');
+                $stmt->execute(['schema' => $inventoryDb, 'column' => $column]);
+                if ((int) $stmt->fetchColumn() < 1) {
+                    $pdo->exec(sprintf($template, $inventoryDb));
+                }
+            } catch (Throwable $e) {
+            }
+        }
+
+        $otherColumns = [
+            'pc_row_id' => 'ALTER TABLE `%s`.perangkat_lain ADD COLUMN `pc_row_id` BIGINT NULL DEFAULT NULL AFTER `gambar`',
+            'edit_source' => 'ALTER TABLE `%s`.perangkat_lain ADD COLUMN `edit_source` VARCHAR(50) DEFAULT "manual" AFTER `pc_row_id`',
+            'status' => 'ALTER TABLE `%s`.perangkat_lain ADD COLUMN `status` VARCHAR(100) DEFAULT "AKTIF" AFTER `user`',
+        ];
+        foreach ($otherColumns as $column => $template) {
+            try {
+                $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = :schema AND table_name = "perangkat_lain" AND column_name = :column');
                 $stmt->execute(['schema' => $inventoryDb, 'column' => $column]);
                 if ((int) $stmt->fetchColumn() < 1) {
                     $pdo->exec(sprintf($template, $inventoryDb));

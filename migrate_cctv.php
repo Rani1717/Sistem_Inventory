@@ -8,14 +8,12 @@
  */
 
 define('BASEPATH', true);
-require_once __DIR__ . '/app/config/Database.php';
+require_once __DIR__ . '/app/models/Database.php';
 
 $pdo = Database::getConnection();
 if (!$pdo instanceof PDO) {
     die('Koneksi database gagal.');
 }
-
-$pdo->beginTransaction();
 
 try {
     // ── 1. Buat tabel jika belum ada ──
@@ -32,6 +30,8 @@ try {
         PRIMARY KEY (id),
         KEY idx_cctv_lokasi (lokasi)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->beginTransaction();
 
     // ── 2. Hapus data lama ──
     $pdo->exec("DELETE FROM dashboard_cctv");
@@ -293,6 +293,10 @@ try {
     echo "<br><a href='index.php?page=dashboard'>→ Kembali ke Dashboard</a>";
 
 } catch (Throwable $e) {
-    $pdo->rollBack();
-    echo "❌ Migrasi gagal: " . htmlspecialchars($e->getMessage());
+    if ($pdo->inTransaction()) {
+        try {
+            @$pdo->rollBack();
+        } catch (Throwable $ignore) {}
+    }
+    echo "❌ Migrasi gagal: " . htmlspecialchars($e->getMessage()) . "\n" . $e->getTraceAsString();
 }
