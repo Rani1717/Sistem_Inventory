@@ -47,6 +47,10 @@ class PageController
             $this->jsonItSupportNotifications();
             return;
         }
+        if ((string) ($_GET["ajax"] ?? "") === "get_pc_list") {
+            $this->jsonGetPcList();
+            return;
+        }
         if (!isset($this->pageMap[$page])) {
             $page = 'splash';
         }
@@ -499,6 +503,7 @@ class PageController
         $quotedDb = '`' . str_replace('`', '``', $dbName) . '`';
         $pdo->exec('CREATE DATABASE IF NOT EXISTS ' . $quotedDb . ' DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
         $pdo->exec('CREATE TABLE IF NOT EXISTS ' . $quotedDb . '.`pc` (
+            `id` BIGINT NOT NULL AUTO_INCREMENT,
             `id_inventaris` varchar(255) DEFAULT NULL,
             `unit_kerja` varchar(255) DEFAULT NULL,
             `jenis_perangkat` varchar(255) DEFAULT NULL,
@@ -514,7 +519,8 @@ class PageController
             `microsoft_office` varchar(255) DEFAULT NULL,
             `licensed_office` varchar(255) DEFAULT NULL,
             `gambar` varchar(255) DEFAULT NULL,
-            `status` varchar(100) DEFAULT "AKTIF"
+            `status` varchar(100) DEFAULT "AKTIF",
+            PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
         $pdo->exec('CREATE TABLE IF NOT EXISTS ' . $quotedDb . '.`perangkat_lain` (
             `id_inventaris` varchar(255) DEFAULT NULL,
@@ -524,6 +530,7 @@ class PageController
             `user` varchar(255) DEFAULT NULL,
             `status` varchar(100) DEFAULT "AKTIF",
             `gambar` varchar(255) DEFAULT NULL,
+            `pc_row_id` BIGINT NULL DEFAULT NULL,
             `created_at` datetime NOT NULL DEFAULT current_timestamp(),
             `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
             `last_edited_at` datetime DEFAULT NULL,
@@ -2042,25 +2049,26 @@ SQL);
             header('Location: index.php?page=' . urlencode($page));
             exit;
         }
-          if ($action === 'save_cctv_inventaris_new') {
-                $this->insertCctvInventaris($pdo, $_POST);
-                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Inventaris CCTV baru berhasil ditambahkan.'];
-                header('Location: index.php?page=inventory-other&inv_tab=cctv');
-                exit;
-            }
- 
-            // Printer Inventaris
-            if ($action === 'save_printer_inventaris_new') {
-                $savedPath = $this->saveUploadedImage($_FILES['printer_gambar_file'] ?? null, 'printer');
-                $this->insertPrinterInventaris($pdo, $_POST, $savedPath);
-                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Inventaris Printer baru berhasil ditambahkan.'];
-                header('Location: index.php?page=inventory-other&inv_tab=printer');
-                exit;
-            }
+
+        if ($action === 'save_cctv_inventaris_new') {
+            $this->insertCctvInventaris($pdo, $_POST);
+            $_SESSION['flash'] = ['type' => 'success', 'message' => 'Inventaris CCTV baru berhasil ditambahkan.'];
+            header('Location: index.php?page=inventory-other&inv_tab=cctv');
+            exit;
+        }
+
+        // Printer Inventaris
+        if ($action === 'save_printer_inventaris_new') {
+            $savedPath = $this->saveUploadedImage($_FILES['printer_gambar_file'] ?? null, 'printer');
+            $this->insertPrinterInventaris($pdo, $_POST, $savedPath);
+            $_SESSION['flash'] = ['type' => 'success', 'message' => 'Inventaris Printer baru berhasil ditambahkan.'];
+            header('Location: index.php?page=inventory-other&inv_tab=printer');
+            exit;
+        }
 
         try {
             $divisionCode = trim((string) ($_POST['division_code'] ?? ''));
-            $division = $this->model->getDivisionByCode($pdo, $divisionCode);
+            $division = $this->fetchInventoryDivisionByCode($pdo, $divisionCode);
             $inventoryDb = (string) ($division['inventory_db_name'] ?? '');
             if (!$division || !$this->isSafeIdentifier($inventoryDb)) {
                 throw new RuntimeException('Divisi inventaris tidak valid.');
@@ -2078,27 +2086,62 @@ SQL);
                 $_SESSION['flash'] = ['type' => 'success', 'message' => 'PC berhasil diinput ke database terkait. Tabel detail inventaris otomatis bertambah.'];
                 $lastPage = $this->resolveUserPageNumberByPageKey($pdo, $divisionCode, $pageKey, $this->resolveLastUserPageNumber($pdo, $divisionCode));
                 header('Location: ' . $this->buildDetailUrl([
-                    'division_code' => $divisionCode,
+                    'division_code'    => $divisionCode,
                     'display_division' => (string) ($division['division_label'] ?? ''),
-                    'user_page' => $lastPage,
-                    'user' => (string) ($payload['user'] ?? ''),
-                    'focus_item' => $this->buildPcFocusItemFromInput($payload),
+                    'user_page'        => $lastPage,
+                    'user'             => (string) ($payload['user'] ?? ''),
+                    'focus_item'       => $this->buildPcFocusItemFromInput($payload),
                     'after_add_inventory' => '1',
                 ]));
                 exit;
             }
 
-            $pageKey = 'user:' . mb_strtolower(trim((string) ($_POST['user'] ?? '')));
-            $focusItem = $this->insertOtherRow($pdo, $inventoryDb, $pageKey, $_POST, $_FILES);
+            // --- PERANGKAT LAIN: Mode A (linked) atau Mode B (standalone) ---
+            $inputMode = trim((string) ($_POST['input_mode'] ?? 'linked'));
+            $isStandalone = ($inputMode === 'standalone');
+
+            $this->ensurePcSchema($pdo, $inventoryDb);
+            $this->ensureInventoryOtherSchema($pdo, $inventoryDb);
+
+            if ($isStandalone) {
+                // Mode B — Barang Mandiri: tidak terikat ke PC manapun
+                $focusItem = $this->insertStandaloneOtherRow($pdo, $inventoryDb, $_POST, $_FILES);
+                $this->model->logInventoryUpdate($pdo, $divisionCode, '', $inventoryDb, 'create', 'perangkat_lain', (string) ($_POST['other_id_inventaris'] ?? ''));
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Perangkat mandiri baru berhasil diinput ke divisi ' . strtoupper((string) ($division['division_label'] ?? $divisionCode)) . '.'];
+                header('Location: ' . $this->buildDetailUrl([
+                    'division_code'    => $divisionCode,
+                    'display_division' => (string) ($division['division_label'] ?? ''),
+                    'after_add_inventory' => '1',
+                ]));
+                exit;
+            }
+
+            // Mode A — Terhubung ke PC
+            $pcRowId = max(0, (int) ($_POST['pc_row_id'] ?? 0));
+            if ($pcRowId <= 0) {
+                throw new RuntimeException('Pilih PC terlebih dahulu untuk Mode Terhubung ke PC.');
+            }
+            // Ambil data PC by id untuk auto-fill user & unit_kerja
+            $linkedPcStmt = $pdo->prepare(sprintf('SELECT * FROM `%s`.pc WHERE id = :id LIMIT 1', $inventoryDb));
+            $linkedPcStmt->execute(['id' => $pcRowId]);
+            $linkedPc = $linkedPcStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$linkedPc) {
+                throw new RuntimeException('PC yang dipilih tidak ditemukan.');
+            }
+            $pcUser     = trim((string) ($linkedPc['user'] ?? ''));
+            $pcUnitKerja = trim((string) ($linkedPc['unit_kerja'] ?? ''));
+            $pageKey = 'user:' . mb_strtolower($pcUser);
+
+            $focusItem = $this->insertOtherRow($pdo, $inventoryDb, $pageKey, $_POST, $_FILES, $pcRowId, $pcUser, $pcUnitKerja);
             $this->model->logInventoryUpdate($pdo, $divisionCode, $pageKey, $inventoryDb, 'create', 'perangkat_lain', (string) ($_POST['other_id_inventaris'] ?? ''));
             $_SESSION['flash'] = ['type' => 'success', 'message' => 'Perangkat baru berhasil diinput ke database terkait. Tabel detail inventaris otomatis bertambah.'];
             $lastPage = $this->resolveUserPageNumberByPageKey($pdo, $divisionCode, $pageKey, $this->resolveLastUserPageNumber($pdo, $divisionCode));
             header('Location: ' . $this->buildDetailUrl([
-                'division_code' => $divisionCode,
+                'division_code'    => $divisionCode,
                 'display_division' => (string) ($division['division_label'] ?? ''),
-                'user_page' => $lastPage,
-                'user' => trim((string) ($_POST['user'] ?? '')),
-                'focus_item' => 'other:' . $focusItem,
+                'user_page'        => $lastPage,
+                'user'             => $pcUser,
+                'focus_item'       => 'other:' . $focusItem,
                 'after_add_inventory' => '1',
             ]));
             exit;
@@ -2168,6 +2211,59 @@ SQL);
             return ['divisions' => [], 'users' => []];
         }
         return $this->model->getInventoryFormOptions($pdo);
+    }
+
+    /**
+     * AJAX: GET ?ajax=get_pc_list&division_code=XXX
+     * Return JSON array of PC rows untuk dropdown Mode A.
+     */
+    private function jsonGetPcList(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        $divisionCode = trim((string) ($_GET['division_code'] ?? ''));
+        if ($divisionCode === '') {
+            echo json_encode([]);
+            exit;
+        }
+        $pdo = Database::getConnection();
+        if (!$pdo instanceof PDO) {
+            echo json_encode([]);
+            exit;
+        }
+        try {
+            $division = $this->fetchInventoryDivisionByCode($pdo, $divisionCode);
+            $inventoryDb = trim((string) ($division['inventory_db_name'] ?? ''));
+            if (!$division || !$this->isSafeIdentifier($inventoryDb)) {
+                echo json_encode([]);
+                exit;
+            }
+            $this->ensurePcSchema($pdo, $inventoryDb);
+            $sql = sprintf(
+                'SELECT `id`, `user`, `computer_name`, `unit_kerja` FROM `%s`.pc ORDER BY COALESCE(NULLIF(`user`,""), NULLIF(`computer_name`,""), "") ASC',
+                $inventoryDb
+            );
+            $stmt = $pdo->query($sql);
+            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            $result = [];
+            foreach ($rows as $row) {
+                $user = trim((string) ($row['user'] ?? ''));
+                $computerName = trim((string) ($row['computer_name'] ?? ''));
+                $label = $user !== '' && $computerName !== ''
+                    ? $user . ' — ' . $computerName
+                    : ($user !== '' ? $user : ($computerName !== '' ? $computerName : 'PC #' . $row['id']));
+                $result[] = [
+                    'id'            => (int) $row['id'],
+                    'user'          => $user,
+                    'computer_name' => $computerName,
+                    'unit_kerja'    => trim((string) ($row['unit_kerja'] ?? '')),
+                    'label'         => $label,
+                ];
+            }
+            echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        } catch (Throwable $e) {
+            echo json_encode([]);
+        }
+        exit;
     }
 
 
@@ -4148,6 +4244,12 @@ startxref
         if ((int) $stmt->fetchColumn() < 1) {
             $pdo->exec(sprintf('ALTER TABLE `%s`.perangkat_lain ADD COLUMN `status` varchar(100) DEFAULT "AKTIF" AFTER `user`', $inventoryDb));
         }
+        // Tambah kolom pc_row_id sebagai soft-reference ke pc.id
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = :schema AND table_name = "perangkat_lain" AND column_name = "pc_row_id"');
+        $stmt->execute(['schema' => $inventoryDb]);
+        if ((int) $stmt->fetchColumn() < 1) {
+            $pdo->exec(sprintf('ALTER TABLE `%s`.perangkat_lain ADD COLUMN `pc_row_id` BIGINT NULL DEFAULT NULL AFTER `gambar`', $inventoryDb));
+        }
         $pdo->exec(sprintf("UPDATE `%s`.perangkat_lain SET status = 'AKTIF' WHERE status IS NULL OR TRIM(status) = ''", $inventoryDb));
     }
 
@@ -4352,16 +4454,49 @@ startxref
         ];
     }
 
-    private function insertOtherRow(PDO $pdo, string $inventoryDb, string $pageKey, array $payload, array $files = []): string
+    private function insertOtherRow(PDO $pdo, string $inventoryDb, string $pageKey, array $payload, array $files = [], ?int $pcRowId = null, string $overrideUser = '', string $overrideUnitKerja = ''): string
     {
         $pcRow = $this->findPcRowByPageKey($pdo, $inventoryDb, $pageKey);
         if (!$pcRow) {
             throw new RuntimeException('Konteks user tidak ditemukan.');
         }
 
-        $sql = sprintf('INSERT INTO `%s`.perangkat_lain (id_inventaris, jenis_perangkat, merk_perangkat, unit_kerja, user, status, gambar) VALUES (:id_inventaris, :jenis_perangkat, :merk_perangkat, :unit_kerja, :user, :status, :gambar)', $inventoryDb);
-        $stmt = $pdo->prepare($sql);
+        // Jika ada override (dari Mode A baru), pakai data PC yang dipilih
+        if ($overrideUser !== '') {
+            $pcRow['user'] = $overrideUser;
+        }
+        if ($overrideUnitKerja !== '') {
+            $pcRow['unit_kerja'] = $overrideUnitKerja;
+        }
+
         $params = $this->otherFieldPayload($payload, $pcRow, $files);
+        $resolvedPcRowId = $pcRowId ?? ((isset($pcRow['id']) && (int) $pcRow['id'] > 0) ? (int) $pcRow['id'] : null);
+
+        $sql = sprintf(
+            'INSERT INTO `%s`.perangkat_lain (id_inventaris, jenis_perangkat, merk_perangkat, unit_kerja, user, status, gambar, pc_row_id) VALUES (:id_inventaris, :jenis_perangkat, :merk_perangkat, :unit_kerja, :user, :status, :gambar, :pc_row_id)',
+            $inventoryDb
+        );
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(array_merge($params, ['pc_row_id' => $resolvedPcRowId]));
+        return $this->buildItemKey($params);
+    }
+
+    /**
+     * Insert perangkat lain Mode B (barang mandiri) — tanpa kaitan ke PC.
+     */
+    private function insertStandaloneOtherRow(PDO $pdo, string $inventoryDb, array $payload, array $files = []): string
+    {
+        $this->ensureInventoryOtherSchema($pdo, $inventoryDb);
+        $params = $this->otherFieldPayload($payload, [], $files);
+        // Unit kerja dari form (bisa dari division_label jika kosong)
+        if (trim((string) ($params['unit_kerja'] ?? '')) === '') {
+            $params['unit_kerja'] = trim((string) ($_POST['division_label'] ?? ''));
+        }
+        $sql = sprintf(
+            'INSERT INTO `%s`.perangkat_lain (id_inventaris, jenis_perangkat, merk_perangkat, unit_kerja, user, status, gambar, pc_row_id, edit_source) VALUES (:id_inventaris, :jenis_perangkat, :merk_perangkat, :unit_kerja, :user, :status, :gambar, NULL, "standalone")',
+            $inventoryDb
+        );
+        $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         return $this->buildItemKey($params);
     }
@@ -4476,14 +4611,31 @@ startxref
 
     private function findOtherRow(PDO $pdo, string $inventoryDb, array $pcRow, string $itemKey): ?array
     {
+        // Prioritaskan query by pc_row_id jika pc row punya id (lebih akurat dari string matching)
+        $pcId = isset($pcRow['id']) && (int) $pcRow['id'] > 0 ? (int) $pcRow['id'] : null;
+        if ($pcId !== null) {
+            $sqlById = sprintf(
+                'SELECT * FROM `%s`.perangkat_lain WHERE `pc_row_id` = :pc_id ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, `gambar`) ASC',
+                $inventoryDb
+            );
+            $stmtById = $pdo->prepare($sqlById);
+            $stmtById->execute(['pc_id' => $pcId]);
+            foreach (($stmtById ? $stmtById->fetchAll() : []) as $row) {
+                if ($this->buildItemKey($row) === $itemKey) {
+                    return $row;
+                }
+            }
+        }
+
+        // Fallback: string matching user (untuk data lama yang belum punya pc_row_id)
         $user = trim((string) ($pcRow['user'] ?? ''));
         if ($user !== '') {
-            $sql = sprintf('SELECT * FROM `%s`.perangkat_lain WHERE `user` = :user ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, `gambar`) ASC', $inventoryDb);
+            $sql = sprintf('SELECT * FROM `%s`.perangkat_lain WHERE `user` = :user AND (`pc_row_id` IS NULL OR `edit_source` != "standalone") ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, `gambar`) ASC', $inventoryDb);
             $stmt = $pdo->prepare($sql);
             $stmt->execute(['user' => $user]);
         } else {
             $fallback = trim((string) ($pcRow['computer_name'] ?? ''));
-            $sql = sprintf('SELECT * FROM `%s`.perangkat_lain WHERE COALESCE(NULLIF(`user`, ""), `unit_kerja`) = :fallback ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, `gambar`) ASC', $inventoryDb);
+            $sql = sprintf('SELECT * FROM `%s`.perangkat_lain WHERE COALESCE(NULLIF(`user`, ""), `unit_kerja`) = :fallback AND (`pc_row_id` IS NULL OR `edit_source` != "standalone") ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, `gambar`) ASC', $inventoryDb);
             $stmt = $pdo->prepare($sql);
             $stmt->execute(['fallback' => $fallback]);
         }
@@ -4538,6 +4690,18 @@ startxref
     {
         if (!$this->isSafeIdentifier($inventoryDb)) {
             return;
+        }
+
+        // Tambah PRIMARY KEY id AUTO_INCREMENT jika belum ada
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = :schema AND table_name = "pc" AND column_name = "id"');
+        $stmt->execute(['schema' => $inventoryDb]);
+        if ((int) $stmt->fetchColumn() < 1) {
+            try {
+                $pdo->exec(sprintf('ALTER TABLE `%s`.pc ADD COLUMN `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST', $inventoryDb));
+            } catch (Throwable $e) {
+                // Mungkin sudah ada primary key lain — coba tanpa PRIMARY KEY
+                try { $pdo->exec(sprintf('ALTER TABLE `%s`.pc ADD COLUMN `id` BIGINT NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (`id`)', $inventoryDb)); } catch (Throwable $e2) {}
+            }
         }
 
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = :schema AND table_name = "pc" AND column_name = "merk_perangkat"');

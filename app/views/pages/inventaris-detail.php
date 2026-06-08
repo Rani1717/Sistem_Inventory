@@ -5,6 +5,7 @@ $pagination = $data['pagination'] ?? ['pages' => [], 'prev' => null, 'next' => n
 $currentPc = $data['current_pc_row'] ?? [];
 $pageKey = (string) ($data['current_page_key'] ?? '');
 $rawOtherItems = $data['raw_other_items'] ?? [];
+$standaloneItems = $data['standalone_items'] ?? [];
 $divisionCode = (string) ($data['current_division_code'] ?? '');
 $displayDivision = (string) ($data['current_display_division'] ?? '');
 $inventoryDivisionOptions = $data['inventory_division_options'] ?? [];
@@ -144,7 +145,92 @@ $editUrlBase = 'index.php?' . http_build_query([
             <span class="pagination__btn pagination__btn--disabled"><span>Next</span></span>
         <?php endif; ?>
     </div>
-</div>
+
+    <?php if (!empty($standaloneItems)): ?>
+    <div class="standalone-section">
+        <div class="standalone-section__header">
+            <span class="standalone-section__icon"><i class="fa-solid fa-box"></i></span>
+            <div>
+                <h2 class="standalone-section__title">Perangkat Mandiri</h2>
+                <p class="standalone-section__sub">Barang divisi <?= e($displayDivision); ?> yang tidak terikat ke PC tertentu (printer, proyektor, UPS, dll)</p>
+            </div>
+        </div>
+        <div class="table-wrap table-wrap--inventory">
+            <table class="data-table data-table--inventory">
+                <thead>
+                <tr>
+                    <th>No</th>
+                    <th>Gambar</th>
+                    <th>ID Inventaris</th>
+                    <th>Jenis Perangkat</th>
+                    <th>Merk Perangkat</th>
+                    <th>Unit Kerja</th>
+                    <th>Status</th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($standaloneItems as $idx => $item): ?>
+                    <?php
+                        $itemStatus = strtoupper(trim((string) ($item['status'] ?? 'AKTIF')));
+                        $itemStatus = $itemStatus !== '' ? $itemStatus : 'AKTIF';
+                        $itemStatusClass = $itemStatus === 'AKTIF' ? 'ok' : ($itemStatus === 'RUSAK' ? 'bad' : 'neutral');
+                        $itemImg = trim((string) ($item['gambar'] ?? ''));
+                        $itemImg = $itemImg !== '' ? $itemImg : 'images/inv-default.jpg';
+                    ?>
+                    <tr>
+                        <td><?= e((string) ($idx + 1)); ?></td>
+                        <td><div class="thumb thumb--image"><img src="<?= asset($itemImg); ?>" alt="<?= e((string) ($item['jenis_perangkat'] ?? '')); ?>" data-fallback-src="<?= asset('images/inv-default.jpg'); ?>"></div></td>
+                        <td><?= e((string) ($item['id_inventaris'] ?? '-')); ?></td>
+                        <td><?= e((string) ($item['jenis_perangkat'] ?? '-')); ?></td>
+                        <td><?= e((string) ($item['merk_perangkat'] ?? '-')); ?></td>
+                        <td><?= e((string) ($item['unit_kerja'] ?? '-')); ?></td>
+                        <td class="inventory-status-cell"><span class="badge badge--<?= e($itemStatusClass); ?>"><?= e($itemStatus); ?></span></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <style>
+    .standalone-section {
+        margin-top: 32px;
+        border-top: 2px dashed #e2e8f0;
+        padding-top: 20px;
+    }
+    .standalone-section__header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 14px;
+    }
+    .standalone-section__icon {
+        width: 42px;
+        height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #6366f1, #818cf8);
+        color: #fff;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+    .standalone-section__title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0 0 2px;
+    }
+    .standalone-section__sub {
+        font-size: 0.78rem;
+        color: #64748b;
+        margin: 0;
+    }
+    </style>
+    <?php endif; ?>
+
+</div><!-- /.detail-page -->
 
 <div class="modal" id="modalAddOther" aria-hidden="true">
     <div class="modal__backdrop js-close-modal"></div>

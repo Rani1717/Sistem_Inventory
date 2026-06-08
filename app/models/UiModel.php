@@ -27,6 +27,7 @@ class UiModel
             $data['current_pc_row'] = $context['pc_row'];
             $data['current_page_key'] = $this->buildPageKeyFromPcRow((array) ($context['pc_row'] ?? []));
             $data['raw_other_items'] = $this->fetchOtherItemsForUser($pdo, (string) ($context['inventory_db'] ?? ''), (string) ($context['current_user_name'] ?? ''), (array) ($context['pc_row'] ?? []));
+            $data['standalone_items'] = $this->fetchStandaloneOtherItems($pdo, (string) ($context['inventory_db'] ?? ''));
             $data['division_meta'] = $context['division'] ?? [];
             $data['pagination'] = $this->buildUserPagination($context);
             $data['category_cards'] = $this->buildCategoryCards($pdo, $page === 'data-inventaris-subreg' ? 'SUBREG' : null);
@@ -152,6 +153,7 @@ class UiModel
             'current_pc_row' => [],
             'current_page_key' => '',
             'raw_other_items' => [],
+            'standalone_items' => [],
             'division_meta' => [],
         ];
     }
@@ -853,8 +855,23 @@ class UiModel
     private function fetchOtherItemsForUser(PDO $pdo, string $inventoryDb, string $currentUserName, array $pcRow): array
     {
         if ($currentUserName !== '') {
+            // Prioritaskan query by pc_row_id jika pcRow punya id
+            $pcId = isset($pcRow['id']) && (int) $pcRow['id'] > 0 ? (int) $pcRow['id'] : null;
+            if ($pcId !== null) {
+                $sqlById = sprintf(
+                    'SELECT * FROM `%s`.perangkat_lain WHERE `pc_row_id` = :pc_id ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, `gambar`) ASC',
+                    $inventoryDb
+                );
+                $stmtById = $pdo->prepare($sqlById);
+                $stmtById->execute(['pc_id' => $pcId]);
+                $rows = $stmtById->fetchAll() ?: [];
+                if (!empty($rows)) {
+                    return $rows;
+                }
+            }
+            // Fallback ke string matching user (data lama tanpa pc_row_id)
             $sql = sprintf(
-                'SELECT * FROM `%s`.perangkat_lain WHERE `user` = :user ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, `gambar`) ASC',
+                'SELECT * FROM `%s`.perangkat_lain WHERE `user` = :user AND (`pc_row_id` IS NULL OR `edit_source` != "standalone") ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, `gambar`) ASC',
                 $inventoryDb
             );
             $stmt = $pdo->prepare($sql);
@@ -868,13 +885,40 @@ class UiModel
         }
 
         $sql = sprintf(
-            'SELECT * FROM `%s`.perangkat_lain WHERE COALESCE(NULLIF(`user`, ""), `unit_kerja`) = :fallback ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, `gambar`) ASC',
+            'SELECT * FROM `%s`.perangkat_lain WHERE COALESCE(NULLIF(`user`, ""), `unit_kerja`) = :fallback AND (`pc_row_id` IS NULL OR `edit_source` != "standalone") ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, `gambar`) ASC',
             $inventoryDb
         );
         $stmt = $pdo->prepare($sql);
         $stmt->execute(['fallback' => $identifier]);
 
         return $stmt->fetchAll() ?: [];
+    }
+
+    /**
+     * Fetch perangkat Mode B (barang mandiri) di divisi ini.
+     * Diidentifikasi dari edit_source = 'standalone'.
+     */
+    private function fetchStandaloneOtherItems(PDO $pdo, string $inventoryDb): array
+    {
+        if (!$this->isSafeIdentifier($inventoryDb)) {
+            return [];
+        }
+        try {
+            // Cek apakah kolom edit_source sudah ada
+            $chk = $pdo->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = :schema AND table_name = "perangkat_lain" AND column_name = "edit_source"');
+            $chk->execute(['schema' => $inventoryDb]);
+            if ((int) $chk->fetchColumn() < 1) {
+                return [];
+            }
+            $sql = sprintf(
+                'SELECT * FROM `%s`.perangkat_lain WHERE `edit_source` = "standalone" ORDER BY COALESCE(NULLIF(`jenis_perangkat`, ""), `id_inventaris`, "") ASC',
+                $inventoryDb
+            );
+            $stmt = $pdo->query($sql);
+            return $stmt ? ($stmt->fetchAll() ?: []) : [];
+        } catch (Throwable $e) {
+            return [];
+        }
     }
 
     private function buildInventoryRowsByUser(PDO $pdo, string $inventoryDb, string $currentUserName, array $pcRow): array
