@@ -1,9 +1,10 @@
 <?php
 $isAdminSpmt = !empty($data['is_admin_spmt']);
 $divisionRows = $data['division_management_rows'] ?? [];
+$otherCards = $data['other_category_cards'] ?? [];
 ?>
 <div class="inventory-division-page">
-    <div class="list-page-header list-page-header--simple">
+    <div class="list-page-header list-page-header--simple" style="margin-bottom:20px;">
         <h1>DATA INVENTARIS</h1>
         <div class="list-page-header__line"></div>
         <?php if ($isAdminSpmt): ?>
@@ -67,13 +68,59 @@ $divisionRows = $data['division_management_rows'] ?? [];
             </span>
             <div>
                 <h2 class="inv-section__title">Inventaris Lain</h2>
-                <p class="inv-section__subtitle">Barang mandiri per divisi — Proyektor, Printer, Speaker, UPS, dan sejenisnya.</p>
+                <p class="inv-section__subtitle">Barang mandiri per divisi &mdash; Proyektor, Printer, Speaker, UPS, dan sejenisnya.</p>
             </div>
         </div>
-        <div class="category-grid category-grid--inventaris">
-            <?php $renderCards($cards); ?>
-        </div>
+        <?php if (!empty($otherCards)): ?>
+            <div class="category-grid category-grid--inventaris">
+                <?php $renderCards($otherCards); ?>
+            </div>
+        <?php else: ?>
+            <div class="inv-section__empty">
+                <i class="fa-solid fa-box-open inv-section__empty-icon"></i>
+                <p>Belum ada barang mandiri yang ditambahkan.</p>
+                <a href="index.php?page=inventory-other" class="inv-section__empty-link">
+                    <i class="fa-solid fa-plus"></i> Tambah Inventaris Lain
+                </a>
+            </div>
+        <?php endif; ?>
     </div>
+
+    <style>
+    .inv-section__empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 36px 20px;
+        background: #f8fafc;
+        border: 2px dashed #e2e8f0;
+        border-radius: 14px;
+        color: #64748b;
+        text-align: center;
+        margin-top: 4px;
+    }
+    .inv-section__empty-icon {
+        font-size: 2rem;
+        color: #cbd5e1;
+    }
+    .inv-section__empty p {
+        margin: 0;
+        font-size: .88rem;
+    }
+    .inv-section__empty-link {
+        font-size: .83rem;
+        font-weight: 600;
+        color: #2563eb;
+        text-decoration: none;
+        padding: 6px 16px;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        background: #eff6ff;
+        transition: background .15s;
+    }
+    .inv-section__empty-link:hover { background: #dbeafe; }
+    </style>
 
 
     <?php if ($isAdminSpmt): ?>

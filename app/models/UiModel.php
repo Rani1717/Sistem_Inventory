@@ -19,6 +19,13 @@ class UiModel
             // biarkan default kosong
         }
 
+        // Selalu fetch other_category_cards — kartu divisi untuk Inventaris Lain (Mode B)
+        try {
+            $data['other_category_cards'] = $this->buildStandaloneCategoryCards($pdo);
+        } catch (Throwable $e) {
+            // biarkan default kosong
+        }
+
         try {
             $context = $this->resolveContext($pdo, $filters);
             $this->ensureInventoryMetaTables($pdo);
@@ -162,6 +169,7 @@ class UiModel
             'standalone_items' => [],
             'division_meta' => [],
             'pc_chart' => ['labels' => [], 'aktif' => [], 'rusak' => [], 'total' => 0, 'full_labels' => [], 'division_urls' => []],
+            'other_category_cards' => [],
         ];
     }
 
@@ -932,6 +940,85 @@ class UiModel
         }
 
         return $cards ?: $this->defaultCategoryCards();
+    }
+
+    /**
+     * Bangun kartu divisi untuk seksi "Inventaris Lain" di data-inventaris.
+     * Hanya memunculkan divisi yang sudah punya setidaknya 1 barang mandiri
+     * (edit_source = 'standalone') di tabel perangkat_lain-nya.
+     */
+    private function buildStandaloneCategoryCards(PDO $pdo): array
+    {
+        try {
+            $stmt = $pdo->query(
+                'SELECT id, division_code, division_label, sheet_sumber, inventory_db_name
+                 FROM master_divisi
+                 WHERE is_active = 1
+                 ORDER BY id ASC'
+            );
+            $divisions = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            if (!$divisions) {
+                return [];
+            }
+
+            // Cek apakah kolom edit_source sudah ada di perangkat_lain setiap divisi
+            $cards = [];
+            foreach ($divisions as $row) {
+                $db = (string) ($row['inventory_db_name'] ?? '');
+                if (!$this->isSafeIdentifier($db)) {
+                    continue;
+                }
+
+                try {
+                    // Cek keberadaan kolom edit_source
+                    $chk = $pdo->prepare(
+                        'SELECT COUNT(*) FROM information_schema.columns
+                         WHERE table_schema = :schema
+                           AND table_name = "perangkat_lain"
+                           AND column_name = "edit_source"'
+                    );
+                    $chk->execute(['schema' => $db]);
+                    if ((int) $chk->fetchColumn() < 1) {
+                        continue; // kolom belum ada, skip
+                    }
+
+                    $countSql = sprintf(
+                        'SELECT COUNT(*) FROM `%s`.perangkat_lain WHERE edit_source = "standalone"',
+                        $db
+                    );
+                    $cnt = $pdo->query($countSql);
+                    if (!$cnt || (int) $cnt->fetchColumn() < 1) {
+                        continue; // tidak ada barang mandiri di divisi ini
+                    }
+
+                    $sheetSource = strtoupper(trim((string) ($row['sheet_sumber'] ?? '')));
+                    $displayLabel = $this->normalizeDivisionLabel(
+                        (string) ($row['division_label'] ?? ''),
+                        ''
+                    );
+
+                    $cards[] = [
+                        'icon'      => $this->mapDivisionIcon(
+                            (string) ($row['division_code'] ?? ''),
+                            $displayLabel
+                        ),
+                        'label'     => $displayLabel,
+                        'sub_label' => $sheetSource === 'SUBREG' ? 'SUBREG' : 'SPMT',
+                        'route_url' => 'index.php?' . http_build_query([
+                            'page'             => 'inventaris-detail',
+                            'division_code'    => (string) ($row['division_code'] ?? ''),
+                            'display_division'  => $displayLabel,
+                        ]),
+                    ];
+                } catch (Throwable $e) {
+                    continue;
+                }
+            }
+
+            return $cards;
+        } catch (Throwable $e) {
+            return [];
+        }
     }
 
     private function buildDivisionNav(PDO $pdo, ?array $currentDivision, string $currentDivisionCode): array
