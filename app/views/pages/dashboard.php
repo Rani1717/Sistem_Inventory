@@ -362,6 +362,33 @@
         margin-top: 4px;
     }
 }
+
+/* ── Center Complaint Stat Title ── */
+.complaint-stat-head {
+    position: relative;
+    justify-content: center !important;
+    align-items: center !important;
+    text-align: center;
+}
+.complaint-stat-head h2 {
+    text-align: center !important;
+}
+.complaint-stat-head__period {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+}
+@media (max-width: 720px) {
+    .complaint-stat-head {
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+    .complaint-stat-head__period {
+        position: static !important;
+        transform: none !important;
+    }
+}
 </style>
 
 <script>
