@@ -99,9 +99,6 @@ $uploadBase     = 'peminjaman_laptop/uploads/';
                             </div>
                             <input type="hidden" name="bukti_peminjaman" id="buktPinjamData">
                             <div class="pinjam-webcam-actions">
-                                <button type="button" class="pinjam-btn pinjam-btn--cam" id="btnCamPinjam" onclick="startCam('pinjam')">
-                                    <i class="fa-solid fa-video"></i> Aktifkan Kamera
-                                </button>
                                 <button type="button" class="pinjam-btn pinjam-btn--snap" id="btnSnapPinjam" onclick="takePhoto('pinjam')" style="display:none;">
                                     <i class="fa-solid fa-camera"></i> Ambil Foto
                                 </button>
@@ -165,9 +162,6 @@ $uploadBase     = 'peminjaman_laptop/uploads/';
                             </div>
                             <input type="hidden" name="bukti_pengembalian" id="buktiKembaliData">
                             <div class="pinjam-webcam-actions">
-                                <button type="button" class="pinjam-btn pinjam-btn--cam" id="btnCamKembali" onclick="startCam('kembali')">
-                                    <i class="fa-solid fa-video"></i> Aktifkan Kamera
-                                </button>
                                 <button type="button" class="pinjam-btn pinjam-btn--snap" id="btnSnapKembali" onclick="takePhoto('kembali')" style="display:none;">
                                     <i class="fa-solid fa-camera"></i> Ambil Foto
                                 </button>
@@ -353,18 +347,26 @@ $uploadBase     = 'peminjaman_laptop/uploads/';
 const streams = {};
 
 async function startCam(side) {
+    const overlay = document.getElementById('overlay' + cap(side));
+    if (overlay) {
+        overlay.style.display = '';
+        overlay.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Mengaktifkan kamera...</span>';
+    }
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
         streams[side] = stream;
         const video   = document.getElementById('video' + cap(side));
-        const overlay = document.getElementById('overlay' + cap(side));
         video.srcObject = stream;
         video.style.display = 'block';
-        overlay.style.display = 'none';
-        document.getElementById('btnCam' + cap(side)).style.display = 'none';
+        if (overlay) {
+            overlay.style.display = 'none';
+        }
         document.getElementById('btnSnap' + cap(side)).style.display = '';
     } catch(e) {
-        alert('Kamera tidak dapat diakses: ' + e.message);
+        console.warn('Kamera tidak dapat diakses: ' + e.message);
+        if (overlay) {
+            overlay.innerHTML = '<i class="fa-solid fa-circle-exclamation" style="color: #ef4444;"></i><span style="margin-top: 0.5rem; color: #ef4444; text-align: center; padding: 0 10px;">Akses kamera ditolak / tidak ditemukan</span>';
+        }
     }
 }
 
@@ -399,14 +401,26 @@ function resetPhoto(side) {
     document.getElementById(inputId).value = '';
     canvas.style.display  = 'none';
     video.style.display   = 'none';
-    document.getElementById('overlay' + cap(side)).style.display = '';
-    document.getElementById('btnCam' + cap(side)).style.display  = '';
+    const overlay = document.getElementById('overlay' + cap(side));
+    if (overlay) {
+        overlay.style.display = '';
+        overlay.innerHTML = '<i class="fa-solid fa-camera"></i><span>Kamera belum aktif</span>';
+    }
     document.getElementById('btnSnap' + cap(side)).style.display  = 'none';
     document.getElementById('btnReset' + cap(side)).style.display = 'none';
     document.getElementById('status' + cap(side)).innerHTML = '';
+
+    // Auto-start camera again
+    startCam(side);
 }
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+// Auto-start cameras on page load
+window.addEventListener('DOMContentLoaded', () => {
+    startCam('pinjam');
+    startCam('kembali');
+});
 
 /* ─── VALIDASI FORM ─── */
 function validateFormPinjam() {
