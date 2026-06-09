@@ -240,6 +240,9 @@ class AuthController
 
         if (self::isAdminSpmt()) {
             $adminPages[] = 'user-management';
+            $adminPages[] = 'peminjaman-laptop';
+        } elseif ($role === 'admin') {
+            $adminPages[] = 'peminjaman-laptop';
         }
 
         if ($role === 'admin') {
@@ -279,7 +282,7 @@ class AuthController
     public static function accessiblePages(): array
     {
         $pages = ['account-settings'];
-        foreach (['inventory-pc', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'log-barang', 'routine-monitoring', 'data-keluhan', 'dashboard', 'laporan', 'user-management'] as $page) {
+        foreach (['inventory-pc', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'log-barang', 'routine-monitoring', 'data-keluhan', 'dashboard', 'laporan', 'user-management', 'peminjaman-laptop'] as $page) {
             if (self::canAccessPage($page)) {
                 $pages[] = $page;
             }

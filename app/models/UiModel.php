@@ -155,6 +155,7 @@ class UiModel
                 'inventaris-detail' => 'Detail Inventaris',
                 'data-keluhan' => 'Data Keluhan',
                 'log-barang' => 'Log Barang',
+                'peminjaman-laptop' => 'Peminjaman Laptop IT',
                 'routine-monitoring' => 'Routine Monitoring',
                 'laporan' => 'Laporan',
                 'account-settings' => 'Setting Akun',
@@ -213,6 +214,13 @@ class UiModel
                 'icon' => 'fa-solid fa-right-from-bracket',
                 'route' => 'log-barang',
                 'match' => ['log-barang'],
+                'variant' => 'nav',
+            ],
+            [
+                'label' => 'PEMINJAMAN LAPTOP',
+                'icon' => 'fa-solid fa-laptop',
+                'route' => 'peminjaman-laptop',
+                'match' => ['peminjaman-laptop'],
                 'variant' => 'nav',
             ],
             [

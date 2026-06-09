@@ -13150,3 +13150,493 @@ button,
     border-radius: 3px;
     flex-shrink: 0;
 }
+
+/* ═══════════════════════════════════════════════════════
+   PEMINJAMAN LAPTOP STYLING
+   ═══════════════════════════════════════════════════════ */
+
+/* Stats Grid */
+.pinjam-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.pinjam-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(27, 62, 111, 0.08);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.pinjam-stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 30px rgba(27, 62, 111, 0.08);
+}
+
+.pinjam-stat-card__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 12px;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.pinjam-stat-card--blue .pinjam-stat-card__icon {
+    background: rgba(27, 62, 111, 0.1);
+    color: #1b3e6f;
+}
+
+.pinjam-stat-card--red .pinjam-stat-card__icon {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.pinjam-stat-card--green .pinjam-stat-card__icon {
+    background: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+.pinjam-stat-card__body {
+    display: flex;
+    flex-direction: column;
+}
+
+.pinjam-stat-card__num {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.2;
+}
+
+.pinjam-stat-card__label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #64748b;
+    margin-top: 0.25rem;
+}
+
+/* Form Grid & Cards */
+.pinjam-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+@media (max-width: 992px) {
+    .pinjam-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pinjam-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(27, 62, 111, 0.08);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.pinjam-card__header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.25rem 1.5rem;
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #ffffff;
+}
+
+.pinjam-card__header--blue {
+    background: linear-gradient(135deg, #1b3e6f, #2d5b97);
+}
+
+.pinjam-card__header--green {
+    background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.pinjam-card__body {
+    padding: 1.5rem;
+    flex-grow: 1;
+}
+
+.pinjam-field {
+    margin-bottom: 1.25rem;
+}
+
+.pinjam-field label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 0.5rem;
+}
+
+.pinjam-hint {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: #ef4444;
+}
+
+.pinjam-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.875rem;
+    color: #1e293b;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.pinjam-input:focus {
+    border-color: #1b3e6f;
+    box-shadow: 0 0 0 3px rgba(27, 62, 111, 0.15);
+}
+
+.pinjam-empty-note {
+    font-size: 0.875rem;
+    color: #64748b;
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Webcam Container */
+.pinjam-webcam {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    max-width: 360px;
+    margin: 0 auto 1rem;
+    background: #0f172a;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px dashed #cbd5e1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pinjam-webcam__video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+}
+
+.pinjam-webcam__canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.pinjam-webcam__overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    color: #94a3b8;
+}
+
+.pinjam-webcam__overlay i {
+    font-size: 2.5rem;
+}
+
+.pinjam-webcam__overlay span {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.pinjam-webcam-actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+/* Buttons */
+.pinjam-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+}
+
+.pinjam-btn--primary {
+    background: #1b3e6f;
+    color: #ffffff;
+}
+
+.pinjam-btn--primary:hover {
+    background: #153056;
+}
+
+.pinjam-btn--success {
+    background: #10b981;
+    color: #ffffff;
+}
+
+.pinjam-btn--success:hover {
+    background: #059669;
+}
+
+.pinjam-btn--cam {
+    background: #e2e8f0;
+    color: #334155;
+}
+
+.pinjam-btn--cam:hover {
+    background: #cbd5e1;
+}
+
+.pinjam-btn--snap {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+.pinjam-btn--snap:hover {
+    background: #2563eb;
+}
+
+.pinjam-btn--reset {
+    background: #ef4444;
+    color: #ffffff;
+}
+
+.pinjam-btn--reset:hover {
+    background: #dc2626;
+}
+
+.pinjam-btn--ghost {
+    background: transparent;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+}
+
+.pinjam-btn--ghost:hover {
+    background: #f1f5f9;
+}
+
+.pinjam-btn--export {
+    background: #15803d;
+    color: #ffffff;
+}
+
+.pinjam-btn--export:hover {
+    background: #166534;
+}
+
+.pinjam-photo-status {
+    text-align: center;
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+}
+
+.pinjam-photo-ok {
+    color: #10b981;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+}
+
+.pinjam-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1.5rem;
+}
+
+/* Riwayat Table Section */
+.pinjam-table-section {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    border: 1px solid rgba(27, 62, 111, 0.08);
+    margin-bottom: 2rem;
+}
+
+.pinjam-table-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.pinjam-table-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pinjam-table-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.pinjam-filter-form {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.pinjam-select {
+    padding: 0.625rem 2rem 0.625rem 1rem;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.875rem;
+    color: #1e293b;
+    background-color: #ffffff;
+    outline: none;
+}
+
+.pinjam-table-scroll {
+    overflow-x: auto;
+}
+
+.pinjam-table th,
+.pinjam-table td {
+    vertical-align: middle;
+}
+
+.pinjam-td-img {
+    text-align: center;
+}
+
+.pinjam-thumb {
+    width: 60px;
+    height: 45px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.pinjam-thumb:hover {
+    transform: scale(1.1);
+}
+
+.pinjam-noimg {
+    color: #94a3b8;
+    font-size: 0.875rem;
+}
+
+/* Image Viewer Modal */
+.pinjam-img-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+}
+
+.pinjam-img-modal[hidden] {
+    display: none !important;
+}
+
+.pinjam-img-modal__inner {
+    position: relative;
+    max-width: 90%;
+    max-height: 90%;
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 8px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.pinjam-img-modal__inner img {
+    max-width: 100%;
+    max-height: 80vh;
+    border-radius: 8px;
+    display: block;
+}
+
+.pinjam-img-modal__close {
+    position: absolute;
+    top: -2.5rem;
+    right: -2.5rem;
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 2rem;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.pinjam-img-modal__close:hover {
+    transform: scale(1.2);
+}
+
+@media (max-width: 768px) {
+    .pinjam-img-modal__close {
+        top: 1rem;
+        right: 1rem;
+        background: rgba(15, 23, 42, 0.6);
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 50%;
+        font-size: 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+/* Card inner column layout (inputs on left, webcam on right) */
+.pinjam-card__cols {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.pinjam-card__col-left {
+    display: flex;
+    flex-direction: column;
+}
+
+.pinjam-card__col-right {
+    display: flex;
+    flex-direction: column;
+}
+
+@media (max-width: 768px) {
+    .pinjam-card__cols {
+        grid-template-columns: 1fr;
+    }
+}

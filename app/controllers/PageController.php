@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../models/Database.php';
 require_once __DIR__ . '/../models/UiModel.php';
+require_once __DIR__ . '/../models/PeminjamanModel.php';
 require_once __DIR__ . '/AuthController.php';
 
 if (!function_exists("mb_strlen")) { function mb_strlen($string, $encoding = null) { return strlen((string) $string); } }
@@ -26,8 +27,9 @@ class PageController
         'data-inventaris-subreg' => ['view' => 'pages/data-inventaris-subreg.php', 'layout' => 'app'],
         'inventaris-detail' => ['view' => 'pages/inventaris-detail.php', 'layout' => 'app'],
         'data-keluhan' => ['view' => 'pages/data-keluhan.php', 'layout' => 'app'],
-        'log-barang' => ['view' => 'pages/log-barang.php', 'layout' => 'app'],
-        'routine-monitoring' => ['view' => 'pages/routine-monitoring.php', 'layout' => 'app'],
+        'log-barang'                 => ['view' => 'pages/log-barang.php', 'layout' => 'app'],
+        'peminjaman-laptop'          => ['view' => 'pages/peminjaman-laptop.php', 'layout' => 'app'],
+        'routine-monitoring'         => ['view' => 'pages/routine-monitoring.php', 'layout' => 'app'],
         'laporan' => ['view' => 'pages/laporan.php', 'layout' => 'app'],
         'account-settings' => ['view' => 'pages/account-settings.php', 'layout' => 'app'],
         'user-management' => ['view' => 'pages/user-management.php', 'layout' => 'app'],
@@ -56,7 +58,7 @@ class PageController
         }
 
         $publicPages = ['splash', 'login'];
-        $protectedPages = ['dashboard', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'data-keluhan', 'log-barang', 'routine-monitoring', 'laporan', 'account-settings', 'user-management', 'inventory-pc', 'inventory-other'];
+        $protectedPages = ['dashboard', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'data-keluhan', 'log-barang', 'peminjaman-laptop', 'routine-monitoring', 'laporan', 'account-settings', 'user-management', 'inventory-pc', 'inventory-other'];
         if (in_array($page, ['it-support-1', 'it-support-2'], true)) {
             header('Location: it-support.php');
             exit;
@@ -109,6 +111,9 @@ class PageController
         if (in_array($page, ['inventory-pc', 'inventory-other'], true)) {
             $this->handleNewInventoryAction($page);
         }
+        if ($page === 'peminjaman-laptop') {
+            $this->handlePeminjamanAction();
+        }
 
         $data = $this->model->getAll($page, $filters);
         if (!empty($_SESSION['auth']['email'])) {
@@ -157,6 +162,26 @@ class PageController
                 if (trim((string) ($_GET['report_view'] ?? '')) !== '') {
                     $data['report_view'] = $this->buildLaporanViewData($pdoForReport, (string) $_GET['report_view'], $filters);
                 }
+            }
+        }
+        if ($page === 'peminjaman-laptop') {
+            $pdo = Database::getConnection();
+            if ($pdo instanceof PDO) {
+                $pm = new PeminjamanModel();
+                $pm->ensureTable($pdo);
+                $filterStatus = trim((string) ($_GET['pinjam_filter'] ?? ''));
+                $filterSearch = trim((string) ($_GET['pinjam_search'] ?? ''));
+                $data['peminjaman_rows']         = $pm->fetchAll($pdo, $filterStatus, $filterSearch);
+                $data['peminjaman_belum_kembali'] = $pm->fetchBelumKembali($pdo);
+                $data['peminjaman_stats']         = $pm->fetchStats($pdo);
+                $data['peminjaman_filter']        = $filterStatus;
+                $data['peminjaman_search']        = $filterSearch;
+            } else {
+                $data['peminjaman_rows']         = [];
+                $data['peminjaman_belum_kembali'] = [];
+                $data['peminjaman_stats']         = ['total' => 0, 'dipinjam' => 0, 'kembali' => 0];
+                $data['peminjaman_filter']        = '';
+                $data['peminjaman_search']        = '';
             }
         }
         if (!empty($_SESSION['flash'])) {
@@ -680,6 +705,75 @@ class PageController
         exit;
     }
 
+    private function handlePeminjamanAction(): void
+    {
+        $action = trim((string) ($_POST['action'] ?? $_GET['action'] ?? ''));
+
+        if ($action === 'export_peminjaman') {
+            if (!AuthController::canAccessPage('peminjaman-laptop')) {
+                http_response_code(403);
+                echo 'Akses ditolak.';
+                exit;
+            }
+            $pdo = Database::getConnection();
+            if (!$pdo instanceof PDO) {
+                echo 'Koneksi database tidak tersedia.';
+                exit;
+            }
+            $pm = new PeminjamanModel();
+            $pm->ensureTable($pdo);
+            try {
+                $pm->exportExcel($pdo);
+            } catch (Throwable $e) {
+                echo 'Gagal export: ' . $e->getMessage();
+            }
+            exit;
+        }
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            return;
+        }
+        if (!in_array($action, ['save_peminjaman', 'save_pengembalian', 'edit_peminjaman', 'delete_peminjaman'], true)) {
+            return;
+        }
+        if (!AuthController::canAccessPage('peminjaman-laptop')) {
+            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Akses ditolak.'];
+            header('Location: index.php?page=peminjaman-laptop');
+            exit;
+        }
+
+        $pdo = Database::getConnection();
+        if (!$pdo instanceof PDO) {
+            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Koneksi database tidak tersedia.'];
+            header('Location: index.php?page=peminjaman-laptop');
+            exit;
+        }
+
+        $pm = new PeminjamanModel();
+        $pm->ensureTable($pdo);
+
+        try {
+            if ($action === 'save_peminjaman') {
+                $pm->savePeminjaman($pdo, $_POST);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Data peminjaman berhasil disimpan.'];
+            } elseif ($action === 'save_pengembalian') {
+                $pm->saveReturn($pdo, $_POST);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Data pengembalian berhasil disimpan.'];
+            } elseif ($action === 'edit_peminjaman') {
+                $pm->update($pdo, $_POST);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Data peminjaman berhasil diperbarui.'];
+            } elseif ($action === 'delete_peminjaman') {
+                $id = (int) ($_POST['id'] ?? 0);
+                $pm->delete($pdo, $id);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Data peminjaman berhasil dihapus.'];
+            }
+        } catch (Throwable $e) {
+            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Aksi gagal: ' . $e->getMessage()];
+        }
+
+        header('Location: index.php?page=peminjaman-laptop');
+        exit;
+    }
 
     private function ensureRoutineMonitoringTable(PDO $pdo): void
     {
