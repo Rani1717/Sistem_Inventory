@@ -133,15 +133,11 @@ $editUrlBase = 'index.php?' . http_build_query([
         <?php foreach (($pagination['pages'] ?? []) as $pageItem): ?>
             <?php
                 $titleAttr = 'User: ' . ($pageItem['user_label'] ?: 'Komputer #' . $pageItem['number']);
-                if (!empty($pageItem['has_rusak'])) {
-                    $titleAttr .= ' (Status: RUSAK)';
-                }
-                $rusakClass = !empty($pageItem['has_rusak']) ? ' is-rusak' : '';
             ?>
             <?php if (!empty($pageItem['is_active'])): ?>
-                <span class="pagination__num is-active<?= $rusakClass; ?>" title="<?= e($titleAttr); ?>"><?= e((string) $pageItem['number']); ?></span>
+                <span class="pagination__num is-active" title="<?= e($titleAttr); ?>"><?= e((string) $pageItem['number']); ?></span>
             <?php else: ?>
-                <a class="pagination__num<?= $rusakClass; ?>" href="<?= e($pageItem['href']); ?>" title="<?= e($titleAttr); ?>"><?= e((string) $pageItem['number']); ?></a>
+                <a class="pagination__num" href="<?= e($pageItem['href']); ?>" title="<?= e($titleAttr); ?>"><?= e((string) $pageItem['number']); ?></a>
             <?php endif; ?>
         <?php endforeach; ?>
         <?php if (!empty($pagination['next']['href'])): ?>
@@ -232,19 +228,6 @@ $editUrlBase = 'index.php?' . http_build_query([
         font-size: 0.78rem;
         color: #64748b;
         margin: 0;
-    }
-
-    /* Highlight page number when PC is broken */
-    .pagination__num.is-rusak {
-        background-color: #fee2e2 !important;
-        border-color: #fca5a5 !important;
-        color: #dc2626 !important;
-        font-weight: bold;
-    }
-    .pagination__num.is-rusak.is-active {
-        background-color: #dc2626 !important;
-        border-color: #dc2626 !important;
-        color: #ffffff !important;
     }
     </style>
 

@@ -2790,6 +2790,7 @@ SQL);
                 $divCode = (string) ($division['division_code'] ?? '');
 
                 try {
+                    $this->ensurePcDetailOrderingSchema($pdo, $db);
                     $sql = sprintf(
                         "SELECT COUNT(*) AS total_pc,
                             SUM(CASE WHEN UPPER(TRIM(COALESCE(status,''))) = 'AKTIF' THEN 1 ELSE 0 END) AS jml_aktif,
