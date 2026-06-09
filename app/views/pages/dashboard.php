@@ -73,7 +73,7 @@
     ?>
     <article class="chart-card chart-card--wide chart-card--complaints dashboard-hover-card" tabindex="0">
         <div class="complaint-stat-head">
-            <div><h2>STATISTIK KELUHAN<br>INVENTARIS</h2></div>
+            <div><h2>STATISTIK KELUHAN INVENTARIS</h2></div>
             <div class="complaint-stat-head__period">
                 <span><?= e(trim($complaintPeriod) !== '' ? $complaintPeriod : date('F Y')); ?></span>
                 <strong><?= e((string) $complaintTotal); ?></strong>
