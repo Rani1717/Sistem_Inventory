@@ -3299,6 +3299,12 @@ button.doc-thumb {
     box-shadow: 0 18px 48px rgba(12, 36, 68, 0.22);
 }
 
+.complaint-modal__dialog {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
 .complaint-modal__header,
 .complaint-image-viewer__header {
     display: flex;
@@ -3329,6 +3335,8 @@ button.doc-thumb {
     display: grid;
     gap: 18px;
     padding: 22px 24px 24px;
+    min-height: 0;
+    overflow-y: auto;
 }
 
 @media (min-width: 861px) {
@@ -3356,12 +3364,12 @@ button.doc-thumb {
 
 .complaint-modal__form-card {
     position: relative;
-    overflow: hidden;
-    background: #ffffff;
-    border: 1px solid rgba(27, 62, 111, 0.12);
-    border-radius: 20px;
-    padding: 24px;
-    box-shadow: 0 10px 30px rgba(27, 62, 111, 0.05);
+    overflow: visible;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
 }
 
 .complaint-modal__form-card::before {
@@ -3372,6 +3380,7 @@ button.doc-thumb {
     right: 0;
     height: 4px;
     background: var(--c-primary-2);
+    display: none;
 }
 
 .complaint-modal__section-title,
@@ -3405,8 +3414,8 @@ button.doc-thumb {
 }
 
 .complaint-modal__form-title {
-    color: var(--c-primary-2);
-    background: rgba(31, 95, 153, 0.06);
+    color: var(--c-primary);
+    background: rgba(27, 62, 111, 0.06);
 }
 
 .complaint-modal__form-title::before {
@@ -3416,36 +3425,54 @@ button.doc-thumb {
     left: 0;
     bottom: 0;
     width: 4px;
-    background: var(--c-primary-2);
+    background: var(--c-primary);
 }
 
 /* Modal Form Controls styling */
 .complaint-action-form {
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 14px;
 }
 
 .complaint-action-form__label {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    font-size: 13px;
-    font-weight: 700;
     color: var(--c-primary);
+}
+
+.complaint-action-form__label span {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: rgba(27,62,111,.72);
 }
 
 .complaint-action-form__select,
 .complaint-action-form textarea {
     width: 100%;
-    padding: 12px 14px;
-    border-radius: 10px;
+    padding: 14px 16px;
+    border-radius: 16px;
     border: 1px solid rgba(27, 62, 111, 0.18);
     background: #ffffff;
     color: var(--c-primary);
     font-size: 14px;
+    line-height: 1.55;
     transition: border-color 0.2s, box-shadow 0.2s;
     font-family: var(--font-sub);
+}
+
+.complaint-action-form__select {
+    font-weight: 700;
+}
+
+.complaint-action-form textarea {
+    font-weight: 600;
+    min-height: 104px;
+    overflow: hidden;
+    resize: none;
 }
 
 .complaint-action-form__select:focus,
@@ -4389,10 +4416,13 @@ button.doc-thumb {
     order: 2;
 }
 
-.complaint-action-form__label span,
+.complaint-action-form__label span {
+    font-size: 12px;
+}
+
 .complaint-action-form__select,
 .complaint-action-form textarea {
-    font-size: 12px;
+    font-size: 14px;
 }
 
 @media (max-width: 1024px) {
@@ -12370,15 +12400,15 @@ body.has-modal-open .routine-manager-modal { overflow: auto; }
 .complaint-action-form__check {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 12px;
+    gap: 10px;
+    font-size: 13px;
     color: #16325b;
     font-weight: 700;
     text-align: left;
 }
 .complaint-action-form__check input {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     flex: 0 0 auto;
 }
 .complaint-action-form__email-status {
@@ -12386,9 +12416,9 @@ body.has-modal-open .routine-manager-modal { overflow: auto; }
     background: #f4f8ff;
     color: #36557f;
     border-radius: 12px;
-    padding: 9px 10px;
-    font-size: 11px;
-    line-height: 1.35;
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.5;
     text-align: left;
 }
 

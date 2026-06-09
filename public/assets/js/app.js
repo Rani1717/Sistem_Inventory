@@ -1048,6 +1048,12 @@
         }).join('');
     }
 
+    function resizeComplaintNotesTextarea(textarea) {
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.max(textarea.scrollHeight, 104) + 'px';
+    }
+
     function openDetailModal(payload) {
         if (!detailModal || !payload) return;
         setText('complaintDetailTitle', payload.ticket_no, '-');
@@ -1089,7 +1095,10 @@
         if (modalFormTicketId) modalFormTicketId.value = payload.id || '0';
         if (modalFormStatus) modalFormStatus.value = payload.status || 'NOT YET';
         if (modalFormPIC) modalFormPIC.value = payload.handled_by_user_id || '';
-        if (modalFormCatatan) modalFormCatatan.value = payload.notes || '';
+        if (modalFormCatatan) {
+            modalFormCatatan.value = payload.notes || '';
+            resizeComplaintNotesTextarea(modalFormCatatan);
+        }
         if (modalFormEmailStatus) {
             var emailStatusHtml = 'Validasi: email pelapor dicek sebelum dikirim.';
             if (payload.email_status && payload.email_status !== 'Belum dikirim') {
@@ -1166,6 +1175,13 @@
             closeDetailModal();
         });
     });
+
+    var complaintNotesTextarea = document.getElementById('complaintModalCatatan');
+    if (complaintNotesTextarea) {
+        complaintNotesTextarea.addEventListener('input', function () {
+            resizeComplaintNotesTextarea(complaintNotesTextarea);
+        });
+    }
 
     document.querySelectorAll('.js-open-complaint-image').forEach(function (button) {
         button.addEventListener('click', function () {
