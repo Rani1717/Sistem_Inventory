@@ -375,7 +375,17 @@ function takePhoto(side) {
     const canvas = document.getElementById('canvas' + cap(side));
     canvas.width  = video.videoWidth;
     canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+    
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Always draw image flipped horizontally to un-mirror it
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    
     const data = canvas.toDataURL('image/png');
     const inputId = side === 'pinjam' ? 'buktPinjamData' : 'buktiKembaliData';
     document.getElementById(inputId).value = data;
