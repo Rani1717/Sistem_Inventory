@@ -73,6 +73,7 @@
     ?>
     <article class="chart-card chart-card--wide chart-card--complaints dashboard-hover-card" tabindex="0">
         <div class="complaint-stat-head">
+            <div class="complaint-stat-head__spacer"></div>
             <div><h2>STATISTIK KELUHAN INVENTARIS</h2></div>
             <div class="complaint-stat-head__period">
                 <span><?= e(trim($complaintPeriod) !== '' ? $complaintPeriod : date('F Y')); ?></span>
@@ -365,28 +366,43 @@
 
 /* ── Center Complaint Stat Title ── */
 .complaint-stat-head {
-    position: relative;
-    justify-content: center !important;
+    display: flex !important;
+    justify-content: space-between !important;
     align-items: center !important;
+    width: 100%;
+}
+.complaint-stat-head__spacer {
+    width: 150px;
+    flex-shrink: 0;
+    display: block;
+}
+.complaint-stat-head > div:nth-child(2) {
+    flex: 1;
     text-align: center;
 }
 .complaint-stat-head h2 {
     text-align: center !important;
 }
 .complaint-stat-head__period {
-    position: absolute;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%);
+    width: 150px;
+    flex-shrink: 0;
+    box-sizing: border-box;
 }
 @media (max-width: 720px) {
     .complaint-stat-head {
         flex-direction: column !important;
-        align-items: stretch !important;
+        align-items: center !important;
+    }
+    .complaint-stat-head__spacer {
+        display: none !important;
+    }
+    .complaint-stat-head > div:nth-child(2) {
+        width: 100%;
+        text-align: center;
     }
     .complaint-stat-head__period {
-        position: static !important;
-        transform: none !important;
+        width: auto !important;
+        margin-top: 10px;
     }
 }
 </style>
