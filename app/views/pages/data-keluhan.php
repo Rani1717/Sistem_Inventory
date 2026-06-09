@@ -50,27 +50,39 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
 
     <div class="table-wrap table-wrap--complaints">
         <div class="complaint-table-scroll">
-            <table class="data-table data-table--complaints" id="complaintTable" style="--complaint-email-width: <?= (int) $complaintEmailColumnWidth; ?>px;">
+            <table class="data-table data-table--complaints" id="complaintTable">
                 <thead>
                 <tr>
                     <th>No. Tiket</th>
                     <th>Tanggal &amp; Jam</th>
-                    <th>Email Pelapor</th>
-                    <th>Nama Pelapor</th>
+                    <th>Pelapor</th>
                     <th>Divisi</th>
                     <th>Aset</th>
                     <th>Lokasi</th>
                     <th>Issue</th>
                     <th>Dokumentasi</th>
                     <th>Status</th>
-                    <th>Penanganan IT</th>
                 </tr>
                 </thead>
                 <tbody class="js-complaint-table-body">
                 <?php if (!empty($data['complaint_rows'])): ?>
                     <?php foreach ($data['complaint_rows'] as $row): ?>
                         <?php
+                        $handlingEmailStatus = trim((string) ($row['handling_email_status'] ?? ''));
+                        if ($handlingEmailStatus === 'QUEUED_LOG') {
+                            $emailStatusFriendly = 'Email belum terkirim — server sedang tidak aktif.';
+                        } elseif ($handlingEmailStatus === 'SENT') {
+                            $emailStatusFriendly = 'Email terkirim';
+                        } elseif ($handlingEmailStatus === 'FAILED') {
+                            $emailStatusFriendly = 'Gagal dikirim - ' . ($row['handling_email_message'] ?? '');
+                        } elseif ($handlingEmailStatus !== '') {
+                            $emailStatusFriendly = $handlingEmailStatus . ' - ' . ($row['handling_email_message'] ?? '');
+                        } else {
+                            $emailStatusFriendly = 'Belum dikirim';
+                        }
+
                         $detailPayload = [
+                            'id' => (int) ($row['id'] ?? 0),
                             'ticket_no' => (string) ($row['ticket_no'] ?? '-'),
                             'datetime' => (string) ($row['datetime_plain'] ?? str_replace("\n", ' ', (string) ($row['datetime'] ?? '-'))),
                             'email' => (string) ($row['email_plain'] ?? str_replace("\n", '', (string) ($row['email'] ?? '-'))),
@@ -82,7 +94,8 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
                             'status' => (string) ($row['status'] ?? '-'),
                             'notes' => (string) ($row['catatan_penanganan'] ?? ''),
                             'handled_by' => (string) ($row['handled_by_name'] ?? ''),
-                            'email_status' => trim((string) ($row['handling_email_status'] ?? '')) !== '' ? ((string) ($row['handling_email_status'] ?? '') . ' - ' . (string) ($row['handling_email_message'] ?? '')) : 'Belum dikirim',
+                            'handled_by_user_id' => (int) ($row['handled_by_user_id'] ?? 0),
+                            'email_status' => $emailStatusFriendly,
                             'doc_image' => !empty($row['doc_image']) ? asset((string) $row['doc_image']) : '',
                             'history' => $data['complaint_history_map'][(int) ($row['id'] ?? 0)] ?? [],
                         ];
@@ -100,9 +113,8 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
                         ])));
                         ?>
                         <tr class="js-complaint-row" data-ticket-id="<?= (int) ($row['id'] ?? 0); ?>" data-search="<?= e($rowSearch); ?>" data-status="<?= e(strtoupper((string) ($row['status'] ?? ''))); ?>" data-division="<?= e(strtolower((string) ($row['division'] ?? ''))); ?>" data-date="<?= e((string) ($row['date_value'] ?? '')); ?>">
-                            <td><div class="complaint-ticket-wrap"><div class="complaint-ticket"><?= e($row['ticket_no'] ?? '-'); ?></div><button type="button" class="btn btn--ghost btn--xs js-open-complaint-detail" data-complaint='<?= $detailJson; ?>'>Detail</button></div></td>
+                            <td><div class="complaint-ticket"><?= e($row['ticket_no'] ?? '-'); ?></div></td>
                             <td><div class="complaint-datetime-cell"><span class="complaint-date-cell"><?= e((string) ($row['date_value'] ?? '-')); ?></span><span class="complaint-time-cell"><?= e(substr((string) ($row['time_value'] ?? '-'), 0, 8)); ?></span></div></td>
-                            <td><div class="complaint-email-cell" title="<?= e((string) ($row['email_plain'] ?? str_replace(["\r", "\n"], "", (string) ($row['email'] ?? "-")))); ?>"><?= e((string) ($row['email_plain'] ?? str_replace(["\r", "\n"], "", (string) ($row['email'] ?? "-")))); ?></div></td>
                             <td><?= nl2br(e($row['name'])); ?></td>
                             <td><?= e($row['division']); ?></td>
                             <td><?= nl2br(e($row['item'])); ?></td>
@@ -115,25 +127,16 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
                                 <?php else: ?><div class="doc-thumb doc-thumb--empty">Tidak ada</div><?php endif; ?>
                             </td>
                             <td>
-                                <?php $rowStatus = strtoupper(trim((string) ($row['status'] ?? ''))); ?>
-                                <span class="badge badge--<?= e($row['status_class']); ?><?= $rowStatus === 'ON PROGRESS' ? ' badge--on-progress' : ''; ?>"><?php if ($rowStatus === 'ON PROGRESS'): ?>ON<br>PROGRESS<?php else: ?><?= e($row['status']); ?><?php endif; ?></span>
-                            </td>
-                            <td>
-                                <form method="post" class="complaint-action-form">
-                                    <input type="hidden" name="action" value="update_it_support_status">
-                                    <input type="hidden" name="ticket_id" value="<?= (int) ($row['id'] ?? 0); ?>">
-                                    <label class="complaint-action-form__label"><span>Status</span><select name="status" class="complaint-action-form__select"><?php foreach (['NOT YET', 'ON PROGRESS', 'DONE'] as $statusOption): ?><option value="<?= e($statusOption); ?>" <?= (string) ($row['status'] ?? '') === $statusOption ? 'selected' : ''; ?>><?= e($statusOption); ?></option><?php endforeach; ?></select></label>
-                                    <label class="complaint-action-form__label"><span>PIC Penanganan</span><select name="handled_by_user_id" class="complaint-action-form__select"><option value="">Pilih PIC IT</option><?php foreach ($itHandlerOptions as $handlerOption): ?><?php $handlerId = (int) ($handlerOption['id'] ?? 0); ?><option value="<?= $handlerId; ?>" <?= (int) ($row['handled_by_user_id'] ?? 0) === $handlerId ? 'selected' : ''; ?>><?= e((string) ($handlerOption['name'] ?? 'PIC IT')); ?></option><?php endforeach; ?></select></label>
-                                    <label class="complaint-action-form__label"><span>Catatan Penanganan</span><textarea name="catatan_penanganan" rows="3" placeholder="Contoh: sudah dilakukan pengecekan, reset konfigurasi, penggantian kabel, dll."><?= e((string) ($row['catatan_penanganan'] ?? '')); ?></textarea></label>
-                                    <label class="complaint-action-form__check"><input type="checkbox" name="send_email_notification" value="1" checked><span>Kirim email ke pelapor</span></label>
-                                    <div class="complaint-action-form__email-status">Validasi: email pelapor dicek sebelum dikirim.<?php if (!empty($row['handling_email_status'])): ?><br>Status email: <strong><?= e((string) $row['handling_email_status']); ?></strong><?php endif; ?></div>
-                                    <button type="submit" class="btn btn--primary complaint-action-form__submit">Simpan &amp; Proses</button>
-                                </form>
+                                <div class="complaint-status-cell-wrap">
+                                    <?php $rowStatus = strtoupper(trim((string) ($row['status'] ?? ''))); ?>
+                                    <span class="badge badge--<?= e($row['status_class']); ?><?= $rowStatus === 'ON PROGRESS' ? ' badge--on-progress' : ''; ?>"><?= e($row['status']); ?></span>
+                                    <button type="button" class="btn btn--ghost btn--xs js-open-complaint-detail" data-complaint='<?= $detailJson; ?>'><i class="fa-solid fa-screwdriver-wrench"></i> Tindak Lanjut</button>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
                 <?php else: ?>
-                    <tr class="js-complaint-empty-row"<?= !empty($data['complaint_rows']) ? ' hidden' : ''; ?>><td colspan="11"><div class="table-empty-state"><?= !empty($complaintFilters['search']) || !empty($complaintFilters['status']) || !empty($complaintFilters['division']) || !empty($complaintFilters['date_from']) || !empty($complaintFilters['date_to']) ? 'Belum ada tiket yang cocok dengan filter.' : 'Belum ada data tiket IT support.'; ?></div></td></tr>
+                    <tr class="js-complaint-empty-row"<?= !empty($data['complaint_rows']) ? ' hidden' : ''; ?>><td colspan="10"><div class="table-empty-state"><?= !empty($complaintFilters['search']) || !empty($complaintFilters['status']) || !empty($complaintFilters['division']) || !empty($complaintFilters['date_from']) || !empty($complaintFilters['date_to']) ? 'Belum ada tiket yang cocok dengan filter.' : 'Belum ada data tiket IT support.'; ?></div></td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -197,24 +200,80 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
             <button type="button" class="icon-round js-close-complaint-modal" aria-label="Tutup detail tiket"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="complaint-modal__content">
-            <div class="complaint-modal__grid">
-                <div class="complaint-modal__field"><span>Tanggal &amp; Jam</span><strong id="complaintDetailDatetime">-</strong></div>
-                <div class="complaint-modal__field"><span>Status</span><strong id="complaintDetailStatus">-</strong></div>
-                <div class="complaint-modal__field"><span>Nama Pelapor</span><strong id="complaintDetailName">-</strong></div>
-                <div class="complaint-modal__field"><span>Email</span><strong id="complaintDetailEmail">-</strong></div>
-                <div class="complaint-modal__field"><span>Divisi</span><strong id="complaintDetailDivision">-</strong></div>
-                <div class="complaint-modal__field"><span>Aset/Barang</span><strong id="complaintDetailItem">-</strong></div>
-                <div class="complaint-modal__field"><span>Lokasi</span><strong id="complaintDetailLocation">-</strong></div>
-                <div class="complaint-modal__field"><span>Ditangani Oleh</span><strong id="complaintDetailHandledBy">-</strong></div>
-                <div class="complaint-modal__field"><span>Status Email</span><strong id="complaintDetailEmailStatus">-</strong></div>
-                <div class="complaint-modal__field complaint-modal__field--full"><span>Deskripsi Kerusakan</span><p id="complaintDetailDescription">-</p></div>
-                <div class="complaint-modal__field complaint-modal__field--full"><span>Catatan Penanganan</span><p id="complaintDetailNotes">-</p></div>
+            <div class="complaint-modal__left-panel">
+                <h3 class="complaint-modal__section-title"><i class="fa-solid fa-circle-info"></i> Informasi Laporan</h3>
+                <div class="complaint-modal__grid">
+                    <div class="complaint-modal__field"><span>Tanggal &amp; Jam</span><strong id="complaintDetailDatetime">-</strong></div>
+                    <div class="complaint-modal__field"><span>Status</span><strong id="complaintDetailStatus">-</strong></div>
+                    <div class="complaint-modal__field"><span>Nama Pelapor</span><strong id="complaintDetailName">-</strong></div>
+                    <div class="complaint-modal__field"><span>Email</span><strong id="complaintDetailEmail">-</strong></div>
+                    <div class="complaint-modal__field"><span>Divisi</span><strong id="complaintDetailDivision">-</strong></div>
+                    <div class="complaint-modal__field"><span>Aset/Barang</span><strong id="complaintDetailItem">-</strong></div>
+                    <div class="complaint-modal__field"><span>Lokasi</span><strong id="complaintDetailLocation">-</strong></div>
+                    <div class="complaint-modal__field"><span>Ditangani Oleh</span><strong id="complaintDetailHandledBy">-</strong></div>
+                    <div class="complaint-modal__field"><span>Status Email</span><strong id="complaintDetailEmailStatus">-</strong></div>
+                    <div class="complaint-modal__field complaint-modal__field--full"><span>Deskripsi Kerusakan</span><p id="complaintDetailDescription">-</p></div>
+                    <div class="complaint-modal__field complaint-modal__field--full"><span>Catatan Penanganan Terakhir</span><p id="complaintDetailNotes">-</p></div>
+                </div>
+                <div class="complaint-modal__image-wrap" id="complaintDetailImageWrap" hidden>
+                    <div class="complaint-modal__image-header"><span>Dokumentasi</span><button type="button" class="btn btn--ghost btn--xs js-open-complaint-image-from-detail">Lihat ukuran penuh</button></div>
+                    <img id="complaintDetailImage" src="" alt="Dokumentasi tiket">
+                </div>
+                <div class="complaint-modal__history">
+                    <button type="button" class="complaint-modal__history-header js-toggle-complaint-history" aria-expanded="false" aria-controls="complaintHistoryListWrap">
+                        <span class="complaint-modal__history-title">
+                            <i class="fa-solid fa-history"></i> Riwayat Perubahan
+                        </span>
+                        <i class="fa-solid fa-chevron-down complaint-modal__history-chevron"></i>
+                    </button>
+                    <div class="complaint-modal__history-body-wrap" id="complaintHistoryListWrap" style="display: none;">
+                        <div class="complaint-history-list" id="complaintHistoryList">
+                            <div class="complaint-history-empty">Belum ada riwayat perubahan tiket.</div>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="complaint-modal__image-wrap" id="complaintDetailImageWrap" hidden>
-                <div class="complaint-modal__image-header"><span>Dokumentasi</span><button type="button" class="btn btn--ghost btn--xs js-open-complaint-image-from-detail">Lihat ukuran penuh</button></div>
-                <img id="complaintDetailImage" src="" alt="Dokumentasi tiket">
+            <div class="complaint-modal__right-panel">
+                <div class="complaint-modal__form-card">
+                    <h3 class="complaint-modal__form-title"><i class="fa-solid fa-screwdriver-wrench"></i> Tindak Lanjut</h3>
+                    <form method="post" class="complaint-action-form" id="complaintModalActionForm">
+                        <input type="hidden" name="action" value="update_it_support_status">
+                        <input type="hidden" name="ticket_id" id="complaintModalTicketId" value="0">
+                        <label class="complaint-action-form__label">
+                            <span>Status Tiket</span>
+                            <select name="status" id="complaintModalStatus" class="complaint-action-form__select">
+                                <?php foreach (['NOT YET', 'ON PROGRESS', 'DONE'] as $statusOption): ?>
+                                    <option value="<?= e($statusOption); ?>"><?= e($statusOption); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label class="complaint-action-form__label">
+                            <span>PIC Penanganan</span>
+                            <select name="handled_by_user_id" id="complaintModalPIC" class="complaint-action-form__select">
+                                <option value="">Pilih PIC IT</option>
+                                <?php foreach ($itHandlerOptions as $handlerOption): ?>
+                                    <?php $handlerId = (int) ($handlerOption['id'] ?? 0); ?>
+                                    <option value="<?= $handlerId; ?>"><?= e((string) ($handlerOption['name'] ?? 'PIC IT')); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </label>
+                        <label class="complaint-action-form__label">
+                            <span>Catatan Penanganan</span>
+                            <textarea name="catatan_penanganan" id="complaintModalCatatan" rows="4" placeholder="Contoh: sudah dilakukan pengecekan, reset konfigurasi, penggantian kabel, dll."></textarea>
+                        </label>
+                        <label class="complaint-action-form__check">
+                            <input type="checkbox" name="send_email_notification" value="1" checked>
+                            <span>Kirim email ke pelapor</span>
+                        </label>
+                        <div class="complaint-action-form__email-status" id="complaintModalEmailStatusInfo">
+                            Validasi: email pelapor dicek sebelum dikirim.
+                        </div>
+                        <button type="submit" class="btn btn--primary complaint-action-form__submit">
+                            <i class="fa-solid fa-floppy-disk"></i> Simpan &amp; Proses
+                        </button>
+                    </form>
+                </div>
             </div>
-            <div class="complaint-modal__history"><div class="complaint-modal__image-header"><span>Riwayat Perubahan</span></div><div class="complaint-history-list" id="complaintHistoryList"><div class="complaint-history-empty">Belum ada riwayat perubahan tiket.</div></div></div>
         </div>
     </div>
 </div>

@@ -1079,6 +1079,38 @@
             }
         }
 
+        // Populate the modal's action form
+        var modalFormTicketId = document.getElementById('complaintModalTicketId');
+        var modalFormStatus = document.getElementById('complaintModalStatus');
+        var modalFormPIC = document.getElementById('complaintModalPIC');
+        var modalFormCatatan = document.getElementById('complaintModalCatatan');
+        var modalFormEmailStatus = document.getElementById('complaintModalEmailStatusInfo');
+
+        if (modalFormTicketId) modalFormTicketId.value = payload.id || '0';
+        if (modalFormStatus) modalFormStatus.value = payload.status || 'NOT YET';
+        if (modalFormPIC) modalFormPIC.value = payload.handled_by_user_id || '';
+        if (modalFormCatatan) modalFormCatatan.value = payload.notes || '';
+        if (modalFormEmailStatus) {
+            var emailStatusHtml = 'Validasi: email pelapor dicek sebelum dikirim.';
+            if (payload.email_status && payload.email_status !== 'Belum dikirim') {
+                emailStatusHtml += '<br>Status email: <strong>' + escapeHtml(payload.email_status) + '</strong>';
+            }
+            modalFormEmailStatus.innerHTML = emailStatusHtml;
+        }
+
+        // Reset history toggle state to collapsed
+        var toggleHistoryBtn = document.querySelector('.js-toggle-complaint-history');
+        var historyWrap = document.getElementById('complaintHistoryListWrap');
+        if (toggleHistoryBtn && historyWrap) {
+            toggleHistoryBtn.setAttribute('aria-expanded', 'false');
+            historyWrap.style.display = 'none';
+            var chevron = toggleHistoryBtn.querySelector('.complaint-modal__history-chevron');
+            if (chevron) {
+                chevron.classList.remove('fa-chevron-up');
+                chevron.classList.add('fa-chevron-down');
+            }
+        }
+
         detailModal.hidden = false;
         detailModal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('has-modal-open');
@@ -1155,6 +1187,31 @@
             closeImageViewer();
         });
     });
+
+    var toggleHistoryBtn = document.querySelector('.js-toggle-complaint-history');
+    if (toggleHistoryBtn) {
+        toggleHistoryBtn.addEventListener('click', function () {
+            var wrap = document.getElementById('complaintHistoryListWrap');
+            var chevron = toggleHistoryBtn.querySelector('.complaint-modal__history-chevron');
+            var isExpanded = toggleHistoryBtn.getAttribute('aria-expanded') === 'true';
+            
+            if (isExpanded) {
+                toggleHistoryBtn.setAttribute('aria-expanded', 'false');
+                if (wrap) wrap.style.display = 'none';
+                if (chevron) {
+                    chevron.classList.remove('fa-chevron-up');
+                    chevron.classList.add('fa-chevron-down');
+                }
+            } else {
+                toggleHistoryBtn.setAttribute('aria-expanded', 'true');
+                if (wrap) wrap.style.display = 'block';
+                if (chevron) {
+                    chevron.classList.remove('fa-chevron-down');
+                    chevron.classList.add('fa-chevron-up');
+                }
+            }
+        });
+    }
 
     document.addEventListener('keydown', function (event) {
         if (event.key !== 'Escape') return;
