@@ -1159,15 +1159,16 @@
         }
     }
 
-    document.querySelectorAll('.js-open-complaint-detail').forEach(function (button) {
-        button.addEventListener('click', function () {
+    document.addEventListener('click', function (event) {
+        var button = event.target.closest('.js-open-complaint-detail');
+        if (button) {
             var raw = button.getAttribute('data-complaint') || '{}';
             try {
                 openDetailModal(JSON.parse(raw));
             } catch (error) {
                 console.warn('Gagal membaca detail tiket.', error);
             }
-        });
+        }
     });
 
     document.querySelectorAll('.js-close-complaint-modal').forEach(function (button) {
@@ -1183,10 +1184,11 @@
         });
     }
 
-    document.querySelectorAll('.js-open-complaint-image').forEach(function (button) {
-        button.addEventListener('click', function () {
+    document.addEventListener('click', function (event) {
+        var button = event.target.closest('.js-open-complaint-image');
+        if (button) {
             openImageViewer(button.getAttribute('data-image-src') || '', button.getAttribute('data-image-title') || 'Dokumentasi Tiket');
-        });
+        }
     });
 
     var detailImageButton = document.querySelector('.js-open-complaint-image-from-detail');
