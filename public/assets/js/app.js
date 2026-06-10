@@ -1229,6 +1229,129 @@
         });
     }
 
+    // Google Form Integration controls
+    var gformModal = document.getElementById('gformSettingsModal');
+    function openGformSettingsModal() {
+        if (!gformModal) return;
+        gformModal.hidden = false;
+        gformModal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('has-modal-open');
+    }
+    function closeGformSettingsModal() {
+        if (!gformModal) return;
+        gformModal.hidden = true;
+        gformModal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('has-modal-open');
+    }
+
+    document.querySelectorAll('.js-open-gform-settings').forEach(function (button) {
+        button.addEventListener('click', function (e) {
+            e.preventDefault();
+            openGformSettingsModal();
+        });
+    });
+
+    document.querySelectorAll('.js-close-gform-settings').forEach(function (button) {
+        button.addEventListener('click', function (e) {
+            e.preventDefault();
+            closeGformSettingsModal();
+        });
+    });
+
+    // Sync GForm button AJAX execution
+    var syncBtn = document.querySelector('.js-sync-gform-btn');
+    if (syncBtn && window.fetch) {
+        var parentForm = syncBtn.closest('form');
+        if (parentForm) {
+            parentForm.addEventListener('submit', function (event) {
+                event.preventDefault();
+                
+                // Set loading state
+                syncBtn.disabled = true;
+                var originalText = syncBtn.innerHTML;
+                syncBtn.innerHTML = '<i class="fa-solid fa-sync fa-spin"></i> SYNCING...';
+
+                fetch('index.php?page=data-keluhan&action=ajax_sync_gform', {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    cache: 'no-store'
+                })
+                .then(function (response) {
+                    return response.ok ? response.json() : Promise.reject(new Error('Network response not ok'));
+                })
+                .then(function (res) {
+                    syncBtn.disabled = false;
+                    syncBtn.innerHTML = originalText;
+
+                    if (res && res.success) {
+                        var isNewImported = res.imported > 0;
+                        window.spmtPopup(res.message, 'success').then(function () {
+                            if (isNewImported) {
+                                window.location.reload();
+                            }
+                        });
+                    } else {
+                        var errorMsg = (res && res.message) ? res.message : 'Terjadi kesalahan saat sinkronisasi.';
+                        window.spmtPopup(errorMsg, 'error');
+                    }
+                })
+                .catch(function (err) {
+                    syncBtn.disabled = false;
+                    syncBtn.innerHTML = originalText;
+                    window.spmtPopup('Gagal menghubungi server untuk sinkronisasi. Coba lagi nanti.', 'error');
+                    console.error('GForm Sync Error:', err);
+                });
+            });
+        }
+    }
+
+    // Auto-sync on page load and periodically
+    var hasAutoSyncedThisSession = false;
+    function runAutoSync() {
+        if (!document.getElementById('complaintTable') || hasAutoSyncedThisSession) return;
+        
+        hasAutoSyncedThisSession = true;
+
+        fetch('index.php?page=data-keluhan&action=ajax_sync_gform', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            cache: 'no-store'
+        })
+        .then(function (response) {
+            return response.ok ? response.json() : null;
+        })
+        .then(function (res) {
+            if (res && res.success && res.imported > 0) {
+                var isModalOpen = document.body.classList.contains('has-modal-open');
+                var isUserTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+                
+                if (!isModalOpen && !isUserTyping) {
+                    window.location.reload();
+                } else {
+                    console.log('Background sync imported ' + res.imported + ' tickets, reload skipped due to active user interaction.');
+                }
+            }
+        })
+        .catch(function (err) {
+            console.warn('Auto-sync failed:', err);
+        });
+    }
+
+    // Run auto-sync 1.5s after load
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () {
+            window.setTimeout(runAutoSync, 1500);
+        });
+    } else {
+        window.setTimeout(runAutoSync, 1500);
+    }
+
+    // Periodic sync check every 60s
+    window.setInterval(function () {
+        hasAutoSyncedThisSession = false;
+        runAutoSync();
+    }, 60000);
+
     document.addEventListener('keydown', function (event) {
         if (event.key !== 'Escape') return;
         if (imageViewer && imageViewer.hidden !== true) {
@@ -1237,6 +1360,10 @@
         }
         if (detailModal && detailModal.hidden !== true) {
             closeDetailModal();
+            return;
+        }
+        if (gformModal && gformModal.hidden !== true) {
+            closeGformSettingsModal();
         }
     });
 })();
@@ -1901,7 +2028,18 @@
         if (!canUsePage('data-keluhan')) return;
         fetch('index.php?page=dashboard&ajax=it_support_notifications', { headers: { 'Accept': 'application/json' }, cache: 'no-store' })
             .then(function (response) { return response.ok ? response.json() : null; })
-            .then(function (payload) { if (payload) renderNotifications(payload); })
+            .then(function (payload) {
+                if (payload) {
+                    renderNotifications(payload);
+                    if (payload.has_new_imports && document.getElementById('complaintTable')) {
+                        var isModalOpen = document.body.classList.contains('has-modal-open');
+                        var isUserTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
+                        if (!isModalOpen && !isUserTyping) {
+                            window.location.reload();
+                        }
+                    }
+                }
+            })
             .catch(function () {});
     }
 

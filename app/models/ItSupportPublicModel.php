@@ -68,10 +68,21 @@ class ItSupportPublicModel
     private function generateTicketNo(PDO $pdo, string $tanggal): string
     {
         $cleanDate = str_replace('-', '', $tanggal);
-        $prefix = 'TSR-' . $cleanDate . '-';
-        $stmt = $pdo->prepare('SELECT COUNT(*) AS total FROM it_support_request WHERE tanggal = :tanggal');
-        $stmt->execute(['tanggal' => $tanggal]);
-        $total = (int) (($stmt->fetch()['total'] ?? 0)) + 1;
-        return $prefix . str_pad((string) $total, 4, '0', STR_PAD_LEFT);
+        $yymmdd = (strlen($cleanDate) === 8) ? substr($cleanDate, 2) : $cleanDate;
+        $prefix = 'TSR-' . $yymmdd . '-';
+        
+        $stmt = $pdo->prepare('SELECT ticket_no FROM it_support_request WHERE ticket_no LIKE :prefix ORDER BY ticket_no DESC LIMIT 1');
+        $stmt->execute(['prefix' => $prefix . '%']);
+        $lastTicket = $stmt->fetchColumn();
+        
+        if ($lastTicket) {
+            $parts = explode('-', $lastTicket);
+            $lastNum = (int) end($parts);
+            $nextNum = $lastNum + 1;
+        } else {
+            $nextNum = 1;
+        }
+        
+        return $prefix . str_pad((string) $nextNum, 3, '0', STR_PAD_LEFT);
     }
 }

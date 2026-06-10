@@ -19,14 +19,25 @@ foreach (($data['complaint_rows'] ?? []) as $emailWidthRow) {
 }
 $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 28));
 ?>
+<style>
+/* Spacing out the toolbar row and the data table below it */
+.complaint-page .detail-header--report {
+    margin-bottom: 24px !important;
+}
+
+/* Spacing out the title and the toolbar row below it */
+.complaint-page .detail-header--report .detail-header__row {
+    margin-top: 24px !important;
+}
+</style>
 <div class="complaint-page">
     <div class="detail-header detail-header--report">
-        <h1>LAPORAN <br>IT SUPPORT REQUEST ISSUE</h1>
+        <h1>LAPORAN IT SUPPORT REQUEST ISSUE</h1>
         <div class="detail-header__row detail-header__row--search complaint-toolbar">
             <div class="complaint-toolbar__meta">
                 <span class="detail-header__updated complaint-toolbar__updated">LAST UPDATED : <span class="js-live-date">-</span> <span class="js-live-time">-</span></span>
             </div>
-            <div class="report-tools report-tools--complaint complaint-toolbar__actions">
+            <div class="report-tools report-tools--complaint complaint-toolbar__actions" style="gap: 14px;">
                 <form method="get" action="index.php" class="mini-search mini-search--input mini-search--complaint">
                     <input type="hidden" name="page" value="data-keluhan">
                     <input type="hidden" name="complaint_status" value="<?= e((string) ($complaintFilters['status'] ?? '')); ?>">
@@ -36,13 +47,21 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
                     <i class="fa-solid fa-magnifying-glass"></i>
                     <input type="search" name="complaint_search" value="<?= e((string) ($complaintFilters['search'] ?? '')); ?>" placeholder="Search live tiket, email, nama, divisi, aset, lokasi..." class="js-complaint-live-search" autocomplete="off">
                 </form>
-                <button type="button" class="icon-round js-toggle-complaint-filters" title="Filter" aria-label="Filter tiket"><i class="fa-solid fa-filter"></i></button>
+                <button type="button" class="icon-round js-toggle-complaint-filters" title="Filter" aria-label="Filter tiket" style="border-radius: 12px;"><i class="fa-solid fa-filter"></i></button>
                 <div class="export-dropdown js-export-dropdown">
-                    <button type="button" class="btn btn--primary detail-action export-dropdown__toggle js-toggle-export-menu" aria-expanded="false">EXPORT <i class="fa-solid fa-chevron-down"></i></button>
+                    <button type="button" class="btn btn--primary detail-action export-dropdown__toggle js-toggle-export-menu" aria-expanded="false" style="border-radius: 12px; gap: 6px;">EXPORT <i class="fa-solid fa-chevron-down"></i></button>
                     <div class="export-dropdown__menu" hidden>
                         <a href="<?= e($complaintExportPdfUrl); ?>" class="export-dropdown__item">Export PDF</a>
                         <a href="<?= e($complaintExportXlsxUrl); ?>" class="export-dropdown__item">Export Excel</a>
                     </div>
+                </div>
+                <!-- Google Form Integration -->
+                <div style="display: inline-flex; gap: 12px; align-items: center;">
+                    <form method="post" action="index.php?page=data-keluhan" style="display: inline-block; margin: 0;">
+                        <input type="hidden" name="action" value="sync_google_form">
+                        <button type="submit" class="btn btn--success detail-action js-sync-gform-btn" title="Sinkronisasi Google Form" style="padding: 0 16px; height: 38px; font-size: 14px; border-radius: 12px; display: inline-flex; align-items: center; gap: 6px;"><i class="fa-solid fa-sync"></i> SYNC GFORM</button>
+                    </form>
+                    <button type="button" class="icon-round js-open-gform-settings" title="Pengaturan Google Form" aria-label="Pengaturan Google Form" style="border: 1.5px solid var(--c-line); color: var(--c-primary); border-radius: 12px;"><i class="fa-solid fa-cog"></i></button>
                 </div>
             </div>
         </div>
@@ -123,7 +142,11 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
                             <td>
                                 <?php if (!empty($row['doc_image'])): ?>
                                     <?php $docImageUrl = asset((string) $row['doc_image']); ?>
-                                    <button type="button" class="doc-thumb doc-thumb--image js-open-complaint-image" data-image-src="<?= e($docImageUrl); ?>" data-image-title="<?= e($row['ticket_no'] ?? 'Dokumentasi'); ?>" aria-label="Lihat dokumentasi <?= e($row['ticket_no'] ?? ''); ?>"><img src="<?= e($docImageUrl); ?>" alt="Dokumentasi <?= e(preg_replace('/\s+/', ' ', (string) ($row['name'] ?? ''))); ?>" loading="lazy"></button>
+                                    <?php if (preg_match('#^https?://#i', $docImageUrl)): ?>
+                                        <a href="<?= e($docImageUrl); ?>" target="_blank" class="btn btn--ghost btn--xs" title="Buka Link Dokumentasi" style="display:inline-flex; align-items:center; gap:4px; padding:4px 8px; font-size:11px; white-space:nowrap; border: 1.5px solid var(--c-line);"><i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Link</a>
+                                    <?php else: ?>
+                                        <button type="button" class="doc-thumb doc-thumb--image js-open-complaint-image" data-image-src="<?= e($docImageUrl); ?>" data-image-title="<?= e($row['ticket_no'] ?? 'Dokumentasi'); ?>" aria-label="Lihat dokumentasi <?= e($row['ticket_no'] ?? ''); ?>"><img src="<?= e($docImageUrl); ?>" alt="Dokumentasi <?= e(preg_replace('/\s+/', ' ', (string) ($row['name'] ?? ''))); ?>" loading="lazy"></button>
+                                    <?php endif; ?>
                                 <?php else: ?><div class="doc-thumb doc-thumb--empty">Tidak ada</div><?php endif; ?>
                             </td>
                             <td>
@@ -216,8 +239,11 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
                     <div class="complaint-modal__field complaint-modal__field--full"><span>Catatan Penanganan Terakhir</span><p id="complaintDetailNotes">-</p></div>
                 </div>
                 <div class="complaint-modal__image-wrap" id="complaintDetailImageWrap" hidden>
-                    <div class="complaint-modal__image-header"><span>Dokumentasi</span><button type="button" class="btn btn--ghost btn--xs js-open-complaint-image-from-detail">Lihat ukuran penuh</button></div>
+                    <div class="complaint-modal__image-header"><span>Dokumentasi</span><button type="button" class="btn btn--ghost btn--xs js-open-complaint-image-from-detail" id="complaintDetailImageBtn">Lihat ukuran penuh</button></div>
                     <img id="complaintDetailImage" src="" alt="Dokumentasi tiket">
+                    <div id="complaintDetailImageLinkWrap" style="padding:15px; text-align:center; background:#f8f9fa; border-radius:4px; border:1px solid #e9ecef; margin-top:8px;" hidden>
+                        <a id="complaintDetailImageLink" href="#" target="_blank" class="btn btn--primary" style="display:inline-flex; align-items:center; gap:8px; text-decoration:none;"><i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Link Google Drive / Dokumentasi</a>
+                    </div>
                 </div>
                 <div class="complaint-modal__history">
                     <button type="button" class="complaint-modal__history-header js-toggle-complaint-history" aria-expanded="false" aria-controls="complaintHistoryListWrap">
@@ -283,5 +309,56 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
     <div class="complaint-image-viewer__dialog" role="dialog" aria-modal="true" aria-labelledby="complaintImageTitle">
         <div class="complaint-image-viewer__header"><h2 id="complaintImageTitle">Dokumentasi Tiket</h2><button type="button" class="icon-round js-close-complaint-image" aria-label="Tutup dokumentasi"><i class="fa-solid fa-xmark"></i></button></div>
         <div class="complaint-image-viewer__body"><img id="complaintImageViewerImg" src="" alt="Dokumentasi tiket ukuran penuh"></div>
+    </div>
+</div>
+
+<!-- Modal Pengaturan Google Form Sync -->
+<div class="complaint-modal" id="gformSettingsModal" hidden aria-hidden="true">
+    <div class="complaint-modal__backdrop js-close-gform-settings"></div>
+    <div class="complaint-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="gformSettingsTitle" style="max-width: 600px;">
+        <div class="complaint-modal__header">
+            <div>
+                <p class="complaint-modal__eyebrow">Integrasi Google Form</p>
+                <h2 id="gformSettingsTitle">Pengaturan Google Form</h2>
+            </div>
+            <button type="button" class="icon-round js-close-gform-settings" aria-label="Tutup pengaturan"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="complaint-modal__content" style="display: block; padding: 20px;">
+            <form method="post" action="index.php?page=data-keluhan" class="complaint-action-form" style="width: 100%;">
+                <input type="hidden" name="action" value="update_gform_settings">
+                
+                <div style="margin-bottom: 20px;">
+                    <label class="complaint-action-form__label" style="display: block; margin-bottom: 8px;">
+                        <span style="font-weight: 600; display: block; margin-bottom: 6px; text-align: left;">Google Sheet CSV URL</span>
+                        <textarea name="google_sheet_csv_url" rows="4" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--c-muted); font-family: monospace; font-size: 13px;" placeholder="https://docs.google.com/spreadsheets/d/e/2PACX-.../pub?output=csv"><?= e($data['google_sheet_csv_url'] ?? ''); ?></textarea>
+                    </label>
+                    <p style="font-size: 12px; color: var(--c-primary); margin-top: 6px; line-height: 1.5; text-align: left;">
+                        <i class="fa-solid fa-circle-info"></i> <strong>Cara mendapatkan URL CSV Google Sheets Respon:</strong><br>
+                        1. Di halaman respon Google Sheets Anda, buka menu <strong>File &gt; Share (Bagikan) &gt; Publish to web (Publikasikan ke web)</strong>.<br>
+                        2. Pilih tab respon Google Form Anda.<br>
+                        3. Ubah tipe output dari Halaman Web menjadi <strong>Comma-separated values (.csv)</strong>.<br>
+                        4. Klik <strong>Publish</strong>, lalu salin link URL dan tempelkan di atas.
+                    </p>
+                </div>
+                
+                <div style="background: #eef7fc; border-left: 4px solid var(--c-primary-2); padding: 12px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; line-height: 1.5; text-align: left; color: var(--c-primary);">
+                    <strong>Struktur Kolom Form:</strong><br>
+                    Sistem akan mencocokkan kolom secara otomatis berdasarkan nama kolom berikut:<br>
+                    • Timestamp (Waktu)<br>
+                    • Email (Email Pelapor)<br>
+                    • Nama (Nama Pelapor)<br>
+                    • Divisi (Divisi Pelapor)<br>
+                    • Aset (Aset/Perangkat)<br>
+                    • Lokasi (Lokasi perbaikan)<br>
+                    • Deskripsi / Kerusakan (Detail keluhan)<br>
+                    • Dokumentasi / Gambar / Upload (Link Google Drive)
+                </div>
+
+                <div class="modal__footer" style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 15px; border-top: 1px solid #eee;">
+                    <button type="button" class="btn btn--ghost js-close-gform-settings" style="height:36px; padding:0 16px; border-radius:18px;">Batal</button>
+                    <button type="submit" class="btn btn--primary" style="height:36px; padding:0 16px; border-radius:18px;"><i class="fa-solid fa-floppy-disk"></i> Simpan Pengaturan</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>

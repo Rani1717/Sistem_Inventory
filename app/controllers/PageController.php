@@ -45,6 +45,21 @@ class PageController
 
     public function render(string $page): void
     {
+        // Silent background sync check on page load to keep things automatic
+        $protectedPages = ['dashboard', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'data-keluhan', 'log-barang', 'peminjaman-laptop', 'routine-monitoring', 'laporan', 'account-settings', 'user-management', 'inventory-pc', 'inventory-other'];
+        if (in_array($page, $protectedPages, true) && AuthController::check()) {
+            try {
+                $pdo = Database::getConnection();
+                $lastSync = (int) $this->getSetting($pdo, 'last_gform_sync_time', '0');
+                if (time() - $lastSync > 60) { // check at most once every 60 seconds
+                    $this->setSetting($pdo, 'last_gform_sync_time', (string) time());
+                    $this->syncGoogleFormSubmissions($pdo, false, true);
+                }
+            } catch (Throwable $e) {
+                // Ignore database or curl errors silently to prevent blocking page render
+            }
+        }
+
         if ((string) ($_GET["ajax"] ?? "") === "it_support_notifications") {
             $this->jsonItSupportNotifications();
             return;
@@ -145,6 +160,10 @@ class PageController
         }
         if ($page === 'routine-monitoring') {
             $data['routine_monitoring'] = $this->buildRoutineMonitoringData($filters);
+        }
+        if ($page === 'data-keluhan') {
+            $pdo = Database::getConnection();
+            $data['google_sheet_csv_url'] = $pdo instanceof PDO ? $this->getSetting($pdo, 'google_sheet_csv_url') : '';
         }
         if ($page === 'user-management') {
             $authModel = new AuthModel();
@@ -1519,6 +1538,15 @@ class PageController
         $this->ensureComplaintEmailVerificationColumn($pdo);
         $this->ensureItSupportNotificationReadColumn($pdo);
         $this->ensureComplaintEmailNotificationColumns($pdo);
+        $this->ensureSettingsTable($pdo);
+
+        // AJAX Sync request
+        $actionGet = trim((string) ($_GET['action'] ?? ''));
+        if ($actionGet === 'ajax_sync_gform') {
+            header('Content-Type: application/json; charset=utf-8');
+            $this->syncGoogleFormSubmissions($pdo, true);
+            exit;
+        }
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             $markId = (int) ($_GET['mark_notification_read'] ?? $_GET['focus_ticket'] ?? 0);
@@ -1540,6 +1568,21 @@ class PageController
         }
 
         $action = trim((string) ($_POST['action'] ?? ''));
+        
+        if ($action === 'update_gform_settings') {
+            $url = trim((string) ($_POST['google_sheet_csv_url'] ?? ''));
+            $this->setSetting($pdo, 'google_sheet_csv_url', $url);
+            $_SESSION['flash'] = ['type' => 'success', 'message' => 'Pengaturan Google Form berhasil diperbarui.'];
+            header('Location: ' . $this->buildComplaintUrl());
+            exit;
+        }
+
+        if ($action === 'sync_google_form') {
+            $this->syncGoogleFormSubmissions($pdo, false);
+            header('Location: ' . $this->buildComplaintUrl());
+            exit;
+        }
+
         if ($action !== 'update_it_support_status') {
             return;
         }
@@ -1659,6 +1702,18 @@ class PageController
             echo json_encode(["count" => 0, "items" => []]);
             return;
         }
+
+        // Trigger silent background sync on notifications check (throttled to once every 60 seconds)
+        $importedCount = 0;
+        try {
+            $lastSync = (int) $this->getSetting($pdo, 'last_gform_sync_time', '0');
+            if (time() - $lastSync > 60) {
+                $this->setSetting($pdo, 'last_gform_sync_time', (string) time());
+                $importedCount = $this->syncGoogleFormSubmissions($pdo, false, true);
+            }
+        } catch (Throwable $e) {
+            // Silently ignore errors
+        }
         $this->ensureItSupportNotificationReadColumn($pdo);
         try {
             $whereUnread = "notification_read_at IS NULL AND UPPER(TRIM(COALESCE(status, 'NOT YET'))) = 'NOT YET'";
@@ -1667,7 +1722,11 @@ class PageController
             $sql = "SELECT id, ticket_no, nama_pelapor AS nama, divisi, aset_yang_perlu_diperbaiki AS barang, CONCAT(DATE_FORMAT(tanggal, '%d/%m/%Y'), ' ', TIME_FORMAT(jam, '%H:%i')) AS tanggal_dan_jam FROM it_support_request WHERE " . $whereUnread . " ORDER BY tanggal DESC, jam DESC, id DESC LIMIT 8";
             $stmt = $pdo->query($sql);
             $items = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
-            echo json_encode(["count" => $count, "items" => $items ?: []]);
+            echo json_encode([
+                "count" => $count,
+                "items" => $items ?: [],
+                "has_new_imports" => ($importedCount > 0)
+            ]);
         } catch (Throwable $e) {
             echo json_encode(["count" => 0, "items" => []]);
         }
@@ -5666,5 +5725,456 @@ startxref
             'gambar'         => $gambarPath,
             'keterangan'     => $ket,
         ]);
+    }
+
+    /**
+     * Google Form Integrasi - Memastikan tabel settings ada
+     */
+    private function ensureSettingsTable(PDO $pdo): void
+    {
+        $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS settings (
+  setting_key VARCHAR(100) NOT NULL PRIMARY KEY,
+  setting_value TEXT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL);
+    }
+
+    /**
+     * Google Form Integrasi - Get Setting Value
+     */
+    private function getSetting(PDO $pdo, string $key, string $default = ''): string
+    {
+        $this->ensureSettingsTable($pdo);
+        $stmt = $pdo->prepare('SELECT setting_value FROM settings WHERE setting_key = :key LIMIT 1');
+        $stmt->execute(['key' => $key]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? (string) $row['setting_value'] : $default;
+    }
+
+    /**
+     * Google Form Integrasi - Set Setting Value
+     */
+    private function setSetting(PDO $pdo, string $key, string $value): void
+    {
+        $this->ensureSettingsTable($pdo);
+        $stmt = $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (:key, :value) ON DUPLICATE KEY UPDATE setting_value = :value_update');
+        $stmt->execute(['key' => $key, 'value' => $value, 'value_update' => $value]);
+    }
+
+    /**
+     * Google Form Integrasi - Fetch URL Content
+     */
+    private function fetchUrl(string $url): ?string
+    {
+        if (function_exists('curl_init')) {
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            $data = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($httpCode === 200) {
+                return $data;
+            }
+        }
+        
+        $opts = [
+            "http" => [
+                "method" => "GET",
+                "header" => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n",
+                "timeout" => 15,
+                "ignore_errors" => true
+            ],
+            "ssl" => [
+                "verify_peer" => false,
+                "verify_peer_name" => false
+            ]
+        ];
+        $context = stream_context_create($opts);
+        return @file_get_contents($url, false, $context) ?: null;
+    }
+
+    /**
+     * Google Form Integrasi - Ekstrak File ID Google Drive
+     */
+    private function extractGoogleDriveId(string $url): ?string
+    {
+        if (preg_match('/[?&]id=([^&]+)/', $url, $matches)) {
+            return $matches[1];
+        }
+        if (preg_match('/\/file\/d\/([^\/]+)/', $url, $matches)) {
+            return $matches[1];
+        }
+        if (preg_match('/\/d\/([^\/]+)/', $url, $matches)) {
+            return $matches[1];
+        }
+        return null;
+    }
+
+    /**
+     * Google Form Integrasi - Normalisasi Divisi
+     */
+    private function normalizeDivisionFromMasterForImport(PDO $pdo, string $division): string
+    {
+        $division = trim($division);
+        if ($division === '') {
+            return '';
+        }
+
+        try {
+            if (ctype_digit($division)) {
+                $stmt = $pdo->prepare('SELECT division_label FROM master_divisi WHERE is_active = 1 AND id = :id LIMIT 1');
+                $stmt->execute(['id' => (int) $division]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row) {
+                    return trim((string) ($row['division_label'] ?? ''));
+                }
+            }
+
+            $stmt = $pdo->prepare('SELECT division_label FROM master_divisi WHERE is_active = 1 AND (UPPER(TRIM(division_label)) = UPPER(TRIM(:division_label)) OR UPPER(TRIM(division_code)) = UPPER(TRIM(:division_code)) OR UPPER(TRIM(division_group_name)) = UPPER(TRIM(:division_group_name))) ORDER BY id ASC LIMIT 1');
+            $stmt->execute([
+                'division_label' => $division,
+                'division_code' => $division,
+                'division_group_name' => $division,
+            ]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                return trim((string) ($row['division_label'] ?? ''));
+            }
+
+            $stmt = $pdo->prepare('SELECT division_label FROM master_divisi WHERE is_active = 1 AND UPPER(TRIM(division_label)) LIKE UPPER(TRIM(:division_like)) ORDER BY id ASC LIMIT 1');
+            $stmt->execute(['division_like' => '%' . $division . '%']);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $row ? trim((string) ($row['division_label'] ?? '')) : '';
+        } catch (Throwable $e) {
+            return '';
+        }
+    }
+
+    /**
+     * Google Form Integrasi - Generate Ticket No
+     */
+    private function generateTicketNoForImport(PDO $pdo, string $tanggal): string
+    {
+        $cleanDate = str_replace('-', '', $tanggal);
+        $yymmdd = (strlen($cleanDate) === 8) ? substr($cleanDate, 2) : $cleanDate;
+        $prefix = 'TSR-' . $yymmdd . '-';
+        
+        $stmt = $pdo->prepare('SELECT ticket_no FROM it_support_request WHERE ticket_no LIKE :prefix ORDER BY ticket_no DESC LIMIT 1');
+        $stmt->execute(['prefix' => $prefix . '%']);
+        $lastTicket = $stmt->fetchColumn();
+        
+        if ($lastTicket) {
+            $parts = explode('-', $lastTicket);
+            $lastNum = (int) end($parts);
+            $nextNum = $lastNum + 1;
+        } else {
+            $nextNum = 1;
+        }
+        
+        return $prefix . str_pad((string) $nextNum, 3, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Google Form Integrasi - Sinkronisasi data dari Google Sheets CSV
+     */
+    public function syncGoogleFormSubmissions(PDO $pdo, bool $isAjax = false, bool $isSilent = false): int
+    {
+        $url = $this->getSetting($pdo, 'google_sheet_csv_url');
+        if ($url === '') {
+            $msg = 'Google Sheet CSV URL belum dikonfigurasi di Pengaturan.';
+            if ($isSilent) {
+                return 0;
+            }
+            if (php_sapi_name() === 'cli') {
+                echo "[ERROR] " . $msg . "\n";
+                return 0;
+            }
+            if ($isAjax) {
+                echo json_encode(['success' => false, 'message' => $msg, 'imported' => 0]);
+                return 0;
+            }
+            $_SESSION['flash'] = ['type' => 'error', 'message' => $msg];
+            return 0;
+        }
+
+        $csvData = $this->fetchUrl($url);
+        if (!$csvData) {
+            $msg = 'Gagal mengambil data dari Google Sheets. Pastikan dokumen telah dipublikasikan ke web sebagai CSV dan URL benar.';
+            if ($isSilent) {
+                return 0;
+            }
+            if (php_sapi_name() === 'cli') {
+                echo "[ERROR] " . $msg . "\n";
+                return 0;
+            }
+            if ($isAjax) {
+                echo json_encode(['success' => false, 'message' => $msg, 'imported' => 0]);
+                return 0;
+            }
+            $_SESSION['flash'] = ['type' => 'error', 'message' => $msg];
+            return 0;
+        }
+
+        $lines = explode("\n", str_replace("\r", "", $csvData));
+        if (count($lines) < 2) {
+            $msg = 'Tidak ada respon yang ditemukan di Google Sheet.';
+            if ($isSilent) {
+                return 0;
+            }
+            if (php_sapi_name() === 'cli') {
+                echo "[INFO] " . $msg . "\n";
+                return 0;
+            }
+            if ($isAjax) {
+                echo json_encode(['success' => true, 'message' => $msg, 'imported' => 0]);
+                return 0;
+            }
+            $_SESSION['flash'] = ['type' => 'info', 'message' => $msg];
+            return 0;
+        }
+
+        // Auto-detect header row by scanning up to the first 5 rows
+        $headerRowIdx = -1;
+        $indices = [
+            'timestamp' => -1,
+            'email' => -1,
+            'nama' => -1,
+            'divisi' => -1,
+            'aset' => -1,
+            'lokasi' => -1,
+            'deskripsi' => -1,
+            'dokumentasi' => -1
+        ];
+        $header = [];
+
+        $scanLimit = min(5, count($lines));
+        for ($r = 0; $r < $scanLimit; $r++) {
+            $rowCells = @str_getcsv($lines[$r]);
+            if (!$rowCells || count($rowCells) === 0) {
+                continue;
+            }
+
+            $tempIndices = [
+                'timestamp' => -1,
+                'email' => -1,
+                'nama' => -1,
+                'divisi' => -1,
+                'aset' => -1,
+                'lokasi' => -1,
+                'deskripsi' => -1,
+                'dokumentasi' => -1
+            ];
+
+            foreach ($rowCells as $idx => $colName) {
+                $colNameClean = strtolower(trim($colName));
+                if (strpos($colNameClean, 'timestamp') !== false || strpos($colNameClean, 'tanggal') !== false || strpos($colNameClean, 'waktu') !== false) {
+                    $tempIndices['timestamp'] = $idx;
+                } elseif (strpos($colNameClean, 'email') !== false) {
+                    $tempIndices['email'] = $idx;
+                } elseif (strpos($colNameClean, 'nama') !== false) {
+                    $tempIndices['nama'] = $idx;
+                } elseif (strpos($colNameClean, 'divisi') !== false || strpos($colNameClean, 'unit') !== false) {
+                    $tempIndices['divisi'] = $idx;
+                } elseif (strpos($colNameClean, 'aset') !== false || strpos($colNameClean, 'barang') !== false || strpos($colNameClean, 'perangkat') !== false) {
+                    $tempIndices['aset'] = $idx;
+                } elseif (strpos($colNameClean, 'lokasi') !== false || strpos($colNameClean, 'tempat') !== false) {
+                    $tempIndices['lokasi'] = $idx;
+                } elseif (strpos($colNameClean, 'dokumentasi') !== false || strpos($colNameClean, 'gambar') !== false || strpos($colNameClean, 'foto') !== false || strpos($colNameClean, 'upload') !== false || strpos($colNameClean, 'file') !== false) {
+                    $tempIndices['dokumentasi'] = $idx;
+                } elseif (strpos($colNameClean, 'deskripsi') !== false || strpos($colNameClean, 'kerusakan') !== false || strpos($colNameClean, 'keluhan') !== false || strpos($colNameClean, 'detail') !== false || strpos($colNameClean, 'masalah') !== false) {
+                    $tempIndices['deskripsi'] = $idx;
+                }
+            }
+
+            // A row is the header row if it contains at least timestamp, email, and deskripsi
+            if ($tempIndices['timestamp'] !== -1 && $tempIndices['email'] !== -1 && $tempIndices['deskripsi'] !== -1) {
+                $headerRowIdx = $r;
+                $indices = $tempIndices;
+                $header = $rowCells;
+                break;
+            }
+        }
+
+        if ($headerRowIdx === -1) {
+            $msg = 'Struktur kolom Google Sheet tidak cocok. Pastikan terdapat kolom Timestamp, Email, dan Deskripsi.';
+            if ($isSilent) {
+                return 0;
+            }
+            if (php_sapi_name() === 'cli') {
+                echo "[ERROR] " . $msg . "\n";
+                return 0;
+            }
+            if ($isAjax) {
+                echo json_encode(['success' => false, 'message' => $msg, 'imported' => 0]);
+                return 0;
+            }
+            $_SESSION['flash'] = ['type' => 'error', 'message' => $msg];
+            return 0;
+        }
+
+        require_once __DIR__ . '/../models/ItSupportPublicModel.php';
+        $publicModel = new ItSupportPublicModel();
+
+        $successCount = 0;
+        $duplicateCount = 0;
+
+        for ($i = $headerRowIdx + 1; $i < count($lines); $i++) {
+            $line = trim($lines[$i]);
+            if ($line === '') {
+                continue;
+            }
+            $row = @str_getcsv($line);
+            if (!$row || count($row) <= max($indices)) {
+                continue;
+            }
+
+            $email = trim((string) $row[$indices['email']]);
+            $deskripsi = trim((string) $row[$indices['deskripsi']]);
+            if ($email === '' || $deskripsi === '') {
+                continue;
+            }
+
+            $timestampStr = trim((string) $row[$indices['timestamp']]);
+            // Try explicit format with d/m/Y (preferred for Indonesian date format outputted by GSheets)
+            $dt = DateTime::createFromFormat('d/m/Y H:i:s', $timestampStr);
+            if (!$dt) {
+                $dt = DateTime::createFromFormat('d/m/Y H.i.s', $timestampStr);
+            }
+            if (!$dt) {
+                $dt = DateTime::createFromFormat('d-m-Y H:i:s', $timestampStr);
+            }
+            if ($dt) {
+                $time = $dt->getTimestamp();
+            } else {
+                $time = strtotime($timestampStr);
+                if ($time === false) {
+                    $time = time();
+                }
+            }
+            $tanggal = date('Y-m-d', $time);
+            $jam = date('H:i:s', $time);
+
+            $checkStmt = $pdo->prepare('SELECT COUNT(*) FROM it_support_request WHERE email_pelapor = :email AND tanggal = :tanggal AND jam = :jam AND deskripsi_kerusakan = :deskripsi');
+            $checkStmt->execute([
+                'email' => $email,
+                'tanggal' => $tanggal,
+                'jam' => $jam,
+                'deskripsi' => $deskripsi
+            ]);
+            if (((int) $checkStmt->fetchColumn()) > 0) {
+                $duplicateCount++;
+                continue;
+            }
+
+            $nama = $indices['nama'] !== -1 ? trim((string) $row[$indices['nama']]) : '';
+            $divisi = $indices['divisi'] !== -1 ? trim((string) $row[$indices['divisi']]) : '';
+            $aset = $indices['aset'] !== -1 ? trim((string) $row[$indices['aset']]) : '';
+            $lokasi = $indices['lokasi'] !== -1 ? trim((string) $row[$indices['lokasi']]) : '';
+            $dokumentasi = $indices['dokumentasi'] !== -1 ? trim((string) $row[$indices['dokumentasi']]) : '';
+
+            // Google Drive Auto-Downloader
+            if (preg_match('#^https?://#i', $dokumentasi) && strpos($dokumentasi, 'drive.google.com') !== false) {
+                $driveId = $this->extractGoogleDriveId($dokumentasi);
+                if ($driveId) {
+                    $localDir = __DIR__ . '/../../public/uploads/it-support';
+                    if (!is_dir($localDir)) {
+                        mkdir($localDir, 0777, true);
+                    }
+                    
+                    $localPath = null;
+                    $found = false;
+                    foreach (['jpg', 'jpeg', 'png', 'gif'] as $ext) {
+                        $checkPath = "public/uploads/it-support/gform_{$driveId}.{$ext}";
+                        if (file_exists(__DIR__ . '/../../' . $checkPath)) {
+                            $localPath = $checkPath;
+                            $found = true;
+                            break;
+                        }
+                    }
+
+                    if ($found) {
+                        $dokumentasi = $localPath;
+                    } else {
+                        $downloadUrl = "https://docs.google.com/uc?export=download&id={$driveId}";
+                        $fileData = $this->fetchUrl($downloadUrl);
+                        if ($fileData && strpos($fileData, '<!DOCTYPE html>') === false && strpos($fileData, '<html') === false) {
+                            $ext = 'jpg';
+                            $newLocalPath = "public/uploads/it-support/gform_{$driveId}.{$ext}";
+                            if (file_put_contents(__DIR__ . '/../../' . $newLocalPath, $fileData) !== false) {
+                                $dokumentasi = $newLocalPath;
+                            }
+                        }
+                    }
+                }
+            }
+
+            $reporterUserId = null;
+            $user = $publicModel->findUserByEmail($pdo, $email);
+            if ($user) {
+                if ($nama === '') {
+                    $nama = (string) ($user['nama_lengkap'] ?? '');
+                }
+                if ($divisi === '') {
+                    $divisi = (string) ($user['division_label'] ?? $user['unit_kerja_default'] ?? '');
+                }
+                $reporterUserId = (int) ($user['id'] ?? 0);
+            }
+
+            $normalizedDivision = $this->normalizeDivisionFromMasterForImport($pdo, $divisi);
+            if ($normalizedDivision !== '') {
+                $divisi = $normalizedDivision;
+            }
+
+            $ticketNo = $this->generateTicketNoForImport($pdo, $tanggal);
+
+            $insertSql = 'INSERT INTO it_support_request (
+                ticket_no, reporter_user_id, tanggal, jam, email_pelapor, email_verified, nama_pelapor, divisi,
+                aset_yang_perlu_diperbaiki, lokasi_perbaikan, deskripsi_kerusakan, dokumentasi_kerusakan, status
+            ) VALUES (
+                :ticket_no, :reporter_user_id, :tanggal, :jam, :email_pelapor, 1, :nama_pelapor, :divisi,
+                :aset_yang_perlu_diperbaiki, :lokasi_perbaikan, :deskripsi_kerusakan, :dokumentasi_kerusakan, "NOT YET"
+            )';
+            $insertStmt = $pdo->prepare($insertSql);
+            $insertStmt->execute([
+                'ticket_no' => $ticketNo,
+                'reporter_user_id' => $reporterUserId,
+                'tanggal' => $tanggal,
+                'jam' => $jam,
+                'email_pelapor' => $email,
+                'nama_pelapor' => $nama !== '' ? $nama : explode('@', $email)[0],
+                'divisi' => $divisi !== '' ? $divisi : 'UMUM',
+                'aset_yang_perlu_diperbaiki' => $aset !== '' ? $aset : 'Perangkat IT',
+                'lokasi_perbaikan' => $lokasi !== '' ? $lokasi : 'Kantor Cabang',
+                'deskripsi_kerusakan' => $deskripsi,
+                'dokumentasi_kerusakan' => $dokumentasi !== '' ? $dokumentasi : null
+            ]);
+
+            $successCount++;
+        }
+
+        $msg = $successCount > 0 
+            ? "Sinkronisasi berhasil! {$successCount} tiket baru telah diimport."
+            : "Tidak ada data baru dari Google Sheet.";
+        
+        if ($isSilent) {
+            return $successCount;
+        }
+        if (php_sapi_name() === 'cli') {
+            echo "[SUCCESS] " . $msg . "\n";
+            return $successCount;
+        }
+        if ($isAjax) {
+            echo json_encode(['success' => true, 'message' => $msg, 'imported' => $successCount]);
+            return $successCount;
+        }
+        $_SESSION['flash'] = ['type' => $successCount > 0 ? 'success' : 'info', 'message' => $msg];
+        return $successCount;
     }
 }
