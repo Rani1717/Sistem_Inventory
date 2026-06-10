@@ -211,7 +211,7 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
                     <div class="complaint-modal__field"><span>Aset/Barang</span><strong id="complaintDetailItem">-</strong></div>
                     <div class="complaint-modal__field"><span>Lokasi</span><strong id="complaintDetailLocation">-</strong></div>
                     <div class="complaint-modal__field"><span>Ditangani Oleh</span><strong id="complaintDetailHandledBy">-</strong></div>
-                    <div class="complaint-modal__field"><span>Status Email</span><strong id="complaintDetailEmailStatus">-</strong></div>
+                    <div class="complaint-modal__field complaint-modal__field--full"><span>Status Email</span><strong id="complaintDetailEmailStatus">-</strong></div>
                     <div class="complaint-modal__field complaint-modal__field--full"><span>Deskripsi Kerusakan</span><p id="complaintDetailDescription">-</p></div>
                     <div class="complaint-modal__field complaint-modal__field--full"><span>Catatan Penanganan Terakhir</span><p id="complaintDetailNotes">-</p></div>
                 </div>

@@ -23,7 +23,7 @@ $uploadBase     = 'peminjaman_laptop/uploads/';
      HEADER
 ════════════════════════════════════════════════════════ -->
 <div class="detail-header detail-header--single-title">
-    <h1>PEMINJAMAN LAPTOP IT</h1>
+    <h1>PEMINJAMAN INVENTARIS IT</h1>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════
@@ -87,7 +87,7 @@ $uploadBase     = 'peminjaman_laptop/uploads/';
                         </div>
                     </div>
                     <div class="pinjam-card__col-right">
-                        <div class="pinjam-field">
+                        <div class="pinjam-field pinjam-field--photo">
                             <label>Foto Bukti Peminjaman <span class="pinjam-hint">(wajib)</span></label>
                             <div class="pinjam-webcam" id="webcamPinjam">
                                 <video id="videoPinjam" autoplay playsinline class="pinjam-webcam__video"></video>
@@ -150,7 +150,7 @@ $uploadBase     = 'peminjaman_laptop/uploads/';
                         </div>
                     </div>
                     <div class="pinjam-card__col-right">
-                        <div class="pinjam-field">
+                        <div class="pinjam-field pinjam-field--photo">
                             <label>Foto Bukti Pengembalian <span class="pinjam-hint">(wajib)</span></label>
                             <div class="pinjam-webcam" id="webcamKembali">
                                 <video id="videoKembali" autoplay playsinline class="pinjam-webcam__video"></video>

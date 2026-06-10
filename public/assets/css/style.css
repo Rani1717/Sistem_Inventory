@@ -3387,6 +3387,7 @@ button.doc-thumb {
 .complaint-modal__form-title {
     margin: 0 0 20px;
     font-size: 15px;
+    line-height: 1.2;
     font-family: var(--font-head);
     display: flex;
     align-items: center;
@@ -3396,6 +3397,15 @@ button.doc-thumb {
     font-weight: 700;
     position: relative;
     overflow: hidden;
+}
+
+.complaint-modal__section-title i,
+.complaint-modal__form-title i {
+    width: 16px;
+    flex: 0 0 16px;
+    font-size: 14px;
+    line-height: 1;
+    text-align: center;
 }
 
 .complaint-modal__section-title {
@@ -3458,18 +3468,22 @@ button.doc-thumb {
     border: 1px solid rgba(27, 62, 111, 0.18);
     background: #ffffff;
     color: var(--c-primary);
-    font-size: 14px;
+    font-size: 16px;
     line-height: 1.55;
     transition: border-color 0.2s, box-shadow 0.2s;
     font-family: var(--font-sub);
 }
 
-.complaint-action-form__select {
+.complaint-action-form__select,
+.complaint-action-form textarea {
     font-weight: 700;
 }
 
+.complaint-action-form__select {
+    min-height: 52px;
+}
+
 .complaint-action-form textarea {
-    font-weight: 600;
     min-height: 104px;
     overflow: hidden;
     resize: none;
@@ -3556,6 +3570,8 @@ button.doc-thumb {
 .complaint-modal__field p {
     margin: 0;
     color: #18375f;
+    font-size: 16px;
+    font-weight: 700;
     line-height: 1.55;
     white-space: pre-wrap;
     word-break: break-word;
@@ -4422,7 +4438,7 @@ button.doc-thumb {
 
 .complaint-action-form__select,
 .complaint-action-form textarea {
-    font-size: 14px;
+    font-size: 16px;
 }
 
 @media (max-width: 1024px) {
@@ -12401,7 +12417,7 @@ body.has-modal-open .routine-manager-modal { overflow: auto; }
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 13px;
+    font-size: 14px;
     color: #16325b;
     font-weight: 700;
     text-align: left;
@@ -13290,6 +13306,17 @@ button,
     font-weight: 600;
     color: #334155;
     margin-bottom: 0.5rem;
+}
+
+.pinjam-field--photo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.pinjam-field--photo > label {
+    width: min(100%, 360px);
+    text-align: center;
 }
 
 .pinjam-hint {
