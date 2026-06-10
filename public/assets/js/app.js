@@ -1284,11 +1284,8 @@
                     syncBtn.innerHTML = originalText;
 
                     if (res && res.success) {
-                        var isNewImported = res.imported > 0;
                         window.spmtPopup(res.message, 'success').then(function () {
-                            if (isNewImported) {
-                                window.location.reload();
-                            }
+                            window.location.reload();
                         });
                     } else {
                         var errorMsg = (res && res.message) ? res.message : 'Terjadi kesalahan saat sinkronisasi.';
@@ -1306,11 +1303,31 @@
     }
 
     // Auto-sync on page load and periodically
-    var hasAutoSyncedThisSession = false;
+    window.reloadComplaintTableAsynchronously = function () {
+        console.log("Reloading table data asynchronously...");
+        var currentUrl = window.location.href;
+        fetch(currentUrl, { cache: 'no-store' })
+            .then(function (response) {
+                return response.ok ? response.text() : Promise.reject(new Error('Failed to reload page content'));
+            })
+            .then(function (html) {
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+                var newTable = doc.getElementById('complaintTable');
+                var oldTable = document.getElementById('complaintTable');
+                if (newTable && oldTable) {
+                    oldTable.innerHTML = newTable.innerHTML;
+                    oldTable.setAttribute('data-max-id', newTable.getAttribute('data-max-id') || '0');
+                    console.log("Table content updated asynchronously.");
+                }
+            })
+            .catch(function (err) {
+                console.error("Asynchronous table reload failed:", err);
+            });
+    };
+
     function runAutoSync() {
-        if (!document.getElementById('complaintTable') || hasAutoSyncedThisSession) return;
-        
-        hasAutoSyncedThisSession = true;
+        if (!document.getElementById('complaintTable')) return;
 
         fetch('index.php?page=data-keluhan&action=ajax_sync_gform', {
             method: 'GET',
@@ -1322,14 +1339,8 @@
         })
         .then(function (res) {
             if (res && res.success && res.imported > 0) {
-                var isModalOpen = document.body.classList.contains('has-modal-open');
-                var isUserTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
-                
-                if (!isModalOpen && !isUserTyping) {
-                    window.location.reload();
-                } else {
-                    console.log('Background sync imported ' + res.imported + ' tickets, reload skipped due to active user interaction.');
-                }
+                // Update table component asynchronously without full page reload
+                window.reloadComplaintTableAsynchronously();
             }
         })
         .catch(function (err) {
@@ -1346,11 +1357,10 @@
         window.setTimeout(runAutoSync, 1500);
     }
 
-    // Periodic sync check every 60s
+    // Periodic sync check every 30s
     window.setInterval(function () {
-        hasAutoSyncedThisSession = false;
         runAutoSync();
-    }, 60000);
+    }, 30000);
 
     document.addEventListener('keydown', function (event) {
         if (event.key !== 'Escape') return;
@@ -2031,11 +2041,20 @@
             .then(function (payload) {
                 if (payload) {
                     renderNotifications(payload);
-                    if (payload.has_new_imports && document.getElementById('complaintTable')) {
-                        var isModalOpen = document.body.classList.contains('has-modal-open');
-                        var isUserTyping = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA');
-                        if (!isModalOpen && !isUserTyping) {
-                            window.location.reload();
+                    var table = document.getElementById('complaintTable');
+                    var shouldReload = payload.has_new_imports;
+                    if (!shouldReload && table && Array.isArray(payload.items)) {
+                        var currentMaxId = parseInt(table.getAttribute('data-max-id') || '0', 10) || 0;
+                        payload.items.forEach(function (item) {
+                            var itemId = parseInt(item.id || '0', 10) || 0;
+                            if (itemId > currentMaxId) {
+                                shouldReload = true;
+                            }
+                        });
+                    }
+                    if (shouldReload && table) {
+                        if (typeof window.reloadComplaintTableAsynchronously === 'function') {
+                            window.reloadComplaintTableAsynchronously();
                         }
                     }
                 }

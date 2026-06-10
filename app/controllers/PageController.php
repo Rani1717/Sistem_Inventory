@@ -14,6 +14,7 @@ if (!function_exists("str_contains")) { function str_contains($haystack, $needle
 class PageController
 {
     private UiModel $model;
+    private string $lastFetchError = '';
 
     private array $pageMap = [
         'splash' => ['view' => 'pages/splash.php', 'layout' => 'standalone'],
@@ -5768,27 +5769,43 @@ SQL);
      */
     private function fetchUrl(string $url): ?string
     {
+        $this->lastFetchError = '';
+        $errors = [];
+
         if (function_exists('curl_init')) {
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+            
             $data = curl_exec($ch);
+            $errNum = curl_errno($ch);
+            $errMsg = curl_error($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
-            if ($httpCode === 200) {
+
+            if ($errNum === 0 && $httpCode === 200) {
                 return $data;
             }
+
+            if ($errNum !== 0) {
+                $errors[] = "cURL error (code $errNum): $errMsg";
+            } else {
+                $errors[] = "HTTP status code $httpCode";
+            }
+        } else {
+            $errors[] = "cURL extension is not loaded";
         }
         
+        // Try fallback file_get_contents
         $opts = [
             "http" => [
                 "method" => "GET",
                 "header" => "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n",
-                "timeout" => 15,
+                "timeout" => 30,
                 "ignore_errors" => true
             ],
             "ssl" => [
@@ -5797,7 +5814,33 @@ SQL);
             ]
         ];
         $context = stream_context_create($opts);
-        return @file_get_contents($url, false, $context) ?: null;
+        
+        if (function_exists('error_clear_last')) {
+            @error_clear_last();
+        }
+        
+        $data = @file_get_contents($url, false, $context);
+        if ($data !== false) {
+            if (isset($http_response_header) && count($http_response_header) > 0) {
+                $firstHeader = $http_response_header[0];
+                if (preg_match('/HTTP\/\d+\.\d+\s+(\d+)/i', $firstHeader, $matches)) {
+                    $statusCode = (int)$matches[1];
+                    if ($statusCode === 200) {
+                        return $data;
+                    }
+                    $errors[] = "Fallback HTTP status code $statusCode";
+                }
+            } else {
+                return $data;
+            }
+        } else {
+            $lastError = error_get_last();
+            $msg = $lastError ? $lastError['message'] : 'Unknown stream error';
+            $errors[] = "file_get_contents error: $msg";
+        }
+
+        $this->lastFetchError = implode('; ', $errors);
+        return null;
     }
 
     /**
@@ -5822,7 +5865,7 @@ SQL);
      */
     private function normalizeDivisionFromMasterForImport(PDO $pdo, string $division): string
     {
-        $division = trim($division);
+        $division = trim(preg_replace('/\s*-\s*(SPMT|SUBREG)\s*$/i', '', $division));
         if ($division === '') {
             return '';
         }
@@ -5906,7 +5949,8 @@ SQL);
 
         $csvData = $this->fetchUrl($url);
         if (!$csvData) {
-            $msg = 'Gagal mengambil data dari Google Sheets. Pastikan dokumen telah dipublikasikan ke web sebagai CSV dan URL benar.';
+            $detailedError = $this->lastFetchError ? " Detail error: " . $this->lastFetchError : "";
+            $msg = 'Gagal mengambil data dari Google Sheets. Pastikan dokumen telah dipublikasikan ke web sebagai CSV dan URL benar.' . $detailedError;
             if ($isSilent) {
                 return 0;
             }

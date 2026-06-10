@@ -1551,9 +1551,10 @@ class UiModel
             $division = trim((string) ($filters['complaint_division'] ?? ''));
             if ($division !== '') {
                 $divisionShort = trim((string) preg_replace('/\s*[&\(\/-].*$/', '', $division));
-                $where[] = '(UPPER(TRIM(r.divisi)) = :division OR (:division_short <> "" AND UPPER(TRIM(r.divisi)) = :division_short))';
+                $where[] = '(UPPER(TRIM(r.divisi)) = :division OR (:division_short_1 <> "" AND UPPER(TRIM(r.divisi)) = :division_short_2))';
                 $params['division'] = mb_strtoupper($division);
-                $params['division_short'] = mb_strtoupper($divisionShort);
+                $params['division_short_1'] = mb_strtoupper($divisionShort);
+                $params['division_short_2'] = mb_strtoupper($divisionShort);
             }
 
             $dateFrom = trim((string) ($filters['complaint_date_from'] ?? ''));

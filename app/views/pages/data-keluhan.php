@@ -69,7 +69,13 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
 
     <div class="table-wrap table-wrap--complaints">
         <div class="complaint-table-scroll">
-            <table class="data-table data-table--complaints" id="complaintTable">
+            <?php
+            $maxTicketId = 0;
+            if (!empty($data['complaint_rows'])) {
+                $maxTicketId = max(array_column($data['complaint_rows'], 'id'));
+            }
+            ?>
+            <table class="data-table data-table--complaints" id="complaintTable" data-max-id="<?= $maxTicketId; ?>">
                 <thead>
                 <tr>
                     <th>No. Tiket</th>
