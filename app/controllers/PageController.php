@@ -222,7 +222,7 @@ class PageController
 
     private function resolveFilters(): array
     {
-        $keys = ['division_code', 'division_id', 'user', 'email', 'display_division', 'user_page', 'focus_item', 'log_year', 'log_month', 'log_date', 'log_status', 'log_sort', 'log_search', 'complaint_status', 'complaint_division', 'complaint_search', 'complaint_date_from', 'complaint_date_to', 'report_date_from', 'report_date_to', 'report_division', 'report_month', 'report_year', 'report_user_role', 'report_user_division', 'report_all', 'routine_period', 'routine_date', 'routine_week', 'routine_month', 'routine_year'];
+        $keys = ['division_code', 'division_id', 'user', 'email', 'display_division', 'user_page', 'focus_item', 'log_year', 'log_month', 'log_date', 'log_status', 'log_sort', 'log_search', 'complaint_status', 'complaint_division', 'complaint_search', 'complaint_date_from', 'complaint_date_to', 'report_date_from', 'report_date_to', 'report_division', 'report_month', 'report_year', 'report_user_role', 'report_user_division', 'report_all', 'report_category', 'routine_period', 'routine_date', 'routine_week', 'routine_month', 'routine_year'];
         $persisted = $_SESSION['spmt_context'] ?? [];
 
         if (isset($_GET['reset_context']) && $_GET['reset_context'] === '1') {
@@ -4073,6 +4073,7 @@ startxref
             'user_role' => trim((string) ($filters['report_user_role'] ?? '')),
             'user_division' => trim((string) ($filters['report_user_division'] ?? '')),
             'all' => trim((string) ($filters['report_all'] ?? '')) === '1',
+            'category' => trim((string) ($filters['report_category'] ?? '')),
         ];
     }
 
@@ -4096,6 +4097,9 @@ startxref
                 $parts[] = 'Bulan ' . $f['month'] . '/' . $f['year'];
             } else {
                 $parts[] = 'Semua Bulan Tahun ' . $f['year'];
+            }
+            if ($f['category'] !== '') {
+                $parts[] = 'Kategori ' . strtoupper($f['category']);
             }
         } elseif ($type === 'user') {
             if ($f['user_role'] !== '') {

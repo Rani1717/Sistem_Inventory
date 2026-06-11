@@ -263,7 +263,7 @@ body.has-modal-open .routine-manager-modal {
                                         <!-- Container 1: Default Dropdown View -->
                                         <div id="cctvLocSelectContainer" style="display: flex; gap: 6px; align-items: center; width: 100%;">
                                             <select name="lokasi" id="cctvAddLocationSelect" required style="padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 14px; font-size: 14px; flex-grow: 1; height: 46px; background-color: #fff;">
-                                                <option value="">-- Pilih Lokasi --</option>
+                                                <option value="">Pilih Lokasi</option>
                                                 <?php 
                                                 $uniqueLocs = [];
                                                 foreach ($categoryItems as $item) {
