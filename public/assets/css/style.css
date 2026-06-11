@@ -1682,6 +1682,175 @@ button {
     background: #11D10A;
 }
 
+/* CCTV Routine Monitoring Styles */
+.cctv-switch-container {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+}
+
+.cctv-switch-btn {
+    position: relative;
+    width: 58px;
+    height: 26px;
+    border-radius: 13px;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.15);
+    outline: none;
+}
+
+.cctv-switch-knob {
+    position: absolute;
+    top: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cctv-switch-label {
+    font-size: 9px;
+    font-weight: 800;
+    color: #ffffff;
+    width: 100%;
+    text-align: center;
+    user-select: none;
+    transition: all 0.2s ease;
+    line-height: 1;
+}
+
+/* State: EMPTY (-) */
+.cctv-switch-btn--empty {
+    background-color: #cbd5e1;
+}
+.cctv-switch-btn--empty .cctv-switch-knob {
+    left: 19px; /* centered knob */
+}
+.cctv-switch-btn--empty .cctv-switch-label {
+    color: #475569;
+}
+
+/* State: ON */
+.cctv-switch-btn--on {
+    background-color: #2e7d32;
+    justify-content: flex-start;
+}
+.cctv-switch-btn--on .cctv-switch-knob {
+    left: 35px; /* right aligned knob */
+}
+.cctv-switch-btn--on .cctv-switch-label {
+    text-align: left;
+    padding-left: 2px;
+}
+
+/* State: OFF */
+.cctv-switch-btn--off {
+    background-color: #d32f2f;
+    justify-content: flex-end;
+}
+.cctv-switch-btn--off .cctv-switch-knob {
+    left: 3px; /* left aligned knob */
+}
+.cctv-switch-btn--off .cctv-switch-label {
+    text-align: right;
+    padding-right: 2px;
+}
+
+/* CCTV Table Sticky Columns styling */
+.routine-matrix-table--cctv .sticky-col--lokasi {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: #ffffff;
+    min-width: 220px;
+    max-width: 220px;
+    width: 220px;
+    border-right: 1px solid #e2e8f0;
+    white-space: nowrap;
+}
+
+.routine-matrix-table--cctv thead .sticky-col--lokasi {
+    background: #1f5b9f;
+    color: #ffffff;
+    z-index: 4;
+    text-align: center;
+}
+
+.routine-matrix-table--cctv .sticky-col--nama {
+    position: sticky;
+    left: 220px;
+    z-index: 3;
+    background: #ffffff;
+    min-width: 350px;
+    max-width: 350px;
+    width: 350px;
+    border-right: 2px solid #cbd5e1;
+    font-weight: 700;
+    color: #123f79;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.routine-item-name-cell strong {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.routine-matrix-table:not(.routine-matrix-table--cctv) .routine-item-name-cell strong {
+    max-width: 244px; /* 260px - 16px padding */
+}
+
+.routine-matrix-table--cctv .sticky-col--nama strong {
+    max-width: 334px; /* 350px - 16px padding */
+}
+
+
+.routine-matrix-table--cctv thead .sticky-col--nama {
+    background: #1f5b9f;
+    color: #ffffff;
+    z-index: 4;
+    text-align: center;
+}
+
+.routine-lokasi-cell {
+    font-weight: 600;
+    color: #475569;
+    background: #f8fafc !important;
+}
+
+.routine-lokasi-cell span {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 204px; /* 220px - 16px padding */
+}
+
+/* Adjust recap modal badges for ON/OFF */
+.routine-badge--on {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #a5d6a7;
+    font-weight: bold;
+}
+
+.routine-badge--off {
+    background-color: #ffebee;
+    color: #c62828;
+    border: 1px solid #ef9a9a;
+    font-weight: bold;
+}
+
 .log-stat--out {
     background: #2A66A5;
 }
@@ -11880,7 +12049,7 @@ body.has-modal-open .routine-manager-modal { overflow: auto; }
     font-weight: 700;
     min-width: 68px;
 }
-.routine-matrix-table .sticky-col {
+.routine-matrix-table:not(.routine-matrix-table--cctv) .sticky-col {
     position: sticky;
     left: 0;
     z-index: 3;
@@ -11889,10 +12058,11 @@ body.has-modal-open .routine-manager-modal { overflow: auto; }
     min-width: 210px;
     max-width: 260px;
 }
-.routine-matrix-table thead .sticky-col {
+.routine-matrix-table:not(.routine-matrix-table--cctv) thead .sticky-col {
     background: #1f5b9f;
     color: #fff;
     z-index: 4;
+    text-align: center;
 }
 .routine-item-name-cell {
     font-weight: 700;
@@ -12055,7 +12225,7 @@ body.has-modal-open .routine-manager-modal { overflow: auto; }
     .routine-recap-dialog {
         padding: 18px;
     }
-    .routine-matrix-table .sticky-col {
+    .routine-matrix-table:not(.routine-matrix-table--cctv) .sticky-col {
         min-width: 160px;
     }
     .routine-save-btn {

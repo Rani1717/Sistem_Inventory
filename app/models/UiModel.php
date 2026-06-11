@@ -620,10 +620,41 @@ class UiModel
             try {
                 $cctvStmt = $pdo->query('SELECT id, nama_cctv, kode_cctv, lokasi, status FROM cctv_inventaris ORDER BY lokasi ASC, nama_cctv ASC');
                 $cctvRows = $cctvStmt ? $cctvStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                
+                $latestStatuses = [];
+                try {
+                    $statusStmt = $pdo->query('
+                        SELECT rm.item_id, rm.condition_status
+                        FROM routine_monitoring rm
+                        INNER JOIN (
+                            SELECT item_id, MAX(monitor_date) as max_date
+                            FROM routine_monitoring
+                            WHERE item_id IS NOT NULL AND item_id >= 10000
+                            GROUP BY item_id
+                        ) latest ON rm.item_id = latest.item_id AND rm.monitor_date = latest.max_date
+                    ');
+                    if ($statusStmt) {
+                        while ($sRow = $statusStmt->fetch(PDO::FETCH_ASSOC)) {
+                            $latestStatuses[(int)$sRow['item_id']] = strtoupper(trim($sRow['condition_status']));
+                        }
+                    }
+                } catch (Throwable $e) {}
+
                 foreach ($cctvRows as $cam) {
+                    $status = strtoupper(trim((string) ($cam['status'] ?? 'AKTIF')));
+                    if ($status === 'NONAKTIF') {
+                        continue;
+                    }
+                    
                     $cctvTotal++;
                     $loc = strtoupper(trim((string) ($cam['lokasi'] ?? '')));
-                    $status = strtoupper(trim((string) ($cam['status'] ?? 'AKTIF')));
+                    
+                    $camId = (int) ($cam['id'] ?? 0);
+                    $mappedId = $camId + 10000;
+                    
+                    if (isset($latestStatuses[$mappedId])) {
+                        $status = ($latestStatuses[$mappedId] === 'ON') ? 'AKTIF' : 'RUSAK';
+                    }
                     
                     if ($status === 'AKTIF') {
                         $cctvSafe++;
@@ -650,8 +681,7 @@ class UiModel
                         'status' => $status
                     ];
                 }
-
-                $cctvLastUpdateStmt = $pdo->query('SELECT MAX(updated_at) AS last_update FROM cctv_inventaris');
+                $cctvLastUpdateStmt = $pdo->query('SELECT MAX(updated_at) AS last_update FROM (SELECT updated_at FROM cctv_inventaris UNION ALL SELECT updated_at FROM routine_monitoring WHERE item_id >= 10000) combined');
                 $cctvLastUpdate = $cctvLastUpdateStmt ? $cctvLastUpdateStmt->fetchColumn() : null;
                 $cctvLastUpdateStr = $cctvLastUpdate ? $this->formatHistoryDateTime($cctvLastUpdate) : '-';
 
@@ -1816,20 +1846,55 @@ SQL);
                 $stmt = $pdo->query('SELECT id, lokasi, jumlah, color FROM dashboard_cctv ORDER BY id ASC');
                 $rows = $stmt ? $stmt->fetchAll() : [];
             }
-
             // Load kamera individual per lokasi
             $cameraStmt = $pdo->query('SELECT id, nama_cctv, kode_cctv, lokasi, status FROM cctv_inventaris ORDER BY lokasi ASC, nama_cctv ASC');
             $allCameras = $cameraStmt ? $cameraStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            
+            // Fetch latest daily check status from routine monitoring
+            $latestStatuses = [];
+            try {
+                $statusStmt = $pdo->query('
+                    SELECT rm.item_id, rm.condition_status
+                    FROM routine_monitoring rm
+                    INNER JOIN (
+                        SELECT item_id, MAX(monitor_date) as max_date
+                        FROM routine_monitoring
+                        WHERE item_id IS NOT NULL AND item_id >= 10000
+                        GROUP BY item_id
+                    ) latest ON rm.item_id = latest.item_id AND rm.monitor_date = latest.max_date
+                ');
+                if ($statusStmt) {
+                    while ($sRow = $statusStmt->fetch(PDO::FETCH_ASSOC)) {
+                        $latestStatuses[(int)$sRow['item_id']] = strtoupper(trim($sRow['condition_status']));
+                    }
+                }
+            } catch (Throwable $e) {}
+
             $camerasByLokasi = [];
+            $hasInventoryForLocation = [];
             foreach ($allCameras as $cam) {
                 $loc = strtoupper(trim((string) ($cam['lokasi'] ?? '')));
                 if ($loc !== '') {
+                    $hasInventoryForLocation[$loc] = true;
+                    
+                    $status = strtoupper(trim((string) ($cam['status'] ?? 'AKTIF')));
+                    if ($status === 'NONAKTIF') {
+                        continue;
+                    }
+                    
+                    $camId = (int) ($cam['id'] ?? 0);
+                    $mappedId = $camId + 10000;
+                    
+                    if (isset($latestStatuses[$mappedId])) {
+                        $status = ($latestStatuses[$mappedId] === 'ON') ? 'AKTIF' : 'RUSAK';
+                    }
+                    
                     $camerasByLokasi[$loc][] = [
-                        'id'     => (int) ($cam['id'] ?? 0),
+                        'id'     => $camId,
                         'nama'   => (string) ($cam['nama_cctv'] ?? ''),
                         'kode'   => (string) ($cam['kode_cctv'] ?? ''),
                         'lokasi' => (string) ($cam['lokasi'] ?? ''),
-                        'status' => strtoupper(trim((string) ($cam['status'] ?? 'AKTIF'))),
+                        'status' => $status,
                     ];
                 }
             }
@@ -1840,9 +1905,21 @@ SQL);
                 if ($label === '') {
                     continue;
                 }
-                $cameras = $camerasByLokasi[strtoupper($label)] ?? [];
-                // Jika ada data kamera nyata, gunakan count kamera; jika tidak, pakai jumlah dari dashboard_cctv
-                $total = count($cameras) > 0 ? count($cameras) : (int) ($row['jumlah'] ?? 0);
+                $normalizedLabel = strtoupper($label);
+                $cameras = $camerasByLokasi[$normalizedLabel] ?? [];
+                
+                // Jika lokasi terdaftar di inventaris, gunakan jumlah kamera aktif nyata
+                if (isset($hasInventoryForLocation[$normalizedLabel])) {
+                    $total = count($cameras);
+                } else {
+                    $total = 0;
+                }
+
+                // Skip lokasi yang tidak memiliki kamera aktif/rusak agar tidak mengotori chart
+                if ($total === 0) {
+                    continue;
+                }
+                
                 $result[] = [
                     'id'      => (int) ($row['id'] ?? 0),
                     'label'   => $label,

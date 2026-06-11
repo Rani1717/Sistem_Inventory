@@ -887,8 +887,24 @@ class PageController
         if ($pdo instanceof PDO) {
             try {
                 $this->ensureRoutineMonitoringTable($pdo);
-                $stmt = $pdo->query('SELECT i.id, COALESCE(NULLIF(i.category_field, ""), i.item_group) AS item_group, i.item_name, i.sort_order, i.is_active FROM routine_monitoring_items i INNER JOIN routine_monitoring_categories c ON UPPER(c.category_name) = UPPER(COALESCE(NULLIF(i.category_field, ""), i.item_group)) AND c.is_active = 1 WHERE i.is_active = 1 ORDER BY COALESCE(NULLIF(i.category_field, ""), i.item_group) ASC, i.item_name ASC');
-                $rows = $stmt->fetchAll();
+                // Fetch non-CCTV items from database
+                $stmt = $pdo->query('SELECT i.id, COALESCE(NULLIF(i.category_field, ""), i.item_group) AS item_group, i.item_name, i.sort_order, i.is_active FROM routine_monitoring_items i INNER JOIN routine_monitoring_categories c ON UPPER(c.category_name) = UPPER(COALESCE(NULLIF(i.category_field, ""), i.item_group)) AND c.is_active = 1 WHERE i.is_active = 1 AND UPPER(COALESCE(NULLIF(i.category_field, ""), i.item_group)) <> \'CCTV\' ORDER BY COALESCE(NULLIF(i.category_field, ""), i.item_group) ASC, i.item_name ASC');
+                $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                
+                // Fetch CCTV items dynamically from cctv_inventaris where status is active
+                $cctvStmt = $pdo->query('SELECT id, nama_cctv, lokasi FROM cctv_inventaris WHERE status = \'AKTIF\' ORDER BY lokasi ASC, nama_cctv ASC');
+                $cctvRows = $cctvStmt ? $cctvStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                foreach ($cctvRows as $cctv) {
+                    $rows[] = [
+                        'id' => (int)$cctv['id'] + 10000, // Offset to avoid collision with general items
+                        'item_group' => 'CCTV',
+                        'item_name' => $cctv['nama_cctv'],
+                        'lokasi' => $cctv['lokasi'],
+                        'sort_order' => 100,
+                        'is_active' => 1
+                    ];
+                }
+                
                 if (!empty($rows)) {
                     return $rows;
                 }
@@ -896,16 +912,44 @@ class PageController
         }
         return [
             ['id' => 0, 'item_group' => 'GATE', 'item_name' => 'GATE 1', 'sort_order' => 10, 'is_active' => 1],
-            ['id' => 0, 'item_group' => 'CCTV', 'item_name' => 'CCTV GATE', 'sort_order' => 20, 'is_active' => 1],
+            ['id' => 10001, 'item_group' => 'CCTV', 'item_name' => 'CCTV GATE', 'lokasi' => 'GATE', 'sort_order' => 20, 'is_active' => 1],
             ['id' => 0, 'item_group' => 'SERVER', 'item_name' => 'SERVER UTAMA', 'sort_order' => 30, 'is_active' => 1],
         ];
+    }
+
+    private function normalizeRoutineStatus(string $status): string
+    {
+        $status = strtoupper(trim($status));
+        if ($status === 'KURANG_BAIK' || $status === 'KURANGBAIK' || $status === 'KURANG BAIK') {
+            return 'KURANG BAIK';
+        }
+        if (in_array($status, ['BAIK', 'KURANG BAIK', 'BURUK', 'ON', 'OFF'], true)) {
+            return $status;
+        }
+        return 'BAIK';
     }
 
     private function routineAllItems(PDO $pdo): array
     {
         $this->ensureRoutineMonitoringTable($pdo);
-        $stmt = $pdo->query('SELECT id, COALESCE(NULLIF(category_field, ""), item_group) AS item_group, item_name, sort_order, is_active FROM routine_monitoring_items WHERE UPPER(COALESCE(NULLIF(category_field, ""), item_group)) <> \'UMUM\' ORDER BY is_active DESC, COALESCE(NULLIF(category_field, ""), item_group) ASC, item_name ASC');
-        return $stmt->fetchAll();
+        $stmt = $pdo->query('SELECT id, COALESCE(NULLIF(category_field, ""), item_group) AS item_group, item_name, sort_order, is_active FROM routine_monitoring_items WHERE UPPER(COALESCE(NULLIF(category_field, ""), item_group)) <> \'UMUM\' AND UPPER(COALESCE(NULLIF(category_field, ""), item_group)) <> \'CCTV\' ORDER BY is_active DESC, COALESCE(NULLIF(category_field, ""), item_group) ASC, item_name ASC');
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        try {
+            $cctvStmt = $pdo->query('SELECT c.id, c.nama_cctv, c.lokasi, c.status, d.color FROM cctv_inventaris c LEFT JOIN dashboard_cctv d ON UPPER(TRIM(d.lokasi)) = UPPER(TRIM(c.lokasi)) ORDER BY c.status ASC, c.lokasi ASC, c.nama_cctv ASC');
+            $cctvRows = $cctvStmt ? $cctvStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            foreach ($cctvRows as $cctv) {
+                $rows[] = [
+                    'id' => (int)$cctv['id'] + 10000,
+                    'item_group' => 'CCTV',
+                    'item_name' => $cctv['nama_cctv'],
+                    'lokasi' => $cctv['lokasi'],
+                    'color' => preg_match('/^#[0-9A-Fa-f]{6}$/', (string) ($cctv['color'] ?? '')) ? (string) $cctv['color'] : '#5B8DEF',
+                    'sort_order' => 100,
+                    'is_active' => ($cctv['status'] === 'AKTIF' ? 1 : 0)
+                ];
+            }
+        } catch (Throwable $e) {}
+        return $rows;
     }
 
     private function routineCategories(PDO $pdo, bool $activeOnly = true): array
@@ -928,14 +972,6 @@ class PageController
         return $rows;
     }
 
-    private function normalizeRoutineStatus(string $status): string
-    {
-        $status = strtoupper(trim($status));
-        if ($status === 'KURANG_BAIK' || $status === 'KURANGBAIK' || $status === 'KURANG BAIK') {
-            return 'KURANG BAIK';
-        }
-        return in_array($status, ['BAIK', 'KURANG BAIK', 'BURUK'], true) ? $status : 'BAIK';
-    }
 
     private function normalizeRoutineItemGroup(string $group): string
     {
@@ -1035,6 +1071,15 @@ class PageController
         }
         $action = trim((string) ($_POST['action'] ?? ''));
 
+        // Auto-save checklist matrix if it is passed in any routine monitoring POST action (except main save action)
+        if ($action !== 'save_routine_monitoring' && isset($_POST['matrix_json'])) {
+            try {
+                $this->saveRoutineMonitoringMatrix($pdo, (string) $_POST['matrix_json'], $filters);
+            } catch (Throwable $e) {
+                // Silently ignore auto-save errors during secondary actions to prevent blocking the modal actions
+            }
+        }
+
         if (in_array($action, ['add_routine_category', 'update_routine_category', 'delete_routine_category'], true)) {
             if (!AuthController::isAdminSpmt()) {
                 http_response_code(403);
@@ -1078,13 +1123,36 @@ class PageController
                     $oldStmt = $pdo->prepare('SELECT category_name FROM routine_monitoring_categories WHERE id = :id');
                     $oldStmt->execute(['id' => $categoryId]);
                     $oldName = $this->normalizeRoutineItemGroup((string) ($oldStmt->fetchColumn() ?: ''));
-                    $stmt = $pdo->prepare('UPDATE routine_monitoring_categories SET is_active = 0 WHERE id = :id');
+                    
+                    // 1. Delete category
+                    $stmt = $pdo->prepare('DELETE FROM routine_monitoring_categories WHERE id = :id');
                     $stmt->execute(['id' => $categoryId]);
+                    
                     if ($oldName !== '') {
-                        $off = $pdo->prepare('UPDATE routine_monitoring_items SET is_active = 0 WHERE UPPER(COALESCE(NULLIF(category_field, ""), item_group)) = UPPER(:category_name)');
-                        $off->execute(['category_name' => $oldName]);
+                        if (strtoupper($oldName) === 'CCTV') {
+                            // Delete all CCTV cameras from inventaris
+                            $pdo->exec('DELETE FROM cctv_inventaris');
+                            // Delete all CCTV checklist records from routine_monitoring (item_id >= 10000)
+                            $pdo->exec('DELETE FROM routine_monitoring WHERE item_id >= 10000');
+                            // Clear CCTV locations from dashboard
+                            $pdo->exec('DELETE FROM dashboard_cctv');
+                        } else {
+                            // 2. Fetch all item IDs belonging to this category to clean routine_monitoring history
+                            $itemsStmt = $pdo->prepare('SELECT id FROM routine_monitoring_items WHERE UPPER(COALESCE(NULLIF(category_field, ""), item_group)) = UPPER(:category_name)');
+                            $itemsStmt->execute(['category_name' => $oldName]);
+                            $itemIds = $itemsStmt->fetchAll(PDO::FETCH_COLUMN);
+                            
+                            if (!empty($itemIds)) {
+                                $inClause = implode(',', array_map('intval', $itemIds));
+                                $pdo->exec("DELETE FROM routine_monitoring WHERE item_id IN ($inClause)");
+                            }
+                            
+                            // 3. Delete the items themselves
+                            $delItems = $pdo->prepare('DELETE FROM routine_monitoring_items WHERE UPPER(COALESCE(NULLIF(category_field, ""), item_group)) = UPPER(:category_name)');
+                            $delItems->execute(['category_name' => $oldName]);
+                        }
                     }
-                    $_SESSION['flash'] = ['type' => 'success', 'message' => 'Kategori checking berhasil dihapus dari list aktif.'];
+                    $_SESSION['flash'] = ['type' => 'success', 'message' => 'Kategori checking dan semua item didalamnya berhasil dihapus dari database.'];
                 }
             } catch (Throwable $e) {
                 $_SESSION['flash'] = ['type' => 'error', 'message' => 'Gagal mengelola kategori checking: ' . $e->getMessage()];
@@ -1103,17 +1171,44 @@ class PageController
                 if ($action === 'add_routine_item') {
                     $group = $this->normalizeRoutineItemGroup((string) ($_POST['item_group'] ?? 'GATE'));
                     $name = trim((string) ($_POST['item_name'] ?? ''));
-                    $sortOrder = (int) ($pdo->query('SELECT COALESCE(MAX(sort_order), 0) + 10 FROM routine_monitoring_items')->fetchColumn() ?: 10);
+                    $lokasi = trim((string) ($_POST['lokasi'] ?? 'UMUM'));
                     if ($name === '') {
                         throw new RuntimeException('Nama checking wajib diisi.');
                     }
-                    $stmt = $pdo->prepare('INSERT INTO routine_monitoring_items (item_group, category_field, item_name, sort_order, is_active) VALUES (:item_group, :category_field, :item_name, :sort_order, 1)');
-                    $stmt->execute(['item_group' => $group, 'category_field' => $group, 'item_name' => $name, 'sort_order' => $sortOrder]);
-                    $_SESSION['flash'] = ['type' => 'success', 'message' => 'Item checking berhasil ditambahkan.'];
+                    if ($group === 'CCTV') {
+                        $color = trim((string) ($_POST['color'] ?? '#5B8DEF'));
+                        if (!preg_match('/^#[0-9A-Fa-f]{6}$/', $color)) {
+                            $color = '#5B8DEF';
+                        }
+                        $locClean = $lokasi === '' ? 'UMUM' : $lokasi;
+
+                        $stmt = $pdo->prepare('INSERT INTO cctv_inventaris (nama_cctv, lokasi, status) VALUES (:nama_cctv, :lokasi, \'AKTIF\')');
+                        $stmt->execute(['nama_cctv' => $name, 'lokasi' => $locClean]);
+
+                        // Sync location color in dashboard_cctv
+                        $chk = $pdo->prepare('SELECT id FROM dashboard_cctv WHERE UPPER(TRIM(lokasi)) = UPPER(TRIM(:lokasi))');
+                        $chk->execute(['lokasi' => $locClean]);
+                        $cctvDbId = $chk->fetchColumn();
+                        if ($cctvDbId) {
+                            $upd = $pdo->prepare('UPDATE dashboard_cctv SET color = :color WHERE id = :id');
+                            $upd->execute(['color' => $color, 'id' => $cctvDbId]);
+                        } else {
+                            $ins = $pdo->prepare('INSERT INTO dashboard_cctv (lokasi, jumlah, color) VALUES (:lokasi, 1, :color)');
+                            $ins->execute(['lokasi' => $locClean, 'color' => $color]);
+                        }
+
+                        $_SESSION['flash'] = ['type' => 'success', 'message' => 'Kamera CCTV berhasil ditambahkan ke inventaris.'];
+                    } else {
+                        $sortOrder = (int) ($pdo->query('SELECT COALESCE(MAX(sort_order), 0) + 10 FROM routine_monitoring_items')->fetchColumn() ?: 10);
+                        $stmt = $pdo->prepare('INSERT INTO routine_monitoring_items (item_group, category_field, item_name, sort_order, is_active) VALUES (:item_group, :category_field, :item_name, :sort_order, 1)');
+                        $stmt->execute(['item_group' => $group, 'category_field' => $group, 'item_name' => $name, 'sort_order' => $sortOrder]);
+                        $_SESSION['flash'] = ['type' => 'success', 'message' => 'Item checking berhasil ditambahkan.'];
+                    }
                 } elseif ($action === 'update_routine_item') {
                     $itemId = max(0, (int) ($_POST['item_id'] ?? 0));
                     $group = $this->normalizeRoutineItemGroup((string) ($_POST['item_group'] ?? 'GATE'));
                     $name = trim((string) ($_POST['item_name'] ?? ''));
+                    $lokasi = trim((string) ($_POST['lokasi'] ?? ''));
                     $isActive = isset($_POST['is_active']) ? 1 : 0;
                     if ($itemId <= 0) {
                         throw new RuntimeException('Item checking tidak valid.');
@@ -1121,24 +1216,80 @@ class PageController
                     if ($name === '') {
                         throw new RuntimeException('Nama checking wajib diisi.');
                     }
-                    $oldStmt = $pdo->prepare('SELECT item_name FROM routine_monitoring_items WHERE id = :id');
-                    $oldStmt->execute(['id' => $itemId]);
-                    $oldName = trim((string) ($oldStmt->fetchColumn() ?: ''));
-                    $stmt = $pdo->prepare('UPDATE routine_monitoring_items SET item_group = :item_group, category_field = :category_field, item_name = :item_name, is_active = :is_active WHERE id = :id');
-                    $stmt->execute(['item_group' => $group, 'category_field' => $group, 'item_name' => $name, 'is_active' => $isActive, 'id' => $itemId]);
-                    if ($oldName !== '' && $oldName !== $name) {
-                        $sync = $pdo->prepare('UPDATE routine_monitoring SET item_name = :new_name WHERE item_id = :item_id OR item_name = :old_name');
-                        $sync->execute(['new_name' => $name, 'item_id' => $itemId, 'old_name' => $oldName]);
+                    if ($group === 'CCTV' || $itemId >= 10000) {
+                        $actualId = $itemId >= 10000 ? ($itemId - 10000) : $itemId;
+                        $status = $isActive ? 'AKTIF' : 'NONAKTIF';
+                        $locClean = $lokasi === '' ? 'UMUM' : $lokasi;
+
+                        $color = trim((string) ($_POST['color'] ?? '#5B8DEF'));
+                        if (!preg_match('/^#[0-9A-Fa-f]{6}$/', $color)) {
+                            $color = '#5B8DEF';
+                        }
+
+                        $stmt = $pdo->prepare('UPDATE cctv_inventaris SET nama_cctv = :nama, lokasi = :lokasi, status = :status WHERE id = :id');
+                        $stmt->execute(['nama' => $name, 'lokasi' => $locClean, 'status' => $status, 'id' => $actualId]);
+
+                        // Sync location color in dashboard_cctv
+                        $chk = $pdo->prepare('SELECT id FROM dashboard_cctv WHERE UPPER(TRIM(lokasi)) = UPPER(TRIM(:lokasi))');
+                        $chk->execute(['lokasi' => $locClean]);
+                        $cctvDbId = $chk->fetchColumn();
+                        if ($cctvDbId) {
+                            $upd = $pdo->prepare('UPDATE dashboard_cctv SET color = :color WHERE id = :id');
+                            $upd->execute(['color' => $color, 'id' => $cctvDbId]);
+                        } else {
+                            $ins = $pdo->prepare('INSERT INTO dashboard_cctv (lokasi, jumlah, color) VALUES (:lokasi, 1, :color)');
+                            $ins->execute(['lokasi' => $locClean, 'color' => $color]);
+                        }
+
+                        // Clean up any empty locations from dashboard_cctv
+                        $pdo->exec("DELETE FROM dashboard_cctv WHERE UPPER(TRIM(lokasi)) NOT IN (SELECT DISTINCT UPPER(TRIM(lokasi)) FROM cctv_inventaris)");
+
+                        $_SESSION['flash'] = ['type' => 'success', 'message' => 'Data Kamera CCTV berhasil diperbarui.'];
+                    } else {
+                        $oldStmt = $pdo->prepare('SELECT item_name FROM routine_monitoring_items WHERE id = :id');
+                        $oldStmt->execute(['id' => $itemId]);
+                        $oldName = trim((string) ($oldStmt->fetchColumn() ?: ''));
+                        $stmt = $pdo->prepare('UPDATE routine_monitoring_items SET item_group = :item_group, category_field = :category_field, item_name = :item_name, is_active = :is_active WHERE id = :id');
+                        $stmt->execute(['item_group' => $group, 'category_field' => $group, 'item_name' => $name, 'is_active' => $isActive, 'id' => $itemId]);
+                        if ($oldName !== '' && $oldName !== $name) {
+                            $sync = $pdo->prepare('UPDATE routine_monitoring SET item_name = :new_name WHERE item_id = :item_id OR item_name = :old_name');
+                            $sync->execute(['new_name' => $name, 'item_id' => $itemId, 'old_name' => $oldName]);
+                        }
+                        $_SESSION['flash'] = ['type' => 'success', 'message' => 'Item checking berhasil diperbarui.'];
                     }
-                    $_SESSION['flash'] = ['type' => 'success', 'message' => 'Item checking berhasil diperbarui.'];
                 } else {
                     $itemId = max(0, (int) ($_POST['item_id'] ?? 0));
+                    $group = $this->normalizeRoutineItemGroup((string) ($_POST['item_group'] ?? 'GATE'));
                     if ($itemId <= 0) {
                         throw new RuntimeException('Item checking tidak valid.');
                     }
-                    $stmt = $pdo->prepare('UPDATE routine_monitoring_items SET is_active = 0 WHERE id = :id');
-                    $stmt->execute(['id' => $itemId]);
-                    $_SESSION['flash'] = ['type' => 'success', 'message' => 'Item checking berhasil dihapus dari list aktif.'];
+                    if ($group === 'CCTV' || $itemId >= 10000) {
+                        $actualId = $itemId >= 10000 ? ($itemId - 10000) : $itemId;
+                        $mappedId = $actualId + 10000;
+                        
+                        // Delete camera from inventaris
+                        $stmt = $pdo->prepare('DELETE FROM cctv_inventaris WHERE id = :id');
+                        $stmt->execute(['id' => $actualId]);
+                        
+                        // Delete related monitoring checklist data
+                        $stmtRm = $pdo->prepare('DELETE FROM routine_monitoring WHERE item_id = :item_id');
+                        $stmtRm->execute(['item_id' => $mappedId]);
+
+                        // Clean up any empty locations from dashboard_cctv
+                        $pdo->exec("DELETE FROM dashboard_cctv WHERE UPPER(TRIM(lokasi)) NOT IN (SELECT DISTINCT UPPER(TRIM(lokasi)) FROM cctv_inventaris)");
+                        
+                        $_SESSION['flash'] = ['type' => 'success', 'message' => 'Kamera CCTV berhasil dihapus dari database.'];
+                    } else {
+                        // Delete item from routine_monitoring_items
+                        $stmt = $pdo->prepare('DELETE FROM routine_monitoring_items WHERE id = :id');
+                        $stmt->execute(['id' => $itemId]);
+                        
+                        // Delete related checks from routine_monitoring
+                        $stmtRm = $pdo->prepare('DELETE FROM routine_monitoring WHERE item_id = :item_id');
+                        $stmtRm->execute(['item_id' => $itemId]);
+                        
+                        $_SESSION['flash'] = ['type' => 'success', 'message' => 'Item checking berhasil dihapus dari database.'];
+                    }
                 }
             } catch (Throwable $e) {
                 $_SESSION['flash'] = ['type' => 'error', 'message' => 'Gagal mengelola item checking: ' . $e->getMessage()];
@@ -1151,77 +1302,11 @@ class PageController
             return;
         }
         $context = $this->routinePeriodContext($filters);
-        $postedItems = $_POST['items'] ?? [];
-        if (!is_array($postedItems)) {
-            $postedItems = [];
-        }
-        $auth = $_SESSION['auth'] ?? [];
+        $matrixJson = (string) ($_POST['matrix_json'] ?? '');
         $saveCategoryRaw = trim((string) ($_POST['save_category'] ?? ''));
-        $saveCategory = $saveCategoryRaw !== '' ? $this->normalizeRoutineItemGroup($saveCategoryRaw) : '';
         try {
-            $routineItems = $this->routineDefaultItems($pdo);
-            $upsert = $pdo->prepare('INSERT INTO routine_monitoring (period_type, period_key, monitor_date, item_id, item_name, condition_status, keterangan, checked_by_user_id, checked_by_name) VALUES (:period_type, :period_key, :monitor_date, :item_id, :item_name, :condition_status, :keterangan, :checked_by_user_id, :checked_by_name) ON DUPLICATE KEY UPDATE item_name = VALUES(item_name), condition_status = VALUES(condition_status), keterangan = VALUES(keterangan), checked_by_user_id = VALUES(checked_by_user_id), checked_by_name = VALUES(checked_by_name), updated_at = CURRENT_TIMESTAMP');
-            $savedCount = 0;
-            $tz = new DateTimeZone('Asia/Jakarta');
-            foreach ($routineItems as $item) {
-                $itemId = (int) ($item['id'] ?? 0);
-                $itemName = trim((string) ($item['item_name'] ?? ''));
-                $itemGroup = $this->normalizeRoutineItemGroup((string) ($item['item_group'] ?? 'GATE'));
-                if ($itemId <= 0 || $itemName === '') {
-                    continue;
-                }
-                if ($saveCategory !== '' && $saveCategory !== $itemGroup) {
-                    continue;
-                }
-                $itemRows = $postedItems[$itemId] ?? [];
-                if (!is_array($itemRows) || empty($itemRows)) {
-                    continue;
-                }
-                $deleteStmt = $pdo->prepare('DELETE FROM routine_monitoring WHERE period_type = :period_type AND period_key = :period_key AND item_id = :item_id');
-                foreach ($itemRows as $monitorDate => $posted) {
-                    if (!is_array($posted)) {
-                        continue;
-                    }
-                    $statusRaw = trim((string) ($posted['condition_status'] ?? ''));
-                    try {
-                        $dateObj = new DateTimeImmutable((string) $monitorDate, $tz);
-                    } catch (Throwable $e) {
-                        continue;
-                    }
-                    $dateKey = $dateObj->format('Y-m-d');
-                    if ($dateKey < $context['start_date'] || $dateKey > $context['end_date']) {
-                        continue;
-                    }
-                    if ($statusRaw === '') {
-                        // User set ke "-": hapus data yang ada agar tampil kembali kosong
-                        $deleteStmt->execute([
-                            'period_type' => 'daily',
-                            'period_key'  => $dateKey,
-                            'item_id'     => $itemId,
-                        ]);
-                        continue;
-                    }
-                    $params = [
-                        'period_type'       => 'daily',
-                        'period_key'        => $dateKey,
-                        'monitor_date'      => $dateKey,
-                        'item_id'           => $itemId,
-                        'item_name'         => $itemName,
-                        'condition_status'  => $this->normalizeRoutineStatus($statusRaw),
-                        'keterangan'        => trim((string) ($posted['keterangan'] ?? '')) !== '' ? trim((string) ($posted['keterangan'] ?? '')) : null,
-                        'checked_by_user_id' => (int) ($auth['id'] ?? 0) ?: null,
-                        'checked_by_name'   => (string) ($auth['nama_lengkap'] ?? $auth['username'] ?? ''),
-                    ];
-                    $upsert->execute($params);
-                    $savedCount++;
-                }
-            }
-            $categoryText = $saveCategory !== '' ? ' kategori ' . $saveCategory : '';
-            if ($savedCount > 0) {
-                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Checklist Routine Monitoring' . $categoryText . ' berhasil disimpan.'];
-            } else {
-                $_SESSION['flash'] = ['type' => 'error', 'message' => 'Belum ada perubahan checklist yang dipilih untuk disimpan.'];
-            }
+            $this->saveRoutineMonitoringMatrix($pdo, $matrixJson, $filters, $saveCategoryRaw);
+            $_SESSION['flash'] = ['type' => 'success', 'message' => 'Checklist Routine Monitoring berhasil disimpan.'];
         } catch (Throwable $e) {
             $_SESSION['flash'] = ['type' => 'error', 'message' => 'Gagal menyimpan Routine Monitoring: ' . $e->getMessage()];
         }
@@ -1231,6 +1316,77 @@ class PageController
             'routine_search' => $context['search'],
         ]));
         exit;
+    }
+
+    private function saveRoutineMonitoringMatrix(PDO $pdo, string $matrixJson, array $filters, ?string $saveCategoryRaw = null): void
+    {
+        $context = $this->routinePeriodContext($filters);
+        $postedItems = [];
+        $decoded = json_decode((string) $matrixJson, true);
+        if (is_array($decoded)) {
+            $postedItems = $decoded;
+        }
+        if (empty($postedItems)) {
+            return;
+        }
+        $auth = $_SESSION['auth'] ?? [];
+        $saveCategory = $saveCategoryRaw !== null && trim($saveCategoryRaw) !== '' ? $this->normalizeRoutineItemGroup($saveCategoryRaw) : '';
+        
+        $routineItems = $this->routineDefaultItems($pdo);
+        $upsert = $pdo->prepare('INSERT INTO routine_monitoring (period_type, period_key, monitor_date, item_id, item_name, condition_status, keterangan, checked_by_user_id, checked_by_name) VALUES (:period_type, :period_key, :monitor_date, :item_id, :item_name, :condition_status, :keterangan, :checked_by_user_id, :checked_by_name) ON DUPLICATE KEY UPDATE item_name = VALUES(item_name), condition_status = VALUES(condition_status), keterangan = VALUES(keterangan), checked_by_user_id = VALUES(checked_by_user_id), checked_by_name = VALUES(checked_by_name), updated_at = CURRENT_TIMESTAMP');
+        $tz = new DateTimeZone('Asia/Jakarta');
+        foreach ($routineItems as $item) {
+            $itemId = (int) ($item['id'] ?? 0);
+            $itemName = trim((string) ($item['item_name'] ?? ''));
+            $itemGroup = $this->normalizeRoutineItemGroup((string) ($item['item_group'] ?? 'GATE'));
+            if ($itemId <= 0 || $itemName === '') {
+                continue;
+            }
+            if ($saveCategory !== '' && $saveCategory !== $itemGroup) {
+                continue;
+            }
+            $itemRows = $postedItems[$itemId] ?? [];
+            if (!is_array($itemRows) || empty($itemRows)) {
+                continue;
+            }
+            $deleteStmt = $pdo->prepare('DELETE FROM routine_monitoring WHERE period_type = :period_type AND period_key = :period_key AND item_id = :item_id');
+            foreach ($itemRows as $monitorDate => $posted) {
+                if (!is_array($posted)) {
+                    continue;
+                }
+                $statusRaw = trim((string) ($posted['condition_status'] ?? ''));
+                try {
+                    $dateObj = new DateTimeImmutable((string) $monitorDate, $tz);
+                } catch (Throwable $e) {
+                    continue;
+                }
+                $dateKey = $dateObj->format('Y-m-d');
+                if ($dateKey < $context['start_date'] || $dateKey > $context['end_date']) {
+                    continue;
+                }
+                if ($statusRaw === '') {
+                    // User set ke "-": hapus data yang ada agar tampil kembali kosong
+                    $deleteStmt->execute([
+                        'period_type' => 'daily',
+                        'period_key'  => $dateKey,
+                        'item_id'     => $itemId,
+                    ]);
+                    continue;
+                }
+                $params = [
+                    'period_type'       => 'daily',
+                    'period_key'        => $dateKey,
+                    'monitor_date'      => $dateKey,
+                    'item_id'           => $itemId,
+                    'item_name'         => $itemName,
+                    'condition_status'  => $this->normalizeRoutineStatus($statusRaw),
+                    'keterangan'        => trim((string) ($posted['keterangan'] ?? '')) !== '' ? trim((string) ($posted['keterangan'] ?? '')) : null,
+                    'checked_by_user_id' => (int) ($auth['id'] ?? 0) ?: null,
+                    'checked_by_name'   => (string) ($auth['nama_lengkap'] ?? $auth['username'] ?? ''),
+                ];
+                $upsert->execute($params);
+            }
+        }
     }
     private function buildRoutineMonitoringData(array $filters): array
     {
@@ -1254,7 +1410,7 @@ class PageController
                     if ($itemId <= 0 || $itemName === '' || $itemGroup === 'UMUM') {
                         continue;
                     }
-                    if ($search !== '' && stripos($itemName, $search) === false && stripos($itemGroup, $search) === false) {
+                    if ($search !== '' && stripos($itemName, $search) === false && stripos($itemGroup, $search) === false && (!isset($item['lokasi']) || stripos($item['lokasi'], $search) === false)) {
                         continue;
                     }
                     $calendar = [];
@@ -1270,6 +1426,7 @@ class PageController
                         'id' => $itemId,
                         'item_group' => $itemGroup,
                         'item_name' => $itemName,
+                        'lokasi' => $item['lokasi'] ?? '',
                         'calendar' => $calendar,
                     ];
                 }
@@ -1302,7 +1459,7 @@ class PageController
                 $groupedItems[$group] = [];
             }
             if (!isset($summaryByGroup[$group])) {
-                $summaryByGroup[$group] = ['BAIK' => [], 'KURANG BAIK' => [], 'BURUK' => []];
+                $summaryByGroup[$group] = ['BAIK' => [], 'KURANG BAIK' => [], 'BURUK' => [], 'ON' => [], 'OFF' => []];
             }
             foreach (($item['calendar'] ?? []) as $date => $cell) {
                 $status = trim((string) ($cell['condition_status'] ?? ''));
@@ -1313,7 +1470,7 @@ class PageController
                     $recapByDate[$date] = [];
                 }
                 if (!isset($recapByDate[$date][$group])) {
-                    $recapByDate[$date][$group] = ['BAIK' => [], 'KURANG BAIK' => [], 'BURUK' => []];
+                    $recapByDate[$date][$group] = ['BAIK' => [], 'KURANG BAIK' => [], 'BURUK' => [], 'ON' => [], 'OFF' => []];
                 }
                 $entry = [
                     'item_name' => (string) ($item['item_name'] ?? '-'),
@@ -1409,7 +1566,7 @@ class PageController
                 continue;
             }
             foreach ($groupRows as $group => $statusRows) {
-                foreach (['BAIK', 'KURANG BAIK', 'BURUK'] as $status) {
+                foreach (['BAIK', 'KURANG BAIK', 'BURUK', 'ON', 'OFF'] as $status) {
                     foreach (($statusRows[$status] ?? []) as $row) {
                         $rows[] = [
                             'no' => (string) $no++,

@@ -2353,41 +2353,85 @@
 })();
 
 (function () {
-    var modal = document.getElementById('routineItemManagerModal');
-    if (!modal) return;
-    var openBtns = document.querySelectorAll('.js-open-routine-manager');
-    var closeBtns = modal.querySelectorAll('.js-close-routine-manager');
-    function openRoutineManager() {
-        modal.hidden = false;
-        modal.setAttribute('aria-hidden', 'false');
-        document.body.classList.add('modal-open');
-        document.body.classList.add('has-modal-open');
-        var firstField = modal.querySelector('input, select, button');
-        if (firstField && firstField.focus) window.setTimeout(function () { firstField.focus(); }, 0);
+    // 1. Kelola Kategori (List Checking) Modal
+    var routineCatModal = document.getElementById('routineCategoryManagerModal');
+    var openCatModalBtn = document.querySelector('.js-open-category-modal');
+    if (routineCatModal && openCatModalBtn) {
+        var closeCatModalBtns = routineCatModal.querySelectorAll('.js-close-category-modal');
+        openCatModalBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            routineCatModal.hidden = false;
+            routineCatModal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('modal-open', 'has-modal-open');
+        });
+        function closeCatModal() {
+            routineCatModal.hidden = true;
+            routineCatModal.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('modal-open', 'has-modal-open');
+        }
+        closeCatModalBtns.forEach(function (btn) {
+            btn.addEventListener('click', closeCatModal);
+        });
+        routineCatModal.addEventListener('click', function (e) {
+            if (e.target === routineCatModal) closeCatModal();
+        });
     }
-    function closeRoutineManager() {
-        modal.hidden = true;
-        modal.setAttribute('aria-hidden', 'true');
-        document.body.classList.remove('modal-open');
-        document.body.classList.remove('has-modal-open');
-    }
-    openBtns.forEach(function (btn) {
+
+    // 2. Category Managers Modals
+    var openCatBtns = document.querySelectorAll('.js-open-category-manager');
+    openCatBtns.forEach(function (btn) {
         btn.addEventListener('click', function (event) {
             event.preventDefault();
-            openRoutineManager();
+            var cat = btn.getAttribute('data-category');
+            var modal = document.getElementById('routineItemManagerModal-' + cat);
+            if (modal) {
+                modal.hidden = false;
+                modal.setAttribute('aria-hidden', 'false');
+                document.body.classList.add('modal-open', 'has-modal-open');
+                
+                var firstField = modal.querySelector('input, select, button');
+                if (firstField && firstField.focus) {
+                    window.setTimeout(function () { firstField.focus(); }, 0);
+                }
+            }
         });
     });
-    closeBtns.forEach(function (btn) {
-        btn.addEventListener('click', function (event) {
-            event.preventDefault();
-            closeRoutineManager();
+
+    // Close buttons inside category modals
+    document.querySelectorAll('.js-category-manager-modal').forEach(function (modal) {
+        var closeBtns = modal.querySelectorAll('.js-close-routine-manager');
+        function closeThisModal() {
+            modal.hidden = true;
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('modal-open', 'has-modal-open');
+        }
+        closeBtns.forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                closeThisModal();
+            });
+        });
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) closeThisModal();
         });
     });
-    modal.addEventListener('click', function (event) {
-        if (event.target === modal) closeRoutineManager();
-    });
+
+    // Global ESC key listener for all routine modals
     document.addEventListener('keydown', function (event) {
-        if (event.key === 'Escape' && !modal.hidden) closeRoutineManager();
+        if (event.key === 'Escape') {
+            if (routineCatModal && !routineCatModal.hidden) {
+                routineCatModal.hidden = true;
+                routineCatModal.setAttribute('aria-hidden', 'true');
+                document.body.classList.remove('modal-open', 'has-modal-open');
+            }
+            document.querySelectorAll('.js-category-manager-modal').forEach(function (modal) {
+                if (!modal.hidden) {
+                    modal.hidden = true;
+                    modal.setAttribute('aria-hidden', 'true');
+                    document.body.classList.remove('modal-open', 'has-modal-open');
+                }
+            });
+        }
     });
 })();
 
