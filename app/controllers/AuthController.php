@@ -234,7 +234,7 @@ class AuthController
         $role = self::role();
         $inventoryPages = ['inventory-pc', 'inventory-other'];
         $dataInventoryPages = ['data-inventaris', 'data-inventaris-subreg', 'inventaris-detail'];
-        $userPages = array_merge($inventoryPages, $dataInventoryPages, ['log-barang', 'routine-monitoring']);
+        $userPages = array_merge($inventoryPages, $dataInventoryPages, ['log-barang', 'routine-monitoring', 'dashboard']);
         $operatorPages = array_merge($userPages, ['data-keluhan']);
         $adminPages = array_merge($operatorPages, ['dashboard', 'laporan']);
 

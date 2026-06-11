@@ -595,6 +595,12 @@ class PageController
             return;
         }
 
+        if (AuthController::role() === 'user') {
+            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Akses ditolak. Sebagai User, Anda tidak diperbolehkan melakukan tindakan ini.'];
+            header('Location: index.php?page=dashboard');
+            exit;
+        }
+
         $pdo = Database::getConnection();
         if (!$pdo instanceof PDO) {
             return;
@@ -2628,6 +2634,12 @@ SQL);
             return;
         }
 
+        if (AuthController::role() === 'user' && in_array($postAction, ['edit_log_barang', 'delete_log_barang'], true)) {
+            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Akses ditolak. Sebagai User, Anda hanya diperbolehkan menambah log dan tidak bisa mengedit atau menghapus.'];
+            header('Location: ' . $this->buildLogBarangUrl($filters));
+            exit;
+        }
+
         try {
             if ($postAction === 'save_log_barang') {
                 $this->insertLogBarang($pdo, $_POST, $_FILES);
@@ -4405,6 +4417,12 @@ startxref
             $inventoryDb = (string) ($context['inventory_db'] ?? '');
             if (!$this->isSafeIdentifier($inventoryDb)) {
                 throw new RuntimeException('Database inventaris tidak valid.');
+            }
+
+            if (AuthController::role() === 'user' && in_array($action, ['save_inventory_edit', 'delete_inventory_bundle', 'delete_other_item'], true)) {
+                $_SESSION['flash'] = ['type' => 'error', 'message' => 'Akses ditolak. Sebagai User, Anda hanya diperbolehkan menambah data dan tidak bisa mengedit atau menghapus.'];
+                header('Location: ' . $this->buildDetailUrl($this->detailRedirectFilters($filters, $context)));
+                exit;
             }
 
             if ($action === 'save_pc') {

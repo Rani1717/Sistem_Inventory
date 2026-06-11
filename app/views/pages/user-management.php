@@ -64,20 +64,25 @@ $status = (string) ($filters['status'] ?? 'all');
                         </td>
                         <td><?= e((string) ($row['division_label'] ?? $row['unit_kerja_default'] ?? '-')); ?></td>
                         <td>
-                            <form method="post" class="inline-admin-form">
-                                <input type="hidden" name="user_id" value="<?= $userId; ?>">
-                                <input type="hidden" name="user_action" value="role">
-                                <select name="role" onchange="this.form.submit()">
-                                    <option value="user" <?= $role === 'user' ? 'selected' : ''; ?>>user</option>
-                                    <option value="operator" <?= $role === 'operator' ? 'selected' : ''; ?>>operator</option>
-                                    <option value="admin" <?= $role === 'admin' ? 'selected' : ''; ?>>admin</option>
-                                </select>
-                            </form>
+                            <?php if (AuthController::isAdminSpmt()): ?>
+                                <form method="post" class="inline-admin-form">
+                                    <input type="hidden" name="user_id" value="<?= $userId; ?>">
+                                    <input type="hidden" name="user_action" value="role">
+                                    <select name="role" onchange="this.form.submit()">
+                                        <option value="user" <?= $role === 'user' ? 'selected' : ''; ?>>user</option>
+                                        <option value="operator" <?= $role === 'operator' ? 'selected' : ''; ?>>operator</option>
+                                        <option value="admin" <?= $role === 'admin' ? 'selected' : ''; ?>>admin</option>
+                                    </select>
+                                </form>
+                            <?php else: ?>
+                                <?= e($role); ?>
+                            <?php endif; ?>
                         </td>
                         <td><span class="badge <?= $isActive ? 'badge--ok' : 'badge--warn'; ?>"><?= $isActive ? 'Aktif' : 'Menunggu Validasi'; ?></span></td>
                         <td><?= e((string) ($row['created_at'] ?? '-')); ?></td>
                         <td><?= e((string) ($row['last_login_at'] ?? '-')); ?></td>
                         <td>
+                            <?php if (AuthController::isAdminSpmt()): ?>
                             <div class="table-actions table-actions--stacked">
                                 <?php if (!$isActive): ?>
                                     <form method="post" class="inline-admin-form">
@@ -99,6 +104,9 @@ $status = (string) ($filters['status'] ?? 'all');
                                     <button type="submit" class="btn-action">Reset</button>
                                 </form>
                             </div>
+                            <?php else: ?>
+                                -
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>

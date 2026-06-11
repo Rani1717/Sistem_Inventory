@@ -146,6 +146,7 @@ $flash = $data['flash'] ?? null;
                         <td><?= e((string) ($row['division'] ?? '-')); ?></td>
                         <td><span class="badge badge--<?= e((string) $row['status_class']); ?>"><?= e((string) $row['status']); ?></span></td>
                         <td>
+                            <?php if (AuthController::role() !== 'user'): ?>
                             <div class="table-actions">
                                 <button type="button" class="btn-action btn-action--edit js-edit-log-btn"
                                         data-id="<?= e((string) $row['id']); ?>"
@@ -163,6 +164,9 @@ $flash = $data['flash'] ?? null;
                                     <button type="submit" class="btn-action btn-action--delete">Hapus</button>
                                 </form>
                             </div>
+                            <?php else: ?>
+                                -
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>

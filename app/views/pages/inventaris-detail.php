@@ -52,8 +52,10 @@ $editUrlBase = 'index.php?' . http_build_query([
                     </div>
                 </div>
                 <button class="icon-square icon-square--lg js-open-modal" type="button" data-modal="modalAddOther" title="Tambah perangkat lain"><i class="fa-solid fa-plus"></i></button>
-                <button class="icon-square icon-square--lg js-open-modal" type="button" data-modal="modalEditInventory" title="Edit data inventaris"><i class="fa-solid fa-pen-to-square"></i></button>
-                <button class="icon-square icon-square--lg js-open-modal" type="button" data-modal="modalDeleteInventory" title="Hapus data user inventaris"><i class="fa-solid fa-trash"></i></button>
+                <?php if (AuthController::role() !== 'user'): ?>
+                    <button class="icon-square icon-square--lg js-open-modal" type="button" data-modal="modalEditInventory" title="Edit data inventaris"><i class="fa-solid fa-pen-to-square"></i></button>
+                    <button class="icon-square icon-square--lg js-open-modal" type="button" data-modal="modalDeleteInventory" title="Hapus data user inventaris"><i class="fa-solid fa-trash"></i></button>
+                <?php endif; ?>
             </div>
     </div>
     <div class="summary-table summary-table--sticky">
