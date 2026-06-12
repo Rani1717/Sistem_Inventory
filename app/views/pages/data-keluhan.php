@@ -29,6 +29,43 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
 .complaint-page .detail-header--report .detail-header__row {
     margin-top: 24px !important;
 }
+
+/* Custom layout fixes for alignment consistency */
+@media (min-width: 769px) {
+    .complaint-toolbar__actions {
+        flex-wrap: nowrap !important;
+    }
+    .mini-search--complaint {
+        flex: 1 1 200px !important;
+        width: auto !important;
+        max-width: 360px !important;
+        min-width: 180px !important;
+    }
+}
+
+/* Ensure the status column width fits the content without squishing */
+.data-table--complaints th:nth-child(9),
+.data-table--complaints td:nth-child(9) {
+    width: 170px !important;
+    min-width: 170px !important;
+    max-width: 170px !important;
+}
+
+/* Center status content and prevent action button text wrapping */
+.complaint-status-cell-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 12px !important;
+    padding: 8px 0 !important;
+    width: 100% !important;
+}
+
+.complaint-status-cell-wrap .btn {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+}
 </style>
 <div class="complaint-page">
     <div class="detail-header detail-header--report">
