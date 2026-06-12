@@ -59,7 +59,16 @@ $monthPdfUrl = 'index.php?' . http_build_query([
     'routine_year' => $yearValue,
     'routine_search' => $searchValue,
 ]);
-$weekPdfLinks = [];
+$monthPdfPivotUrl = 'index.php?' . http_build_query([
+    'page' => 'routine-monitoring',
+    'action' => 'export_routine_pdf_pivot',
+    'recap_scope' => 'month',
+    'routine_month' => $monthValue,
+    'routine_year' => $yearValue,
+    'routine_search' => $searchValue,
+]);
+// Build week options for dropdown (list PDF + pivot PDF per minggu)
+$weekDropdownOptions = [];
 if (!empty($days)) {
     $firstDate = new DateTimeImmutable((string) ($days[0]['date'] ?? date('Y-m-01')));
     $lastDate = new DateTimeImmutable((string) ($days[count($days) - 1]['date'] ?? date('Y-m-t')));
@@ -67,15 +76,26 @@ if (!empty($days)) {
     $weekNo = 1;
     while ($weekStart <= $lastDate) {
         $weekEnd = $weekStart->modify('sunday this week');
-        if ($weekEnd > $lastDate) {
-            $weekEnd = $lastDate;
-        }
-        $weekPdfLinks[] = [
-            'label' => 'PDF Minggu ' . $weekNo,
-            'range' => $weekStart->format('d/m') . ' - ' . $weekEnd->format('d/m'),
-            'url' => 'index.php?' . http_build_query([
+        if ($weekEnd > $lastDate) { $weekEnd = $lastDate; }
+        $startD = (int) $weekStart->format('j');
+        $endD   = (int) $weekEnd->format('j');
+        $rangeLabel = 'Minggu ' . $weekNo . ' (' . str_pad((string)$startD, 2, '0', STR_PAD_LEFT) . '-' . str_pad((string)$endD, 2, '0', STR_PAD_LEFT) . ')';
+        $weekDropdownOptions[] = [
+            'label'      => $rangeLabel,
+            'week_no'    => $weekNo,
+            'week_start' => $weekStart->format('Y-m-d'),
+            'url_list'   => 'index.php?' . http_build_query([
                 'page' => 'routine-monitoring',
                 'action' => 'export_routine_pdf',
+                'recap_scope' => 'week',
+                'week_start' => $weekStart->format('Y-m-d'),
+                'routine_month' => $monthValue,
+                'routine_year' => $yearValue,
+                'routine_search' => $searchValue,
+            ]),
+            'url_pivot'  => 'index.php?' . http_build_query([
+                'page' => 'routine-monitoring',
+                'action' => 'export_routine_pdf_pivot',
                 'recap_scope' => 'week',
                 'week_start' => $weekStart->format('Y-m-d'),
                 'routine_month' => $monthValue,
@@ -87,6 +107,8 @@ if (!empty($days)) {
         $weekNo++;
     }
 }
+// Indonesian short day names map
+$dayNameId = ['Mon'=>'Sen','Tue'=>'Sel','Wed'=>'Rab','Thu'=>'Kam','Fri'=>'Jum','Sat'=>'Sab','Sun'=>'Min'];
 ?>
 
 <style>
@@ -99,6 +121,156 @@ body.has-modal-open .routine-manager-modal {
     overflow: visible !important;
     padding-right: 0 !important;
 }
+
+/* ── Recap launcher v2 ─────────────────────────────────── */
+.recap-launcher-v2 {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 18px 20px 14px;
+    margin-top: 20px;
+}
+.recap-launcher-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.recap-launcher-title {
+    font-weight: 700;
+    font-size: 15px;
+    color: #1e293b;
+    white-space: nowrap;
+}
+.recap-launcher-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.recap-pdf-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+.recap-pdf-btn:hover { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
+.recap-week-dropdown-wrap { position: relative; }
+.recap-week-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+.recap-week-trigger:hover,
+.recap-week-trigger[aria-expanded="true"] { border-color: #2563eb; background: #eff6ff; color: #2563eb; }
+.recap-week-chevron { font-size: 11px; transition: transform 0.2s; }
+.recap-week-trigger[aria-expanded="true"] .recap-week-chevron { transform: rotate(180deg); }
+.recap-week-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 400;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.12);
+    min-width: 210px;
+    padding: 8px 0;
+    animation: recapMenuFadeIn 0.15s ease;
+}
+@keyframes recapMenuFadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.recap-week-group { padding: 2px 0 6px; }
+.recap-week-group + .recap-week-group { border-top: 1px solid #f1f5f9; }
+.recap-week-group-label {
+    padding: 5px 14px 3px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+}
+.recap-week-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: #334155;
+    text-decoration: none;
+    transition: background 0.12s, color 0.12s;
+}
+.recap-week-item:hover { background: #f1f5f9; color: #2563eb; }
+.recap-week-item--pivot { color: #7c3aed; }
+.recap-week-item--pivot:hover { background: #f5f3ff; color: #6d28d9; }
+.recap-week-divider { height: 1px; background: #e2e8f0; margin: 4px 0; }
+.recap-date-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 6px;
+    margin-bottom: 14px;
+}
+@media (max-width: 900px) { .recap-date-grid { grid-template-columns: repeat(7, 1fr); } }
+@media (max-width: 600px) { .recap-date-grid { grid-template-columns: repeat(5, 1fr); } }
+.recap-date-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 4px 6px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.13s, box-shadow 0.13s;
+    gap: 2px;
+    min-width: 0;
+}
+.recap-date-tile:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(0,0,0,0.10); }
+.recap-date-tile:active { transform: translateY(0); }
+.recap-date-tile--has-data { background: #dcfce7; color: #166534; }
+.recap-date-tile--has-data .recap-tile-count { font-weight: 700; color: #166534; }
+.recap-date-tile--empty { background: #f8fafc; color: #94a3b8; }
+.recap-date-tile--empty .recap-tile-count { color: #cbd5e1; }
+.recap-tile-day { font-size: 11.5px; font-weight: 600; white-space: nowrap; line-height: 1.2; }
+.recap-tile-count { font-size: 14px; font-weight: 500; line-height: 1.2; }
+.recap-legend {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: #64748b;
+}
+.recap-legend-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.recap-legend-dot--has  { background: #4ade80; }
+.recap-legend-dot--empty { background: #cbd5e1; }
+.recap-legend-text { margin-right: 8px; }
+.recap-legend-hint { margin-left: 4px; color: #94a3b8; font-style: italic; }
 </style>
 
 <div class="routine-page routine-page--matrix">
@@ -970,25 +1142,68 @@ body.has-modal-open .routine-manager-modal {
         <?php endforeach; ?>
     </form>
 
-    <section class="routine-recap-launcher">
-        <div class="routine-recap-launcher__head routine-recap-launcher__head--with-actions">
-            <h2>Rekap Per Hari</h2>
-            <div class="routine-pdf-actions">
-                <a class="btn btn--secondary routine-pdf-action" href="<?= e($monthPdfUrl); ?>"><i class="fa-solid fa-file-pdf"></i> PDF Bulanan</a>
-                <?php foreach ($weekPdfLinks as $weekLink): ?>
-                    <a class="btn btn--secondary routine-pdf-action" href="<?= e($weekLink['url']); ?>"><i class="fa-solid fa-file-pdf"></i> <?= e($weekLink['label']); ?> <small><?= e($weekLink['range']); ?></small></a>
-                <?php endforeach; ?>
+    <section class="routine-recap-launcher recap-launcher-v2">
+        <!-- Header row -->
+        <div class="recap-launcher-header">
+            <span class="recap-launcher-title">Rekap harian &mdash; <?= e($monthLabel); ?></span>
+            <div class="recap-launcher-controls">
+                <a class="recap-pdf-btn js-recap-month-pdf" href="<?= e($monthPdfUrl); ?>">
+                    <i class="fa-regular fa-file-pdf"></i> PDF bulanan
+                </a>
+                <?php if (!empty($weekDropdownOptions)): ?>
+                <div class="recap-week-dropdown-wrap">
+                    <button type="button" class="recap-week-trigger js-recap-week-trigger" aria-haspopup="true" aria-expanded="false" id="recapWeekTrigger">
+                        <span class="js-recap-week-label">Minggu 1</span>
+                        <i class="fa-solid fa-chevron-down recap-week-chevron"></i>
+                    </button>
+                    <div class="recap-week-menu" id="recapWeekMenu" hidden>
+                        <?php foreach ($weekDropdownOptions as $opt): ?>
+                        <div class="recap-week-group">
+                            <div class="recap-week-group-label"><?= e($opt['label']); ?></div>
+                            <a class="recap-week-item" href="<?= e($opt['url_list']); ?>">
+                                <i class="fa-regular fa-file-pdf"></i> PDF List
+                            </a>
+                            <a class="recap-week-item recap-week-item--pivot" href="<?= e($opt['url_pivot']); ?>">
+                                <i class="fa-solid fa-table-cells"></i> PDF Pivot
+                            </a>
+                        </div>
+                        <?php endforeach; ?>
+                        <div class="recap-week-divider"></div>
+                        <a class="recap-week-item recap-week-item--pivot" href="<?= e($monthPdfPivotUrl); ?>">
+                            <i class="fa-solid fa-table-cells"></i> PDF Pivot Bulanan
+                        </a>
+                    </div>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
-        <div class="routine-day-button-list">
+
+        <!-- Date grid -->
+        <div class="recap-date-grid">
             <?php foreach ($days as $day): ?>
-                <?php $dateKey = (string) ($day['date'] ?? ''); ?>
-                <button type="button" class="routine-day-button js-open-routine-recap" data-recap-date="<?= e($dateKey); ?>">
-                    <strong><?= e((string) ($day['day'] ?? '')); ?></strong>
-                    <span><?= e(substr((string) ($day['day_name'] ?? ''), 0, 3)); ?></span>
-                    <small><?= (int) ($recapCounts[$dateKey] ?? 0); ?> data</small>
+                <?php
+                $dateKey   = (string) ($day['date'] ?? '');
+                $count     = (int) ($recapCounts[$dateKey] ?? 0);
+                $hasData   = $count > 0;
+                $engDay    = substr((string) ($day['day_name'] ?? ''), 0, 3);
+                $idDay     = $dayNameId[$engDay] ?? $engDay;
+                ?>
+                <button type="button"
+                        class="recap-date-tile js-open-routine-recap <?= $hasData ? 'recap-date-tile--has-data' : 'recap-date-tile--empty'; ?>"
+                        data-recap-date="<?= e($dateKey); ?>">
+                    <span class="recap-tile-day"><?= e((string) ($day['day'] ?? '')); ?> <?= e($idDay); ?></span>
+                    <span class="recap-tile-count"><?= $count; ?></span>
                 </button>
             <?php endforeach; ?>
+        </div>
+
+        <!-- Legend -->
+        <div class="recap-legend">
+            <span class="recap-legend-dot recap-legend-dot--has"></span>
+            <span class="recap-legend-text">Sudah ada checking</span>
+            <span class="recap-legend-dot recap-legend-dot--empty"></span>
+            <span class="recap-legend-text">Belum ada checking</span>
+            <span class="recap-legend-hint">Klik tanggal untuk lihat detail per kategori</span>
         </div>
     </section>
 
@@ -1116,6 +1331,39 @@ body.has-modal-open .routine-manager-modal {
         if (event.key === 'Escape') {
             closeModal();
         }
+    });
+})();
+</script>
+
+<script>
+/* ── Week dropdown for recap launcher v2 ── */
+(function () {
+    var trigger = document.getElementById('recapWeekTrigger');
+    var menu    = document.getElementById('recapWeekMenu');
+    if (!trigger || !menu) { return; }
+
+    function openMenu() {
+        menu.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+    }
+    function closeMenu() {
+        menu.hidden = true;
+        trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    trigger.addEventListener('click', function (e) {
+        e.stopPropagation();
+        menu.hidden ? openMenu() : closeMenu();
+    });
+
+    document.addEventListener('click', function (e) {
+        if (!menu.hidden && !trigger.contains(e.target) && !menu.contains(e.target)) {
+            closeMenu();
+        }
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !menu.hidden) { closeMenu(); trigger.focus(); }
     });
 })();
 </script>

@@ -1097,6 +1097,10 @@ class PageController
             $this->streamRoutineMonitoringPdf($filters);
             exit;
         }
+        if (($_GET['action'] ?? '') === 'export_routine_pdf_pivot') {
+            $this->streamRoutineMonitoringPivotPdf($filters);
+            exit;
+        }
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             return;
         }
@@ -1651,6 +1655,255 @@ class PageController
         ];
         $pdf = $this->buildGenericReportPdf($title, $columns, $rows);
         $base = 'rekap-routine-monitoring-' . $scope . '-' . preg_replace('/[^A-Za-z0-9_-]+/', '-', (string) $baseSuffix);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $base . '.pdf"');
+        header('Content-Length: ' . strlen($pdf));
+        echo $pdf;
+    }
+    private function streamRoutineMonitoringPivotPdf(array $filters): void
+    {
+        $routine = $this->buildRoutineMonitoringData($filters);
+        $context = $routine['context'] ?? [];
+        $groupedItems = $routine['grouped_items'] ?? [];
+        $scope = strtolower(trim((string) ($_GET['recap_scope'] ?? 'week')));
+        if (!in_array($scope, ['week', 'month'], true)) {
+            $scope = 'week';
+        }
+
+        $monthStart = (string) ($context['start_date'] ?? date('Y-m-01'));
+        $monthEnd   = (string) ($context['end_date']   ?? date('Y-m-t'));
+        $rangeStart = $monthStart;
+        $rangeEnd   = $monthEnd;
+        $titleSuffix = (string) ($context['month_label'] ?? date('F Y'));
+        $baseSuffix  = preg_replace('/[^A-Za-z0-9_-]+/', '-', $titleSuffix) ?: date('Y-m');
+
+        if ($scope === 'week') {
+            $weekStartInput = trim((string) ($_GET['week_start'] ?? $_GET['recap_date'] ?? $monthStart));
+            try {
+                $weekStartDate = new DateTimeImmutable($weekStartInput);
+            } catch (Throwable $e) {
+                $weekStartDate = new DateTimeImmutable($monthStart);
+            }
+            $weekStartDate = $weekStartDate->modify('monday this week');
+            $weekEndDate   = $weekStartDate->modify('+6 days');
+            $monthStartDate = new DateTimeImmutable($monthStart);
+            $monthEndDate   = new DateTimeImmutable($monthEnd);
+            if ($weekStartDate < $monthStartDate) { $weekStartDate = $monthStartDate; }
+            if ($weekEndDate   > $monthEndDate)   { $weekEndDate   = $monthEndDate;   }
+            $rangeStart  = $weekStartDate->format('Y-m-d');
+            $rangeEnd    = $weekEndDate->format('Y-m-d');
+            $titleSuffix = date('d/m/Y', strtotime($rangeStart)) . ' - ' . date('d/m/Y', strtotime($rangeEnd));
+            $baseSuffix  = $rangeStart . '-sd-' . $rangeEnd;
+        }
+
+        // Collect dates in range
+        $rangeDates = [];
+        $cur = new DateTimeImmutable($rangeStart);
+        $end = new DateTimeImmutable($rangeEnd);
+        while ($cur <= $end) {
+            $rangeDates[] = $cur->format('Y-m-d');
+            $cur = $cur->modify('+1 day');
+        }
+
+        $scopeLabel = match ($scope) {
+            'month' => 'Bulanan',
+            default => 'Mingguan',
+        };
+        $mainTitle = 'Rekap Routine Monitoring ' . $scopeLabel . ' - ' . $titleSuffix . ' (Pivot)';
+
+        // ─── Pure-PHP PDF builder (landscape A4) ─────────────────────────────
+        $pageW = 842; $pageH = 595; $margin = 24;
+        $blue  = '0.16 0.37 0.65';
+        $textColor = '0.15 0.18 0.22';
+        $hdrFill = $blue;
+        $altFill = '0.97 0.98 1.00';
+        $border  = '0.78 0.84 0.90';
+        $green   = '0.09 0.63 0.35';
+        $red     = '0.84 0.10 0.10';
+        $objects = [
+            1 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+            2 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+        ];
+        $streams = []; $current = []; $y = $pageH - $margin;
+
+        $escape = function (string $t): string {
+            $t = trim(preg_replace('/\s+/', ' ', $t) ?? $t);
+            if (function_exists('iconv')) {
+                $c = @iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', $t);
+                if ($c !== false && $c !== '') { $t = $c; }
+            }
+            $t = preg_replace('/[^ -~\x80-\xFF]/', '', $t) ?? $t;
+            return str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $t === '' ? '-' : $t);
+        };
+        $addText = function (float $x, float $yP, string $txt, int $font = 1, int $sz = 7, string $col = '0 0 0') use (&$current, $escape) {
+            $current[] = 'BT';
+            $current[] = sprintf('/F%d %d Tf', $font, $sz);
+            $current[] = $col . ' rg';
+            $current[] = sprintf('1 0 0 1 %.2f %.2f Tm', $x, $yP);
+            $current[] = '(' . $escape($txt) . ') Tj';
+            $current[] = 'ET';
+        };
+        $addRect = function (float $x, float $yP, float $w, float $h, ?string $fill, string $stroke = '0 0 0', float $lw = 0.4) use (&$current) {
+            $current[] = sprintf('%.2f w', $lw);
+            if ($fill !== null) { $current[] = $fill . ' rg'; }
+            $current[] = $stroke . ' RG';
+            $current[] = sprintf('%.2f %.2f %.2f %.2f re %s', $x, $yP, $w, $h, $fill !== null ? 'B' : 'S');
+        };
+        $finishPage = function () use (&$streams, &$current) {
+            if ($current) { $streams[] = implode("\n", $current); }
+            $current = [];
+        };
+
+        $dateCount = count($rangeDates);
+        $nameColW  = 110.0;
+        $dateColW  = $dateCount > 0 ? max(22.0, min(38.0, floor(($pageW - 2 * $margin - $nameColW) / $dateCount))) : 30.0;
+        $tableW    = $nameColW + $dateColW * $dateCount;
+        $hdrH      = 18.0;
+        $rowH      = 14.0;
+        $titleH    = 44.0; // space for title + export line
+
+        $startPage = function () use (&$current, &$y, $pageH, $margin, $mainTitle, $addText, $blue, $textColor, $titleH) {
+            $current = [];
+            $y = $pageH - $margin;
+            $addText($margin, $y - 4, $mainTitle, 2, 11, $blue);
+            $addText($margin, $y - 18, 'Diexport: ' . date('d-m-Y H:i:s'), 1, 7, $textColor);
+            $y -= $titleH;
+        };
+
+        $drawPivotHeader = function () use (&$y, $margin, $nameColW, $dateColW, $rangeDates, $addRect, $addText, $hdrFill, $hdrH) {
+            $x = $margin;
+            $rowY = $y - $hdrH;
+            // Name column header
+            $addRect($x, $rowY, $nameColW, $hdrH, $hdrFill, $hdrFill, 0.6);
+            $addText($x + 3, $rowY + 6, 'Nama Checking', 2, 6, '1 1 1');
+            $x += $nameColW;
+            // Date column headers
+            foreach ($rangeDates as $dk) {
+                $addRect($x, $rowY, $dateColW, $hdrH, $hdrFill, $hdrFill, 0.6);
+                $addText($x + 2, $rowY + 10, date('d', strtotime($dk)), 2, 6, '1 1 1');
+                $addText($x + 2, $rowY + 3,  date('D', strtotime($dk)), 1, 5, '0.85 0.90 1.00');
+                $x += $dateColW;
+            }
+            $y = $rowY - 1;
+        };
+
+        // Render one category block
+        $renderCategory = function (
+            string $catLabel,
+            array  $items,
+            array  $rangeDates
+        ) use (
+            &$y, $margin, $nameColW, $dateColW, $hdrH, $rowH, $pageH, $titleH,
+            $addRect, $addText, $blue, $textColor, $altFill, $border, $green, $red,
+            $startPage, $drawPivotHeader, $finishPage
+        ): void {
+            // Section heading
+            if (($y - ($hdrH + $rowH)) < $margin + 4) {
+                $finishPage();
+                $startPage();
+                $drawPivotHeader();
+            }
+            $secH = 14.0;
+            $addRect($margin, $y - $secH, $nameColW + $dateColW * count($rangeDates), $secH, '0.93 0.96 1.00', $border, 0.4);
+            $addText($margin + 3, $y - $secH + 5, strtoupper($catLabel), 2, 7, $blue);
+            $y -= ($secH + 1);
+
+            foreach ($items as $idx => $item) {
+                if (($y - $rowH) < $margin + 4) {
+                    $finishPage();
+                    $startPage();
+                    $drawPivotHeader();
+                }
+                $rowY = $y - $rowH;
+                $bgFill = $idx % 2 === 0 ? $altFill : '1 1 1';
+                // Name cell
+                $displayName = (string) ($item['item_name'] ?? '-');
+                $addRect($margin, $rowY, $nameColW, $rowH, $bgFill, $border, 0.35);
+                $addText($margin + 3, $rowY + 5, $displayName, 1, 6, $textColor);
+                // Date cells
+                $cx = $margin + $nameColW;
+                foreach ($rangeDates as $dk) {
+                    $cell   = $item['calendar'][$dk] ?? ['condition_status' => ''];
+                    $status = trim((string) ($cell['condition_status'] ?? ''));
+                    $normSt = '';
+                    if (in_array($status, ['ON', 'BAIK', 'AKTIF'], true))        { $normSt = 'ON'; }
+                    elseif (in_array($status, ['OFF', 'BURUK', 'RUSAK'], true))  { $normSt = 'OFF'; }
+                    elseif ($status === 'KURANG BAIK')                           { $normSt = 'KB'; }
+                    elseif ($status !== '')                                       { $normSt = substr($status, 0, 3); }
+
+                    $cellFill = $bgFill;
+                    $cellTxtColor = $textColor;
+                    if ($normSt === 'ON')  { $cellFill = $green; $cellTxtColor = '1 1 1'; }
+                    elseif ($normSt === 'OFF') { $cellFill = $red;   $cellTxtColor = '1 1 1'; }
+                    elseif ($normSt !== '')    { $cellFill = '0.98 0.91 0.55'; $cellTxtColor = '0.30 0.20 0'; }
+
+                    $addRect($cx, $rowY, $dateColW, $rowH, $cellFill, $border, 0.35);
+                    if ($normSt !== '') {
+                        $addText($cx + 2, $rowY + 5, $normSt, 2, 5, $cellTxtColor);
+                    }
+                    $cx += $dateColW;
+                }
+                $y = $rowY - 1;
+            }
+            $y -= 4; // gap between categories
+        };
+
+        $startPage();
+        $drawPivotHeader();
+
+        $categoryOrder = ['GATE', 'CCTV', 'SERVER'];
+        $rendered = false;
+        foreach ($categoryOrder as $catName) {
+            $items = $groupedItems[$catName] ?? [];
+            if (empty($items)) { continue; }
+            $rendered = true;
+            $renderCategory($catName, $items, $rangeDates);
+        }
+        // Also handle any extra categories not in the default order
+        foreach ($groupedItems as $catName => $items) {
+            if (in_array($catName, $categoryOrder, true) || empty($items)) { continue; }
+            $rendered = true;
+            $renderCategory($catName, $items, $rangeDates);
+        }
+        if (!$rendered) {
+            $addText($margin, $y - 18, 'Belum ada data monitoring pada periode ini.', 1, 9, $textColor);
+        }
+        $finishPage();
+
+        // ─── Assemble PDF ────────────────────────────────────────────────────
+        $nextId = 3; $contentIds = []; $pageIds = [];
+        foreach ($streams as $stream) {
+            $contentId = $nextId++; $pageId = $nextId++;
+            $objects[$contentId] = '<< /Length ' . strlen($stream) . " >>\nstream\n" . $stream . "\nendstream";
+            $objects[$pageId] = '';
+            $contentIds[] = $contentId;
+            $pageIds[]    = $pageId;
+        }
+        $pagesId = $nextId++;
+        foreach ($pageIds as $index => $pageId) {
+            $objects[$pageId] = "<< /Type /Page /Parent {$pagesId} 0 R /MediaBox [0 0 {$pageW} {$pageH}] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents {$contentIds[$index]} 0 R >>";
+        }
+        $kids = implode(' ', array_map(static fn ($id) => $id . ' 0 R', $pageIds));
+        $objects[$pagesId] = '<< /Type /Pages /Count ' . count($pageIds) . ' /Kids [ ' . $kids . ' ] >>';
+        $catalogId = $nextId++;
+        $objects[$catalogId] = "<< /Type /Catalog /Pages {$pagesId} 0 R >>";
+
+        ksort($objects);
+        $pdf = "%PDF-1.4\n";
+        $offsets = [0];
+        foreach ($objects as $id => $object) {
+            $offsets[$id] = strlen($pdf);
+            $pdf .= $id . " 0 obj\n" . $object . "\nendobj\n";
+        }
+        $xref = strlen($pdf);
+        $size = $catalogId + 1;
+        $pdf .= "xref\n0 {$size}\n0000000000 65535 f \n";
+        for ($i = 1; $i < $size; $i++) {
+            $pdf .= sprintf("%010d 00000 n \n", $offsets[$i] ?? 0);
+        }
+        $pdf .= "trailer << /Size {$size} /Root {$catalogId} 0 R >>\nstartxref\n{$xref}\n%%EOF";
+
+        $base = 'rekap-pivot-routine-monitoring-' . $scope . '-' . preg_replace('/[^A-Za-z0-9_-]+/', '-', (string) $baseSuffix);
         header('Content-Type: application/pdf');
         header('Content-Disposition: attachment; filename="' . $base . '.pdf"');
         header('Content-Length: ' . strlen($pdf));
