@@ -512,7 +512,27 @@
                             html += '<tr' + (isBad ? ' style="background:#fff5f5"' : '') + '>';
                             
                             // 1. NAMA CCTV (Kode - Nama)
-                            html += '<td style="padding:12px 14px;border-bottom:1px solid rgba(42,102,165,.10);text-align:left;"><strong style="color:#1e293b">' + escapeHtml(row.kode||'-') + '</strong> - <span style="color:#475569">' + escapeHtml(row.nama||'-') + '</span></td>';
+                            var code = (row.kode || '').trim();
+                            if (!code || code === '-') {
+                                var match = (row.nama || '').match(/^([A-Za-z]\d+)[_\s\-]/i);
+                                if (match) {
+                                    code = match[1].toUpperCase();
+                                }
+                            }
+                            var nameHtml = '';
+                            var cleanNama = (row.nama || '-').trim();
+                            if (code && code !== '-') {
+                                var cleanCode = code.trim();
+                                if (cleanNama.toUpperCase().indexOf(cleanCode.toUpperCase()) === 0) {
+                                    var rest = cleanNama.substring(cleanCode.length);
+                                    nameHtml = '<strong style="color:#1e293b">' + escapeHtml(cleanCode) + '</strong><span style="color:#475569">' + escapeHtml(rest) + '</span>';
+                                } else {
+                                    nameHtml = '<strong style="color:#1e293b">' + escapeHtml(code) + '</strong> - <span style="color:#475569">' + escapeHtml(cleanNama) + '</span>';
+                                }
+                            } else {
+                                nameHtml = '<span style="color:#475569">' + escapeHtml(cleanNama) + '</span>';
+                            }
+                            html += '<td style="padding:12px 14px;border-bottom:1px solid rgba(42,102,165,.10);text-align:left;">' + nameHtml + '</td>';
                             
                             // 2. STATUS
                             html += '<td style="padding:12px 14px;border-bottom:1px solid rgba(42,102,165,.10);border-left:1px solid rgba(42,102,165,.15);text-align:center;vertical-align:middle;">' + statHtml + '</td>';

@@ -69,6 +69,10 @@ class PageController
             $this->jsonGetPcList();
             return;
         }
+        if ((string) ($_GET["ajax"] ?? "") === "save_routine_monitoring_cell") {
+            $this->jsonSaveRoutineMonitoringCell();
+            return;
+        }
         if (!isset($this->pageMap[$page])) {
             $page = 'splash';
         }
@@ -628,8 +632,12 @@ class PageController
                 if ($id <= 0 || $nama === '') {
                     throw new RuntimeException('Data kamera tidak valid.');
                 }
-                $stmt = $pdo->prepare('UPDATE cctv_inventaris SET nama_cctv = :nama, status = :status WHERE id = :id');
-                $stmt->execute(['nama' => $nama, 'status' => $status, 'id' => $id]);
+                $kode = '';
+                if (preg_match('/^([A-Za-z0-9]+)[_\s\-]/', $nama, $matches)) {
+                    $kode = strtoupper($matches[1]);
+                }
+                $stmt = $pdo->prepare('UPDATE cctv_inventaris SET nama_cctv = :nama, kode_cctv = :kode, status = :status WHERE id = :id');
+                $stmt->execute(['nama' => $nama, 'kode' => $kode, 'status' => $status, 'id' => $id]);
                 $_SESSION['flash'] = ['type' => 'success', 'message' => 'Data kamera CCTV berhasil diperbarui.'];
 
             } elseif ($action === 'delete_cctv') {
@@ -894,7 +902,7 @@ class PageController
             try {
                 $this->ensureRoutineMonitoringTable($pdo);
                 // Fetch non-CCTV items from database
-                $stmt = $pdo->query('SELECT i.id, COALESCE(NULLIF(i.category_field, ""), i.item_group) AS item_group, i.item_name, i.sort_order, i.is_active FROM routine_monitoring_items i INNER JOIN routine_monitoring_categories c ON UPPER(c.category_name) = UPPER(COALESCE(NULLIF(i.category_field, ""), i.item_group)) AND c.is_active = 1 WHERE i.is_active = 1 AND UPPER(COALESCE(NULLIF(i.category_field, ""), i.item_group)) <> \'CCTV\' ORDER BY COALESCE(NULLIF(i.category_field, ""), i.item_group) ASC, i.item_name ASC');
+                $stmt = $pdo->query('SELECT i.id, COALESCE(NULLIF(i.category_field, ""), i.item_group) AS item_group, i.item_name, i.sort_order, i.is_active FROM routine_monitoring_items i INNER JOIN routine_monitoring_categories c ON UPPER(c.category_name) = UPPER(COALESCE(NULLIF(i.category_field, ""), i.item_group)) AND c.is_active = 1 WHERE i.is_active = 1 AND UPPER(COALESCE(NULLIF(i.category_field, ""), i.item_group)) <> \'CCTV\' ORDER BY COALESCE(NULLIF(i.category_field, ""), i.item_group) ASC, i.sort_order ASC, i.item_name ASC');
                 $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
                 
                 // Fetch CCTV items dynamically from cctv_inventaris where status is active
@@ -943,13 +951,30 @@ class PageController
         try {
             $cctvStmt = $pdo->query('SELECT c.id, c.nama_cctv, c.lokasi, c.status, d.color FROM cctv_inventaris c LEFT JOIN dashboard_cctv d ON UPPER(TRIM(d.lokasi)) = UPPER(TRIM(c.lokasi)) ORDER BY c.status ASC, c.lokasi ASC, c.nama_cctv ASC');
             $cctvRows = $cctvStmt ? $cctvStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+            // Gather all active/non-empty locations from actual cameras
+            $locNames = [];
+            foreach ($cctvRows as $cctv) {
+                $loc = trim((string) ($cctv['lokasi'] ?? ''));
+                if ($loc !== '' && $cctv['status'] === 'AKTIF') {
+                    $locNames[] = $loc;
+                }
+            }
+            $locNames = array_unique($locNames);
+            natcasesort($locNames);
+            $locNames = array_values($locNames);
+            $locColorMap = [];
+            foreach ($locNames as $idx => $name) {
+                $locColorMap[strtoupper(trim($name))] = $this->model->getPaletteColor($idx);
+            }
+
             foreach ($cctvRows as $cctv) {
                 $rows[] = [
                     'id' => (int)$cctv['id'] + 10000,
                     'item_group' => 'CCTV',
                     'item_name' => $cctv['nama_cctv'],
                     'lokasi' => $cctv['lokasi'],
-                    'color' => preg_match('/^#[0-9A-Fa-f]{6}$/', (string) ($cctv['color'] ?? '')) ? (string) $cctv['color'] : '#5B8DEF',
+                    'color' => $locColorMap[strtoupper(trim($cctv['lokasi']))] ?? '#5B8DEF',
                     'sort_order' => 100,
                     'is_active' => ($cctv['status'] === 'AKTIF' ? 1 : 0)
                 ];
@@ -1182,14 +1207,15 @@ class PageController
                         throw new RuntimeException('Nama checking wajib diisi.');
                     }
                     if ($group === 'CCTV') {
-                        $color = trim((string) ($_POST['color'] ?? '#5B8DEF'));
-                        if (!preg_match('/^#[0-9A-Fa-f]{6}$/', $color)) {
-                            $color = '#5B8DEF';
-                        }
                         $locClean = $lokasi === '' ? 'UMUM' : $lokasi;
+                        $color = $this->model->stringToColor($locClean);
 
-                        $stmt = $pdo->prepare('INSERT INTO cctv_inventaris (nama_cctv, lokasi, status) VALUES (:nama_cctv, :lokasi, \'AKTIF\')');
-                        $stmt->execute(['nama_cctv' => $name, 'lokasi' => $locClean]);
+                        $kode = '';
+                        if (preg_match('/^([A-Za-z0-9]+)[_\s\-]/', $name, $matches)) {
+                            $kode = strtoupper($matches[1]);
+                        }
+                        $stmt = $pdo->prepare('INSERT INTO cctv_inventaris (nama_cctv, kode_cctv, lokasi, status) VALUES (:nama_cctv, :kode_cctv, :lokasi, \'AKTIF\')');
+                        $stmt->execute(['nama_cctv' => $name, 'kode_cctv' => $kode, 'lokasi' => $locClean]);
 
                         // Sync location color in dashboard_cctv
                         $chk = $pdo->prepare('SELECT id FROM dashboard_cctv WHERE UPPER(TRIM(lokasi)) = UPPER(TRIM(:lokasi))');
@@ -1205,6 +1231,10 @@ class PageController
 
                         $_SESSION['flash'] = ['type' => 'success', 'message' => 'Kamera CCTV berhasil ditambahkan ke inventaris.'];
                     } else {
+                        if ($group === 'GATE') {
+                            $locClean = $lokasi === '' ? 'UMUM' : $lokasi;
+                            $name = $locClean . ' - ' . $name;
+                        }
                         $sortOrder = (int) ($pdo->query('SELECT COALESCE(MAX(sort_order), 0) + 10 FROM routine_monitoring_items')->fetchColumn() ?: 10);
                         $stmt = $pdo->prepare('INSERT INTO routine_monitoring_items (item_group, category_field, item_name, sort_order, is_active) VALUES (:item_group, :category_field, :item_name, :sort_order, 1)');
                         $stmt->execute(['item_group' => $group, 'category_field' => $group, 'item_name' => $name, 'sort_order' => $sortOrder]);
@@ -1227,13 +1257,14 @@ class PageController
                         $status = $isActive ? 'AKTIF' : 'NONAKTIF';
                         $locClean = $lokasi === '' ? 'UMUM' : $lokasi;
 
-                        $color = trim((string) ($_POST['color'] ?? '#5B8DEF'));
-                        if (!preg_match('/^#[0-9A-Fa-f]{6}$/', $color)) {
-                            $color = '#5B8DEF';
-                        }
+                        $color = $this->model->stringToColor($locClean);
 
-                        $stmt = $pdo->prepare('UPDATE cctv_inventaris SET nama_cctv = :nama, lokasi = :lokasi, status = :status WHERE id = :id');
-                        $stmt->execute(['nama' => $name, 'lokasi' => $locClean, 'status' => $status, 'id' => $actualId]);
+                        $kode = '';
+                        if (preg_match('/^([A-Za-z0-9]+)[_\s\-]/', $name, $matches)) {
+                            $kode = strtoupper($matches[1]);
+                        }
+                        $stmt = $pdo->prepare('UPDATE cctv_inventaris SET nama_cctv = :nama, kode_cctv = :kode, lokasi = :lokasi, status = :status WHERE id = :id');
+                        $stmt->execute(['nama' => $name, 'kode' => $kode, 'lokasi' => $locClean, 'status' => $status, 'id' => $actualId]);
 
                         // Sync location color in dashboard_cctv
                         $chk = $pdo->prepare('SELECT id FROM dashboard_cctv WHERE UPPER(TRIM(lokasi)) = UPPER(TRIM(:lokasi))');
@@ -1252,6 +1283,10 @@ class PageController
 
                         $_SESSION['flash'] = ['type' => 'success', 'message' => 'Data Kamera CCTV berhasil diperbarui.'];
                     } else {
+                        if ($group === 'GATE') {
+                            $locClean = $lokasi === '' ? 'UMUM' : $lokasi;
+                            $name = $locClean . ' - ' . $name;
+                        }
                         $oldStmt = $pdo->prepare('SELECT item_name FROM routine_monitoring_items WHERE id = :id');
                         $oldStmt->execute(['id' => $itemId]);
                         $oldName = trim((string) ($oldStmt->fetchColumn() ?: ''));
@@ -2607,6 +2642,98 @@ SQL);
         exit;
     }
 
+    /**
+     * AJAX: POST ?page=routine-monitoring&ajax=save_routine_monitoring_cell
+     * Save a single routine monitoring cell asynchronously.
+     */
+    private function jsonSaveRoutineMonitoringCell(): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['status' => 'error', 'message' => 'Invalid request method.']);
+            exit;
+        }
+
+        $pdo = Database::getConnection();
+        if (!$pdo instanceof PDO) {
+            echo json_encode(['status' => 'error', 'message' => 'Database connection failed.']);
+            exit;
+        }
+
+        try {
+            $itemId = max(0, (int) ($_POST['item_id'] ?? 0));
+            $monitorDate = trim((string) ($_POST['monitor_date'] ?? ''));
+            $statusRaw = trim((string) ($_POST['condition_status'] ?? ''));
+            $keterangan = isset($_POST['keterangan']) ? trim((string) $_POST['keterangan']) : null;
+
+            if ($itemId <= 0 || $monitorDate === '') {
+                throw new RuntimeException('Parameter tidak valid.');
+            }
+
+            // Fetch the item details
+            $itemStmt = $pdo->prepare('SELECT item_name FROM routine_monitoring_items WHERE id = :id LIMIT 1');
+            $itemStmt->execute(['id' => $itemId]);
+            $item = $itemStmt->fetch(PDO::FETCH_ASSOC);
+            
+            // If not found in routine_monitoring_items, check if it's a CCTV in cctv_inventaris
+            if (!$item && $itemId >= 10000) {
+                $actualId = $itemId - 10000;
+                $cctvStmt = $pdo->prepare('SELECT nama_cctv FROM cctv_inventaris WHERE id = :id LIMIT 1');
+                $cctvStmt->execute(['id' => $actualId]);
+                $cctv = $cctvStmt->fetch(PDO::FETCH_ASSOC);
+                if ($cctv) {
+                    $item = ['item_name' => $cctv['nama_cctv']];
+                }
+            }
+
+            if (!$item) {
+                throw new RuntimeException('Item checking tidak ditemukan.');
+            }
+
+            $itemName = trim((string) ($item['item_name'] ?? ''));
+            $auth = $_SESSION['auth'] ?? [];
+
+            if ($statusRaw === '') {
+                // Delete if empty
+                $stmt = $pdo->prepare('DELETE FROM routine_monitoring WHERE period_type = :period_type AND period_key = :period_key AND item_id = :item_id');
+                $stmt->execute([
+                    'period_type' => 'daily',
+                    'period_key'  => $monitorDate,
+                    'item_id'     => $itemId,
+                ]);
+            } else {
+                // Upsert
+                $stmt = $pdo->prepare('INSERT INTO routine_monitoring 
+                    (period_type, period_key, monitor_date, item_id, item_name, condition_status, keterangan, checked_by_user_id, checked_by_name) 
+                    VALUES (:period_type, :period_key, :monitor_date, :item_id, :item_name, :condition_status, :keterangan, :checked_by_user_id, :checked_by_name) 
+                    ON DUPLICATE KEY UPDATE 
+                        item_name = VALUES(item_name), 
+                        condition_status = VALUES(condition_status), 
+                        keterangan = VALUES(keterangan), 
+                        checked_by_user_id = VALUES(checked_by_user_id), 
+                        checked_by_name = VALUES(checked_by_name), 
+                        updated_at = CURRENT_TIMESTAMP');
+                
+                $stmt->execute([
+                    'period_type'       => 'daily',
+                    'period_key'        => $monitorDate,
+                    'monitor_date'      => $monitorDate,
+                    'item_id'           => $itemId,
+                    'item_name'         => $itemName,
+                    'condition_status'  => $this->normalizeRoutineStatus($statusRaw),
+                    'keterangan'        => $keterangan !== '' ? $keterangan : null,
+                    'checked_by_user_id' => (int) ($auth['id'] ?? 0) ?: null,
+                    'checked_by_name'   => (string) ($auth['nama_lengkap'] ?? $auth['username'] ?? ''),
+                ]);
+            }
+
+            echo json_encode(['status' => 'success', 'message' => 'Perubahan berhasil disimpan otomatis.']);
+        } catch (Throwable $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
 
     private function handleLogBarangAction(array $filters): void
     {
@@ -3372,45 +3499,315 @@ startxref
                     }
                 }
                 
-                $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-                $sheet = $spreadsheet->getActiveSheet();
-                
-                $sheet->setCellValue('A1', $title);
-                $sheet->getStyle('A1')->getFont()->setBold(true);
-                $sheet->getStyle('A1')->getAlignment()->setWrapText(true);
-                $sheet->mergeCells('A1:H1');
-                
-                $sheet->setCellValue('A2', 'Diexport');
-                $sheet->setCellValue('B2', date('d-m-Y H:i:s'));
-                
-                $headers = $this->routineReportHeaders();
-                $colIndex = 'A';
-                foreach ($headers as $header) {
-                    $sheet->setCellValue($colIndex . '4', $header);
-                    $sheet->getStyle($colIndex . '4')->getFont()->setBold(true);
-                    $colIndex++;
-                }
-                
-                $dataRows = $this->routineReportRowsForOutput($rows);
-                $barisSekarang = 5;
-                foreach ($dataRows as $rowOut) {
-                    $sheet->setCellValue('A' . $barisSekarang, $rowOut[0]);
-                    $sheet->setCellValue('B' . $barisSekarang, $rowOut[1]);
-                    $sheet->setCellValue('C' . $barisSekarang, $rowOut[2]);
-                    $sheet->setCellValue('D' . $barisSekarang, $rowOut[3]);
-                    $sheet->setCellValue('E' . $barisSekarang, $rowOut[4]);
-                    $sheet->setCellValue('F' . $barisSekarang, $rowOut[5]);
-                    $sheet->setCellValue('G' . $barisSekarang, $rowOut[6]);
-                    $sheet->setCellValue('H' . $barisSekarang, $rowOut[7]);
+                $f = $this->buildLaporanFilters($filters);
+                $categoryUpper = strtoupper($f['category']);
+                if (in_array($categoryUpper, ['CCTV', 'GATE'], true) && $f['month'] !== 'all') {
+                    $monthNum = (int)$f['month'];
+                    $yearNum = (int)$f['year'];
+                    $monthNamesIndo = [
+                        1 => 'JANUARI', 2 => 'FEBRUARI', 3 => 'MARET', 4 => 'APRIL', 
+                        5 => 'MEI', 6 => 'JUNI', 7 => 'JULI', 8 => 'AGUSTUS', 
+                        9 => 'SEPTEMBER', 10 => 'OKTOBER', 11 => 'NOVEMBER', 12 => 'DESEMBER'
+                    ];
+                    $monthName = $monthNamesIndo[$monthNum] ?? 'BULAN';
+                    $daysInMonth = (int)date('t', mktime(0, 0, 0, $monthNum, 1, $yearNum));
                     
-                    $sheet->getStyle('A' . $barisSekarang)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
-                    $sheet->getStyle('B' . $barisSekarang)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+                    $sheet = $spreadsheet->getActiveSheet();
+                    $sheet->setTitle("CEK STATUS " . $categoryUpper . "(" . $monthName . ")");
                     
-                    $barisSekarang++;
-                }
-                
-                foreach (range('A', 'H') as $col) {
-                    $sheet->getColumnDimension($col)->setAutoSize(true);
+                    $pivotItems = [];
+                    if ($categoryUpper === 'CCTV') {
+                        $cctvStmt = $pdo->query("SELECT id, lokasi, nama_cctv FROM cctv_inventaris WHERE status = 'AKTIF' ORDER BY lokasi ASC, nama_cctv ASC");
+                        $cctvItems = $cctvStmt ? $cctvStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                        foreach ($cctvItems as $cctv) {
+                            $pivotItems[] = [
+                                'query_id' => (int)$cctv['id'] + 10000,
+                                'location' => (string)($cctv['lokasi'] ?? '-'),
+                                'name' => $cctv['nama_cctv']
+                            ];
+                        }
+                    } else { // GATE
+                        $gateStmt = $pdo->query("SELECT id, item_name FROM routine_monitoring_items WHERE UPPER(COALESCE(NULLIF(category_field, ''), item_group)) = 'GATE' AND is_active = 1 ORDER BY sort_order ASC, item_name ASC");
+                        $gateItems = $gateStmt ? $gateStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                        foreach ($gateItems as $gate) {
+                            $parts = explode(' - ', (string)$gate['item_name'], 2);
+                            $loc = $parts[0] ?? '-';
+                            $dispName = $parts[1] ?? (string)$gate['item_name'];
+                            $pivotItems[] = [
+                                'query_id' => (int)$gate['id'],
+                                'location' => $loc,
+                                'name' => $dispName,
+                                'original_item_name' => $gate['item_name']
+                            ];
+                        }
+                    }
+                    
+                    $startDate = sprintf('%04d-%02d-01', $yearNum, $monthNum);
+                    $endDate = sprintf('%04d-%02d-%02d', $yearNum, $monthNum, $daysInMonth);
+                    $checksStmt = $pdo->prepare("SELECT item_id, item_name, monitor_date, condition_status, keterangan FROM routine_monitoring WHERE period_type = 'daily' AND monitor_date BETWEEN :start_date AND :end_date");
+                    $checksStmt->execute(['start_date' => $startDate, 'end_date' => $endDate]);
+                    $rawChecks = $checksStmt ? $checksStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                    
+                    $checks = [];
+                    foreach ($rawChecks as $row) {
+                        $itemId = (int)$row['item_id'];
+                        $name = strtolower(trim((string)$row['item_name']));
+                        $date = (string)$row['monitor_date'];
+                        $status = strtoupper(trim((string)$row['condition_status']));
+                        $keterangan = trim((string)$row['keterangan']);
+                        
+                        $checks['id_' . $itemId][$date] = [
+                            'status' => $status,
+                            'keterangan' => $keterangan
+                        ];
+                        if ($name !== '') {
+                            $checks['name_' . $name][$date] = [
+                                'status' => $status,
+                                'keterangan' => $keterangan
+                            ];
+                        }
+                    }
+                    
+                    $sheet->mergeCells('A1:A2');
+                    $sheet->setCellValue('A1', 'LOKASI');
+                    
+                    $sheet->mergeCells('B1:B2');
+                    $colBHeader = ($categoryUpper === 'CCTV') ? 'NAMA CCTV' : 'DATA BARANG';
+                    $sheet->setCellValue('B1', $colBHeader);
+                    
+                    $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($daysInMonth + 2);
+                    $sheet->mergeCells('C1:' . $lastColLetter . '1');
+                    $sheet->setCellValue('C1', 'TANGGAL');
+                    
+                    $keteranganColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($daysInMonth + 3);
+                    $sheet->mergeCells($keteranganColLetter . '1:' . $keteranganColLetter . '2');
+                    $sheet->setCellValue($keteranganColLetter . '1', 'KETERANGAN');
+                    
+                    for ($d = 1; $d <= $daysInMonth; $d++) {
+                        $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($d + 2);
+                        $dateStr = sprintf('%02d/%02d/%04d', $d, $monthNum, $yearNum);
+                        $sheet->setCellValue($colLetter . '2', $dateStr);
+                    }
+                    
+                    $headerYellowStyle = [
+                        'fill' => [
+                            'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                            'startColor' => ['argb' => 'FFFFD965']
+                        ],
+                        'alignment' => [
+                            'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                            'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+                        ]
+                    ];
+                    $sheet->getStyle('A1:A2')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle('B1:B2')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle('C1:' . $lastColLetter . '1')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle('C2:' . $lastColLetter . '2')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle($keteranganColLetter . '1:' . $keteranganColLetter . '2')->applyFromArray($headerYellowStyle);
+                    
+                    $rowHeights = [];
+                    $rowHeights[1] = 14.5;
+                    $rowHeights[2] = 14.5;
+                    
+                    $currentRow = 3;
+                    foreach ($pivotItems as $item) {
+                        $itemLocation = $item['location'];
+                        $itemName = $item['name'];
+                        $itemQueryId = $item['query_id'];
+                        
+                        $sheet->setCellValue('A' . $currentRow, $itemLocation);
+                        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                        $sheet->getStyle('A' . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                        
+                        $sheet->setCellValue('B' . $currentRow, $itemName);
+                        $sheet->getStyle('B' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                        $sheet->getStyle('B' . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                        
+                        $offCount = 0;
+                        
+                        for ($d = 1; $d <= $daysInMonth; $d++) {
+                            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($d + 2);
+                            $dateKey = sprintf('%04d-%02d-%02d', $yearNum, $monthNum, $d);
+                            
+                            $idKey = 'id_' . $itemQueryId;
+                            $originalName = isset($item['original_item_name']) ? $item['original_item_name'] : $itemName;
+                            $nameKey = 'name_' . strtolower(trim($originalName));
+                            
+                            $status = '';
+                            $keterangan = '';
+                            if (isset($checks[$idKey][$dateKey])) {
+                                $status = $checks[$idKey][$dateKey]['status'];
+                                $keterangan = $checks[$idKey][$dateKey]['keterangan'];
+                            } elseif (isset($checks[$nameKey][$dateKey])) {
+                                $status = $checks[$nameKey][$dateKey]['status'];
+                                $keterangan = $checks[$nameKey][$dateKey]['keterangan'];
+                            }
+                            
+                            $normalizedStatus = '';
+                            if ($categoryUpper === 'CCTV') {
+                                if ($status === 'ON' || $status === 'BAIK' || $status === 'AKTIF') {
+                                    $normalizedStatus = 'ON';
+                                } elseif ($status === 'OFF' || $status === 'RUSAK' || $status === 'TIDAK AKTIF') {
+                                    $normalizedStatus = 'OFF';
+                                    $offCount++;
+                                }
+                            } else { // GATE
+                                if ($status === 'BAIK' || $status === 'AKTIF' || $status === 'ON') {
+                                    $normalizedStatus = 'Aktif';
+                                } elseif ($status === 'BURUK' || $status === 'RUSAK' || $status === 'OFF') {
+                                    $normalizedStatus = 'Rusak';
+                                    $offCount++;
+                                }
+                            }
+                            
+                            if ($normalizedStatus !== '') {
+                                $displayVal = $normalizedStatus;
+                                $sheet->setCellValue($colLetter . $currentRow, $displayVal);
+                                
+                                if ($keterangan !== '') {
+                                    $sheet->getComment($colLetter . $currentRow)->getText()->createTextRun($keterangan);
+                                }
+                                
+                                $isOk = ($normalizedStatus === 'ON' || $normalizedStatus === 'Aktif');
+                                $bgColor = $isOk ? 'FF00B050' : 'FFFF0000';
+                                
+                                $sheet->getStyle($colLetter . $currentRow)->applyFromArray([
+                                    'fill' => [
+                                        'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                                        'startColor' => ['argb' => $bgColor]
+                                    ],
+                                    'font' => [
+                                        'color' => ['argb' => 'FFFFFFFF'],
+                                        'bold' => true
+                                    ],
+                                    'alignment' => [
+                                        'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                                        'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+                                    ]
+                                ]);
+                            }
+                        }
+                        
+                        $keteranganText = '';
+                        if ($categoryUpper === 'CCTV') {
+                            $keteranganText = "Mati: " . $offCount . " kali";
+                            $rowHeights[$currentRow] = 14.5;
+                        } else { // GATE
+                            $rowComments = [];
+                            for ($d = 1; $d <= $daysInMonth; $d++) {
+                                $dateKey = sprintf('%04d-%02d-%02d', $yearNum, $monthNum, $d);
+                                $idKey = 'id_' . $itemQueryId;
+                                $originalName = isset($item['original_item_name']) ? $item['original_item_name'] : $itemName;
+                                $nameKey = 'name_' . strtolower(trim($originalName));
+                                
+                                $keterangan = '';
+                                if (isset($checks[$idKey][$dateKey])) {
+                                    $keterangan = $checks[$idKey][$dateKey]['keterangan'];
+                                } elseif (isset($checks[$nameKey][$dateKey])) {
+                                    $keterangan = $checks[$nameKey][$dateKey]['keterangan'];
+                                }
+                                
+                                if ($keterangan !== '') {
+                                    $rowComments[] = "Tgl " . $d . ": " . $keterangan;
+                                }
+                            }
+                            $keteranganText = implode("\n", $rowComments);
+                            if (!empty($rowComments)) {
+                                $sheet->getStyle($keteranganColLetter . $currentRow)->getAlignment()->setWrapText(true);
+                                $rowHeights[$currentRow] = -1; // Let Excel auto-adjust height for multi-line comments
+                            } else {
+                                $rowHeights[$currentRow] = 14.5;
+                            }
+                        }
+                        $sheet->setCellValue($keteranganColLetter . $currentRow, $keteranganText);
+                        $sheet->getStyle($keteranganColLetter . $currentRow)->getAlignment()->setHorizontal($categoryUpper === 'CCTV' ? \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER : \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                        $sheet->getStyle($keteranganColLetter . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                        
+                        $currentRow++;
+                    }
+                    
+                    $lastRowIndex = $currentRow - 1;
+                    
+                    // Merge consecutive locations in Column A
+                    $mergeStart = 3;
+                    for ($r = 3; $r <= $lastRowIndex; $r++) {
+                        $currentLoc = $sheet->getCell('A' . $r)->getValue();
+                        $nextLoc = ($r < $lastRowIndex) ? $sheet->getCell('A' . ($r + 1))->getValue() : null;
+                        
+                        if ($currentLoc !== $nextLoc) {
+                            if ($r > $mergeStart) {
+                                $sheet->mergeCells('A' . $mergeStart . ':A' . $r);
+                            }
+                            $mergeStart = $r + 1;
+                        }
+                    }
+                    
+                    $sheet->getColumnDimension('A')->setAutoSize(true);
+                    $sheet->getColumnDimension('B')->setAutoSize(true);
+                    for ($d = 1; $d <= $daysInMonth; $d++) {
+                        $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($d + 2);
+                        $sheet->getColumnDimension($colLetter)->setWidth(13.0);
+                    }
+                    $sheet->getColumnDimension($keteranganColLetter)->setWidth(30.0); // Make it slightly wider for comments text
+                    
+                    for ($r = 1; $r <= $lastRowIndex; $r++) {
+                        $h = isset($rowHeights[$r]) ? $rowHeights[$r] : 14.5;
+                        if ($h > 0) {
+                            $sheet->getRowDimension($r)->setRowHeight($h);
+                        }
+                    }
+                    
+                    $borderStyle = [
+                        'borders' => [
+                            'allBorders' => [
+                                'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                                'color' => ['argb' => 'FF000000']
+                            ]
+                        ]
+                    ];
+                    $sheet->getStyle('A1:' . $keteranganColLetter . $lastRowIndex)->applyFromArray($borderStyle);
+                } else {
+                    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+                    $sheet = $spreadsheet->getActiveSheet();
+                    
+                    $sheet->setCellValue('A1', $title);
+                    $sheet->getStyle('A1')->getFont()->setBold(true);
+                    $sheet->getStyle('A1')->getAlignment()->setWrapText(true);
+                    $sheet->mergeCells('A1:H1');
+                    
+                    $sheet->setCellValue('A2', 'Diexport');
+                    $sheet->setCellValue('B2', date('d-m-Y H:i:s'));
+                    
+                    $headers = $this->routineReportHeaders();
+                    $colIndex = 'A';
+                    foreach ($headers as $header) {
+                        $sheet->setCellValue($colIndex . '4', $header);
+                        $sheet->getStyle($colIndex . '4')->getFont()->setBold(true);
+                        $colIndex++;
+                    }
+                    
+                    $dataRows = $this->routineReportRowsForOutput($rows);
+                    $barisSekarang = 5;
+                    foreach ($dataRows as $rowOut) {
+                        $sheet->setCellValue('A' . $barisSekarang, $rowOut[0]);
+                        $sheet->setCellValue('B' . $barisSekarang, $rowOut[1]);
+                        $sheet->setCellValue('C' . $barisSekarang, $rowOut[2]);
+                        $sheet->setCellValue('D' . $barisSekarang, $rowOut[3]);
+                        $sheet->setCellValue('E' . $barisSekarang, $rowOut[4]);
+                        $sheet->setCellValue('F' . $barisSekarang, $rowOut[5]);
+                        $sheet->setCellValue('G' . $barisSekarang, $rowOut[6]);
+                        $sheet->setCellValue('H' . $barisSekarang, $rowOut[7]);
+                        
+                        $sheet->getStyle('A' . $barisSekarang)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                        $sheet->getStyle('B' . $barisSekarang)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                        
+                        $barisSekarang++;
+                    }
+                    
+                    foreach (range('A', 'H') as $col) {
+                        $sheet->getColumnDimension($col)->setAutoSize(true);
+                    }
                 }
                 
                 $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);

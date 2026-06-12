@@ -239,11 +239,11 @@ body.has-modal-open .routine-manager-modal {
                             <?php if ($groupName === 'CCTV'): ?>
                                 <style>
                                     .routine-add-form--cctv {
-                                        grid-template-columns: 48px minmax(150px, 1fr) 220px minmax(70px, 90px) 240px !important;
+                                        grid-template-columns: 48px minmax(150px, 1fr) 280px minmax(70px, 90px) 240px !important;
                                         gap: 12px !important;
                                     }
                                     .routine-manage-row--cctv-child {
-                                        grid-template-columns: 48px minmax(150px, 1fr) 220px minmax(70px, 90px) 240px !important;
+                                        grid-template-columns: 48px minmax(150px, 1fr) 280px minmax(70px, 90px) 240px !important;
                                         gap: 12px !important;
                                     }
                                     .cctv-group-header:hover {
@@ -278,17 +278,14 @@ body.has-modal-open .routine-manager-modal {
                                                     <option value="<?= e($locName); ?>" data-color="<?= e($locCol); ?>"><?= e($locName); ?></option>
                                                 <?php endforeach; ?>
                                             </select>
-                                            <button type="button" id="cctvAddLocationBtn" class="btn btn--secondary" style="height: 46px; width: 46px; min-width: auto; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0;" title="Tambah Lokasi Baru"><i class="fa-solid fa-plus"></i></button>
+                                            <button type="button" id="cctvAddLocationBtn" class="btn btn--secondary" style="height: 34px !important; width: 44px !important; min-width: 0 !important; min-height: 0 !important; flex-shrink: 0 !important; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; border-radius: 8px !important;" title="Tambah Lokasi Baru"><i class="fa-solid fa-plus"></i></button>
                                         </div>
-
+ 
                                         <!-- Container 2: Inline Quick Add View -->
                                         <div id="cctvLocQuickAddContainer" style="display: none; gap: 6px; align-items: center; width: 100%;">
                                             <input type="text" id="cctvNewLocName" placeholder="Ketik lokasi baru..." style="padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 14px; font-size: 14px; flex-grow: 1; height: 46px; background-color: #fff;">
-                                            <div style="position: relative; width: 46px; height: 46px; border: 1px solid #cbd5e1; border-radius: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center; background-color: #fff; cursor: pointer;" title="Pilih warna lokasi">
-                                                <input type="color" id="cctvNewLocColor" value="#5B8DEF" style="border: none; width: 100%; height: 100%; padding: 0; margin: 0; cursor: pointer; outline: none; background: transparent; position: absolute; transform: scale(1.4);">
-                                            </div>
-                                            <button type="button" id="cctvConfirmLocBtn" class="btn btn--primary" style="height: 46px; width: 46px; min-width: auto; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; background-color: #10b981; border-color: #10b981;" title="Simpan Lokasi"><i class="fa-solid fa-check"></i></button>
-                                            <button type="button" id="cctvCancelLocBtn" class="btn btn--danger" style="height: 46px; width: 46px; min-width: auto; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0;" title="Batal"><i class="fa-solid fa-xmark"></i></button>
+                                            <button type="button" id="cctvConfirmLocBtn" class="btn btn--primary" style="height: 34px !important; width: 44px !important; min-width: 0 !important; min-height: 0 !important; flex-shrink: 0 !important; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; background-color: #10b981; border-color: #10b981; border-radius: 8px !important;" title="Simpan Lokasi"><i class="fa-solid fa-check"></i></button>
+                                            <button type="button" id="cctvCancelLocBtn" class="btn btn--danger" style="height: 34px !important; width: 44px !important; min-width: 0 !important; min-height: 0 !important; flex-shrink: 0 !important; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; border-radius: 8px !important;" title="Batal"><i class="fa-solid fa-xmark"></i></button>
                                         </div>
                                     </label>
                                     <div style="width: 100%; height: 46px; align-self: end;"></div>
@@ -298,7 +295,7 @@ body.has-modal-open .routine-manager-modal {
                                     <?php if (empty($categoryItems)): ?>
                                         <div class="routine-empty-mini">Belum ada item checking.</div>
                                     <?php else: ?>
-                                        <div class="routine-manage-row-header routine-manage-row-header--cctv" style="display: grid; grid-template-columns: 48px minmax(150px, 1fr) 220px minmax(70px, 90px) 240px !important; gap: 12px; padding: 8px 12px 4px; font-weight: 800; color: #6d84a4; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid transparent; border-bottom-color: rgba(42, 102, 165, 0.08); margin-bottom: 8px;">
+                                        <div class="routine-manage-row-header routine-manage-row-header--cctv" style="display: grid; grid-template-columns: 48px minmax(150px, 1fr) 280px minmax(70px, 90px) 240px !important; gap: 12px; padding: 8px 12px 4px; font-weight: 800; color: #6d84a4; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid transparent; border-bottom-color: rgba(42, 102, 165, 0.08); margin-bottom: 8px;">
                                             <div></div>
                                             <div>Nama CCTV</div>
                                             <div>Pilih Lokasi</div>
@@ -395,7 +392,6 @@ body.has-modal-open .routine-manager-modal {
                                     var locSelectContainer = document.getElementById('cctvLocSelectContainer');
                                     var locQuickAddContainer = document.getElementById('cctvLocQuickAddContainer');
                                     var newLocNameInput = document.getElementById('cctvNewLocName');
-                                    var newLocColorInput = document.getElementById('cctvNewLocColor');
                                     var confirmLocBtn = document.getElementById('cctvConfirmLocBtn');
                                     var cancelLocBtn = document.getElementById('cctvCancelLocBtn');
 
@@ -417,26 +413,29 @@ body.has-modal-open .routine-manager-modal {
                                     }
 
                                     // Inline Quick Add Cancel
-                                    if (cancelLocBtn && locSelectContainer && locQuickAddContainer && newLocNameInput && newLocColorInput) {
+                                    if (cancelLocBtn && locSelectContainer && locQuickAddContainer && newLocNameInput) {
                                         cancelLocBtn.addEventListener('click', function () {
                                             locQuickAddContainer.style.display = 'none';
                                             locSelectContainer.style.display = 'flex';
                                             newLocNameInput.value = '';
-                                            newLocColorInput.value = '#5B8DEF';
                                         });
                                     }
 
                                     // Inline Quick Add Confirm
-                                    if (confirmLocBtn && locSelectContainer && locQuickAddContainer && newLocNameInput && newLocColorInput && locSelect && colorHidden) {
+                                    if (confirmLocBtn && locSelectContainer && locQuickAddContainer && newLocNameInput && locSelect && colorHidden) {
                                         confirmLocBtn.addEventListener('click', function () {
                                             var newLoc = newLocNameInput.value.trim().toUpperCase();
                                             if (newLoc === '') {
-                                                alert('Nama lokasi baru tidak boleh kosong!');
+                                                if (window.spmtPopup) {
+                                                    window.spmtPopup('Nama lokasi baru tidak boleh kosong!', 'error', 'Peringatan');
+                                                } else {
+                                                    alert('Nama lokasi baru tidak boleh kosong!');
+                                                }
                                                 newLocNameInput.focus();
                                                 return;
                                             }
 
-                                            var newCol = newLocColorInput.value || '#5B8DEF';
+                                            var newCol = '#5B8DEF';
                                             var exists = false;
                                             for (var i = 0; i < locSelect.options.length; i++) {
                                                 if (locSelect.options[i].value.toUpperCase() === newLoc) {
@@ -462,7 +461,6 @@ body.has-modal-open .routine-manager-modal {
 
                                             // Reset and switch UI back
                                             newLocNameInput.value = '';
-                                            newLocColorInput.value = '#5B8DEF';
                                             locQuickAddContainer.style.display = 'none';
                                             locSelectContainer.style.display = 'flex';
                                         });
@@ -495,6 +493,229 @@ body.has-modal-open .routine-manager-modal {
                                             }
                                         }
                                     });
+                                })();
+                                </script>
+                            <?php elseif ($groupName === 'GATE'): ?>
+                                <style>
+                                    .routine-add-form--gate {
+                                        grid-template-columns: 48px minmax(150px, 1fr) 280px minmax(70px, 90px) 240px !important;
+                                        gap: 12px !important;
+                                    }
+                                    .routine-manage-row--gate-child {
+                                        grid-template-columns: 48px minmax(150px, 1fr) 280px minmax(70px, 90px) 240px !important;
+                                        gap: 12px !important;
+                                    }
+                                    .gate-group-header:hover {
+                                        background-color: #e2e8f0 !important;
+                                    }
+                                </style>
+                                <form class="routine-add-form routine-add-form--modal routine-add-form--no-sort routine-add-form--gate" method="post" action="index.php?page=routine-monitoring&amp;<?= e($returnQuery); ?>">
+                                    <input type="hidden" name="action" value="add_routine_item">
+                                    <input type="hidden" name="item_group" value="GATE">
+                                    
+                                    <div style="width: 48px; height: 46px; align-self: end;"></div>
+                                    <label class="routine-add-form__name"><span>Nama Checking</span><input type="text" name="item_name" placeholder="Contoh: Koneksi Internet" required></label>
+                                    <label class="routine-add-form__lokasi" style="display: flex; flex-direction: column; gap: 4px;">
+                                        <span>Pilih Lokasi</span>
+                                        
+                                        <!-- Container 1: Default Dropdown View -->
+                                        <div id="gateLocSelectContainer" style="display: flex; gap: 6px; align-items: center; width: 100%;">
+                                            <select name="lokasi" id="gateAddLocationSelect" required style="padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 14px; font-size: 14px; flex-grow: 1; height: 46px; background-color: #fff;">
+                                                <option value="">Pilih Lokasi</option>
+                                                <?php 
+                                                $uniqueGateLocs = [];
+                                                foreach ($categoryItems as $item) {
+                                                    $parts = explode(' - ', (string)($item['item_name'] ?? ''), 2);
+                                                    $loc = trim($parts[0] ?? '');
+                                                    if ($loc !== '' && !in_array($loc, $uniqueGateLocs, true)) {
+                                                        $uniqueGateLocs[] = $loc;
+                                                    }
+                                                }
+                                                sort($uniqueGateLocs);
+                                                foreach ($uniqueGateLocs as $locName):
+                                                ?>
+                                                    <option value="<?= e($locName); ?>"><?= e($locName); ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <button type="button" id="gateAddLocationBtn" class="btn btn--secondary" style="height: 34px !important; width: 44px !important; min-width: 0 !important; min-height: 0 !important; flex-shrink: 0 !important; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; border-radius: 8px !important;" title="Tambah Lokasi Baru"><i class="fa-solid fa-plus"></i></button>
+                                        </div>
+ 
+                                        <!-- Container 2: Inline Quick Add View -->
+                                        <div id="gateLocQuickAddContainer" style="display: none; gap: 6px; align-items: center; width: 100%;">
+                                            <input type="text" id="gateNewLocName" placeholder="Ketik lokasi baru..." style="padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 14px; font-size: 14px; flex-grow: 1; height: 46px; background-color: #fff;">
+                                            <button type="button" id="gateConfirmLocBtn" class="btn btn--primary" style="height: 34px !important; width: 44px !important; min-width: 0 !important; min-height: 0 !important; flex-shrink: 0 !important; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; background-color: #10b981; border-color: #10b981; border-radius: 8px !important;" title="Simpan Lokasi"><i class="fa-solid fa-check"></i></button>
+                                            <button type="button" id="gateCancelLocBtn" class="btn btn--danger" style="height: 34px !important; width: 44px !important; min-width: 0 !important; min-height: 0 !important; flex-shrink: 0 !important; padding: 0; display: flex; align-items: center; justify-content: center; margin: 0; border-radius: 8px !important;" title="Batal"><i class="fa-solid fa-xmark"></i></button>
+                                        </div>
+                                    </label>
+                                    <div style="width: 100%; height: 46px; align-self: end;"></div>
+                                    <button type="submit" class="btn btn--primary routine-btn-lg" style="align-self: end; height: 46px; min-width: auto !important; width: 100%; margin: 0; white-space: nowrap;"><i class="fa-solid fa-plus"></i> Tambah Item</button>
+                                </form>
+                                <div class="routine-manage-list routine-manage-list--modal routine-manage-list--form-cards" style="margin-top: 16px;">
+                                    <?php if (empty($categoryItems)): ?>
+                                        <div class="routine-empty-mini">Belum ada item checking.</div>
+                                    <?php else: ?>
+                                        <div class="routine-manage-row-header routine-manage-row-header--gate" style="display: grid; grid-template-columns: 48px minmax(150px, 1fr) 280px minmax(70px, 90px) 240px !important; gap: 12px; padding: 8px 12px 4px; font-weight: 800; color: #6d84a4; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid transparent; border-bottom-color: rgba(42, 102, 165, 0.08); margin-bottom: 8px;">
+                                            <div></div>
+                                            <div>Nama Checking</div>
+                                            <div>Pilih Lokasi</div>
+                                            <div style="text-align: center;">Aktif</div>
+                                            <div style="text-align: center;">Aksi</div>
+                                        </div>
+                                        
+                                        <?php
+                                        // Group items by location
+                                        $groupedGateLocItems = [];
+                                        foreach ($categoryItems as $item) {
+                                            $parts = explode(' - ', (string)($item['item_name'] ?? ''), 2);
+                                            $loc = trim($parts[0] ?? 'UMUM');
+                                            $dispName = trim($parts[1] ?? (string)$item['item_name']);
+                                            if ($loc === '') { $loc = 'UMUM'; }
+                                            if (!isset($groupedGateLocItems[$loc])) {
+                                                $groupedGateLocItems[$loc] = [];
+                                            }
+                                            $item['display_name'] = $dispName;
+                                            $groupedGateLocItems[$loc][] = $item;
+                                        }
+                                        ksort($groupedGateLocItems);
+                                        ?>
+                                        
+                                        <?php foreach ($groupedGateLocItems as $locName => $locItems): ?>
+                                            <!-- Group Accordion Header -->
+                                            <div class="gate-group-header" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; background-color: #f8fafc; border-radius: 14px; margin-top: 12px; margin-bottom: 8px; border: 1px solid #cbd5e1; cursor: pointer; transition: background-color 0.15s;" onclick="toggleGateGroup(this)">
+                                                <span class="gate-group-toggle-icon" style="font-size: 14px; color: #64748b; width: 16px; text-align: center; display: inline-block; transition: transform 0.2s;"><i class="fa-solid fa-chevron-down"></i></span>
+                                                <strong style="font-size: 14px; color: #1e293b; letter-spacing: 0.3px; text-transform: uppercase;"><?= e($locName); ?></strong>
+                                                <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+                                                    <span class="badge" style="background-color: #e2e8f0; color: #475569; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;"><?= count($locItems); ?> unit</span>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Children Container -->
+                                            <div class="gate-group-children" style="display: block; margin-bottom: 16px; padding-left: 14px; border-left: 2px solid #e2e8f0;">
+                                                <?php foreach ($locItems as $manageItem): ?>
+                                                    <?php $manageId = (int) ($manageItem['id'] ?? 0); $manageActive = (int) ($manageItem['is_active'] ?? 1) === 1; ?>
+                                                    <form class="routine-manage-row routine-manage-row--no-sort routine-manage-row--gate-child <?= $manageActive ? '' : 'is-inactive'; ?>" method="post" action="index.php?page=routine-monitoring&amp;<?= e($returnQuery); ?>" style="display: grid; align-items: center; margin-bottom: 8px;">
+                                                        <input type="hidden" name="action" value="update_routine_item">
+                                                        <input type="hidden" name="item_id" value="<?= $manageId; ?>">
+                                                        <input type="hidden" name="item_group" value="GATE">
+                                                        
+                                                        <!-- Indentation tree pointer icon -->
+                                                        <div style="display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; color: #94a3b8; font-size: 14px; height: 46px; align-self: end;">
+                                                            <i class="fa-solid fa-arrow-turn-up fa-rotate-90"></i>
+                                                        </div>
+                                                        
+                                                        <label class="routine-manage-row__name" style="margin: 0;"><input type="text" name="item_name" value="<?= e((string) ($manageItem['display_name'] ?? '')); ?>" required></label>
+                                                        <label class="routine-manage-row__lokasi" style="margin: 0;">
+                                                            <select name="lokasi" required style="padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 14px; font-size: 14px; width: 100%; height: 46px; background-color: #fff;">
+                                                                <?php foreach ($uniqueGateLocs as $lName): ?>
+                                                                    <option value="<?= e($lName); ?>" <?= $lName === $locName ? 'selected' : ''; ?>><?= e($lName); ?></option>
+                                                                <?php endforeach; ?>
+                                                            </select>
+                                                        </label>
+                                                        <label class="routine-active-toggle" style="display: flex; align-items: center; justify-content: center; height: 46px; align-self: end; margin: 0; padding: 0;"><input type="checkbox" name="is_active" value="1" <?= $manageActive ? 'checked' : ''; ?>></label>
+                                                        <div class="routine-manage-row__actions" style="flex-wrap: nowrap; margin: 0; display: flex; gap: 8px;">
+                                                            <button type="submit" class="btn btn--secondary routine-btn-lg" style="margin: 0; flex: 1;"><i class="fa-solid fa-floppy-disk"></i> Simpan</button>
+                                                            <button type="button" class="btn btn--danger routine-btn-lg js-confirm-delete" data-message="Hapus item checking GATE ini secara permanen dari database?" data-action="delete_routine_item" style="margin: 0; flex: 1;"><i class="fa-solid fa-trash"></i> Hapus</button>
+                                                        </div>
+                                                    </form>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </div>
+                                <script>
+                                (function () {
+                                    var gateModal = document.getElementById('routineItemManagerModal-GATE');
+                                    if (!gateModal) return;
+                                    
+                                    // Toggle collapse/expand of accordion children groups
+                                    window.toggleGateGroup = function (header) {
+                                        var icon = header.querySelector('.gate-group-toggle-icon i');
+                                        var children = header.nextElementSibling;
+                                        if (children && children.classList.contains('gate-group-children')) {
+                                            var isHidden = children.style.display === 'none';
+                                            children.style.display = isHidden ? 'block' : 'none';
+                                            if (icon) {
+                                                icon.className = isHidden ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right';
+                                            }
+                                        }
+                                    };
+                                    
+                                    // Elements for Inline Quick Add
+                                    var locSelectContainer = document.getElementById('gateLocSelectContainer');
+                                    var locQuickAddContainer = document.getElementById('gateLocQuickAddContainer');
+                                    var newLocNameInput = document.getElementById('gateNewLocName');
+                                    var addLocBtn = document.getElementById('gateAddLocationBtn');
+                                    var confirmLocBtn = document.getElementById('gateConfirmLocBtn');
+                                    var cancelLocBtn = document.getElementById('gateCancelLocBtn');
+                                    var locSelect = document.getElementById('gateAddLocationSelect');
+                                    
+                                    // Inline Quick Add Toggle
+                                    if (addLocBtn && locSelectContainer && locQuickAddContainer && newLocNameInput) {
+                                        addLocBtn.addEventListener('click', function () {
+                                            locSelectContainer.style.display = 'none';
+                                            locQuickAddContainer.style.display = 'flex';
+                                            newLocNameInput.focus();
+                                        });
+                                    }
+                                    
+                                    // Inline Quick Add Cancel
+                                    if (cancelLocBtn && locSelectContainer && locQuickAddContainer && newLocNameInput) {
+                                        cancelLocBtn.addEventListener('click', function () {
+                                            locQuickAddContainer.style.display = 'none';
+                                            locSelectContainer.style.display = 'flex';
+                                            newLocNameInput.value = '';
+                                        });
+                                    }
+                                    
+                                    // Inline Quick Add Confirm
+                                    if (confirmLocBtn && locSelectContainer && locQuickAddContainer && newLocNameInput && locSelect) {
+                                        confirmLocBtn.addEventListener('click', function () {
+                                            var newLoc = newLocNameInput.value.trim().toUpperCase();
+                                            if (newLoc === '') {
+                                                if (window.spmtPopup) {
+                                                    window.spmtPopup('Nama lokasi baru tidak boleh kosong!', 'error', 'Peringatan');
+                                                } else {
+                                                    alert('Nama lokasi baru tidak boleh kosong!');
+                                                }
+                                                newLocNameInput.focus();
+                                                return;
+                                            }
+                                            
+                                            var exists = false;
+                                            for (var i = 0; i < locSelect.options.length; i++) {
+                                                if (locSelect.options[i].value.toUpperCase() === newLoc) {
+                                                    locSelect.selectedIndex = i;
+                                                    exists = true;
+                                                    break;
+                                                }
+                                            }
+                                            
+                                            if (!exists) {
+                                                var opt = document.createElement('option');
+                                                opt.value = newLoc;
+                                                opt.text = newLoc;
+                                                opt.selected = true;
+                                                locSelect.add(opt);
+                                            }
+                                            
+                                            // Reset and switch UI back
+                                            newLocNameInput.value = '';
+                                            locQuickAddContainer.style.display = 'none';
+                                            locSelectContainer.style.display = 'flex';
+                                        });
+                                    }
+                                    
+                                    // Prevent Enter key in text input from submitting main form
+                                    if (newLocNameInput) {
+                                        newLocNameInput.addEventListener('keydown', function (e) {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                if (confirmLocBtn) {
+                                                    confirmLocBtn.click();
+                                                }
+                                            }
+                                        });
+                                    }
                                 })();
                                 </script>
                             <?php else: ?>
@@ -539,27 +760,37 @@ body.has-modal-open .routine-manager-modal {
         <input type="hidden" name="routine_search" value="<?= e($searchValue); ?>">
 
         <?php foreach ($categoryMeta as $groupName => $meta): ?>
-            <?php $rows = $groupedItems[$groupName] ?? []; ?>
+            <?php 
+            $rows = $groupedItems[$groupName] ?? []; 
+            $currentStatusOptions = $statusOptions;
+            if ($groupName === 'GATE') {
+                $currentStatusOptions = [
+                    '' => ['label' => '-', 'class' => 'empty'],
+                    'BAIK' => ['label' => 'Aktif', 'class' => 'baik'],
+                    'BURUK' => ['label' => 'Rusak', 'class' => 'buruk'],
+                ];
+            }
+            ?>
             <section class="routine-matrix-card">
                 <div class="routine-matrix-card__head">
                     <div class="routine-matrix-card__title"><span class="routine-matrix-card__icon"><i class="<?= e($meta['icon']); ?>"></i></span><h2><?= e($meta['label']); ?></h2></div>
                     <div class="routine-card-actions" style="display: flex; gap: 8px; align-items: center;">
                         <?php if ($canManageRoutineItems): ?>
-                            <button type="button" class="btn btn--secondary routine-manage-link js-open-category-manager" data-category="<?= e($groupName); ?>"><i class="fa-solid fa-pen"></i> Kelola <?= e($meta['label']); ?></button>
+                            <button type="button" class="btn btn--secondary routine-manage-link js-open-category-manager" data-category="<?= e($groupName); ?>"><i class="fa-solid fa-pen-to-square"></i> Kelola <?= e($meta['label']); ?></button>
                         <?php endif; ?>
-                        <button type="submit" name="save_category" value="<?= e($groupName); ?>" class="btn btn--primary routine-save-btn"><i class="fa-solid fa-floppy-disk"></i> Simpan Checklist <?= e($meta['label']); ?></button>
-                        <?php if ($groupName === 'CCTV'): ?>
+
+                        <?php if (in_array($groupName, ['CCTV', 'GATE'], true)): ?>
                             <a href="index.php?page=laporan&amp;action=report_export&amp;type=routine&amp;format=xlsx&amp;report_month=<?= e($monthValue); ?>&amp;report_year=<?= e($yearValue); ?>&amp;report_category=<?= urlencode($groupName); ?>" class="btn routine-export-excel-btn"><i class="fa-solid fa-file-excel"></i> Export Excel</a>
                         <?php endif; ?>
                     </div>
                 </div>
                 <div class="routine-matrix-table-wrap">
-                    <table class="routine-matrix-table <?= $groupName === 'CCTV' ? 'routine-matrix-table--cctv' : ''; ?>">
+                    <table class="routine-matrix-table <?= in_array($groupName, ['CCTV', 'GATE'], true) ? 'routine-matrix-table--cctv' : ''; ?> routine-matrix-table--<?= e(strtolower($groupName)); ?>">
                         <thead>
                             <tr>
-                                <?php if ($groupName === 'CCTV'): ?>
+                                <?php if (in_array($groupName, ['CCTV', 'GATE'], true)): ?>
                                     <th class="sticky-col sticky-col--lokasi">Lokasi</th>
-                                    <th class="sticky-col sticky-col--nama">Nama CCTV</th>
+                                    <th class="sticky-col sticky-col--nama"><?= $groupName === 'CCTV' ? 'Nama CCTV' : 'Data Barang'; ?></th>
                                 <?php else: ?>
                                     <th class="sticky-col">List Monitoring</th>
                                 <?php endif; ?>
@@ -570,14 +801,19 @@ body.has-modal-open .routine-manager-modal {
                         </thead>
                         <tbody>
                             <?php if (empty($rows)): ?>
-                                <tr><td class="routine-empty-row" colspan="<?= count($days) + ($groupName === 'CCTV' ? 2 : 1); ?>">Belum ada item checking.</td></tr>
+                                <tr><td class="routine-empty-row" colspan="<?= count($days) + (in_array($groupName, ['CCTV', 'GATE'], true) ? 2 : 1); ?>">Belum ada item checking.</td></tr>
                             <?php else: ?>
                                 <?php
                                 $cctvRowspans = [];
                                 $renderedLocations = [];
-                                if ($groupName === 'CCTV') {
+                                if (in_array($groupName, ['CCTV', 'GATE'], true)) {
                                     foreach ($rows as $rowItem) {
-                                        $loc = (string) ($rowItem['lokasi'] ?? '-');
+                                        if ($groupName === 'GATE') {
+                                            $parts = explode(' - ', (string) ($rowItem['item_name'] ?? ''), 2);
+                                            $loc = $parts[0] ?? '-';
+                                        } else {
+                                            $loc = (string) ($rowItem['lokasi'] ?? '-');
+                                        }
                                         if (!isset($cctvRowspans[$loc])) {
                                             $cctvRowspans[$loc] = 0;
                                         }
@@ -588,10 +824,17 @@ body.has-modal-open .routine-manager-modal {
                                 <?php foreach ($rows as $item): ?>
                                     <?php
                                     $itemId = (int) ($item['id'] ?? 0);
-                                    $loc = (string) ($item['lokasi'] ?? '-');
+                                    if ($groupName === 'GATE') {
+                                        $parts = explode(' - ', (string) ($item['item_name'] ?? ''), 2);
+                                        $loc = $parts[0] ?? '-';
+                                        $displayName = $parts[1] ?? (string) ($item['item_name'] ?? '');
+                                    } else {
+                                        $loc = (string) ($item['lokasi'] ?? '-');
+                                        $displayName = (string) ($item['item_name'] ?? '');
+                                    }
                                     ?>
-                                    <tr class="routine-monitoring-row" data-lokasi="<?= e($loc); ?>" data-routine-search="<?= e(strtolower((string) ($groupName . ' ' . $loc . ' ' . ($item['item_name'] ?? '')))); ?>">
-                                        <?php if ($groupName === 'CCTV'): ?>
+                                    <tr class="routine-monitoring-row" data-lokasi="<?= e($loc); ?>" data-routine-search="<?= e(strtolower((string) ($groupName . ' ' . $loc . ' ' . $displayName))); ?>">
+                                        <?php if (in_array($groupName, ['CCTV', 'GATE'], true)): ?>
                                             <?php
                                             $isFirst = !in_array($loc, $renderedLocations, true);
                                             if ($isFirst) {
@@ -600,9 +843,9 @@ body.has-modal-open .routine-manager-modal {
                                             $rSpan = $cctvRowspans[$loc] ?? 1;
                                             ?>
                                             <td class="sticky-col sticky-col--lokasi routine-lokasi-cell" rowspan="<?= $rSpan; ?>" style="<?= $isFirst ? '' : 'display: none;'; ?> vertical-align: middle; text-align: center;"><span><?= e($loc); ?></span></td>
-                                            <td class="sticky-col sticky-col--nama routine-item-name-cell"><strong><?= e((string) ($item['item_name'] ?? '-')); ?></strong></td>
+                                            <td class="sticky-col sticky-col--nama routine-item-name-cell"><strong><?= e($displayName); ?></strong></td>
                                         <?php else: ?>
-                                            <td class="sticky-col routine-item-name-cell"><strong><?= e((string) ($item['item_name'] ?? '-')); ?></strong></td>
+                                            <td class="sticky-col routine-item-name-cell"><strong><?= e($displayName); ?></strong></td>
                                         <?php endif; ?>
                                         <?php foreach ($days as $day): ?>
                                             <?php
@@ -638,17 +881,30 @@ body.has-modal-open .routine-manager-modal {
                                                         </button>
                                                     </div>
                                                 <?php else: ?>
-                                                    <select class="routine-cell-select routine-cell-select--<?= e(strtolower(str_replace(' ', '-', $selectedStatus !== '' ? $selectedStatus : 'empty'))); ?>" name="items[<?= $itemId; ?>][<?= e($dateKey); ?>][condition_status]" onchange="routineCellChange(this)">
-                                                        <?php foreach ($statusOptions as $value => $metaStatus): ?>
-                                                            <option value="<?= e($value); ?>" <?= $selectedStatus === $value ? 'selected' : ''; ?>><?= e($metaStatus['label']); ?></option>
-                                                        <?php endforeach; ?>
-                                                    </select>
-                                                    <input type="text"
-                                                        class="routine-cell-note<?= ($needsNote || $keteranganVal !== '') ? '' : ' routine-cell-note--hidden'; ?>"
-                                                        name="items[<?= $itemId; ?>][<?= e($dateKey); ?>][keterangan]"
-                                                        value="<?= e($keteranganVal); ?>"
-                                                        placeholder="Catatan..."
-                                                        maxlength="255">
+                                                    <div class="routine-cell-container">
+                                                        <select class="routine-cell-select routine-cell-select--<?= e(strtolower(str_replace(' ', '-', $selectedStatus !== '' ? $selectedStatus : 'empty'))); ?>" name="items[<?= $itemId; ?>][<?= e($dateKey); ?>][condition_status]" onchange="routineCellChange(this)">
+                                                            <?php foreach ($currentStatusOptions as $value => $metaStatus): ?>
+                                                                <option value="<?= e($value); ?>" <?= $selectedStatus === $value ? 'selected' : ''; ?>><?= e($metaStatus['label']); ?></option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                        <?php
+                                                        $hasComment = ($keteranganVal !== '');
+                                                        $iconClass = $hasComment ? 'fa-solid fa-comment text-primary' : 'fa-regular fa-comment text-muted';
+                                                        ?>
+                                                        <button type="button" 
+                                                                class="routine-cell-comment-btn js-open-comment-modal" 
+                                                                data-item-id="<?= $itemId; ?>"
+                                                                data-item-name="<?= e($displayName); ?>"
+                                                                data-date-key="<?= e($dateKey); ?>"
+                                                                data-day="<?= e((string) ($day['day'] ?? '')); ?>"
+                                                                title="<?= $hasComment ? e($keteranganVal) : 'Tambah Catatan'; ?>">
+                                                            <i class="<?= $iconClass; ?>"></i>
+                                                        </button>
+                                                        <input type="hidden"
+                                                            class="routine-cell-note"
+                                                            name="items[<?= $itemId; ?>][<?= e($dateKey); ?>][keterangan]"
+                                                            value="<?= e($keteranganVal); ?>">
+                                                    </div>
                                                 <?php endif; ?>
                                             </td>
                                         <?php endforeach; ?>
@@ -696,6 +952,23 @@ body.has-modal-open .routine-manager-modal {
                 </div>
             </div>
             <div class="routine-recap-dialog__body js-routine-recap-body"></div>
+        </div>
+    </div>
+
+    <!-- Custom Comment Modal -->
+    <div class="routine-comment-modal" id="routineCommentModal" hidden aria-hidden="true">
+        <div class="routine-comment-dialog" role="dialog" aria-modal="true" aria-labelledby="routineCommentTitle">
+            <div class="routine-comment-dialog__head">
+                <h3 id="routineCommentTitle">Catatan - [Data Barang] (Tanggal [D])</h3>
+                <button type="button" class="icon-round js-close-comment-modal" aria-label="Tutup"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="routine-comment-dialog__body">
+                <textarea id="routineCommentTextarea" class="routine-comment-textarea" placeholder="Tulis catatan di sini..."></textarea>
+            </div>
+            <div class="routine-comment-dialog__foot">
+                <button type="button" class="btn btn--secondary js-close-comment-modal">Batal</button>
+                <button type="button" class="btn btn--primary js-save-comment">Simpan</button>
+            </div>
         </div>
     </div>
 </div>
@@ -813,38 +1086,39 @@ body.has-modal-open .routine-manager-modal {
         emptyStates.push({card: card, message: message});
     });
     function updateCctvRowspans() {
-        var cctvTable = document.querySelector('.routine-matrix-table--cctv');
-        if (!cctvTable) return;
-        
-        var visibleRows = Array.prototype.slice.call(cctvTable.querySelectorAll('.routine-monitoring-row:not([hidden])'));
-        
-        // Group visible rows by location
-        var groups = {};
-        visibleRows.forEach(function (row) {
-            var loc = row.getAttribute('data-lokasi') || '';
-            if (!groups[loc]) {
-                groups[loc] = [];
-            }
-            groups[loc].push(row);
-        });
-        
-        // For each group, set the rowspan on the first visible row's lokasi cell
-        // and hide the lokasi cell for the other visible rows
-        for (var loc in groups) {
-            if (!groups.hasOwnProperty(loc)) continue;
-            var groupRows = groups[loc];
-            groupRows.forEach(function (row, idx) {
-                var cell = row.querySelector('.routine-lokasi-cell');
-                if (!cell) return;
-                
-                if (idx === 0) {
-                    cell.setAttribute('rowspan', groupRows.length);
-                    cell.style.display = ''; // Show it
-                } else {
-                    cell.style.display = 'none'; // Hide it
+        var cctvTables = document.querySelectorAll('.routine-matrix-table--cctv');
+        cctvTables.forEach(function (cctvTable) {
+            var visibleRows = Array.prototype.slice.call(cctvTable.querySelectorAll('.routine-monitoring-row:not([hidden])'));
+            
+            // Group visible rows by location
+            var groups = {};
+            visibleRows.forEach(function (row) {
+                var loc = row.getAttribute('data-lokasi') || '';
+                if (!groups[loc]) {
+                    groups[loc] = [];
                 }
+                groups[loc].push(row);
             });
-        }
+            
+            // For each group, set the rowspan on the first visible row's lokasi cell
+            // and hide the lokasi cell for the other visible rows
+            for (var loc in groups) {
+                if (!groups.hasOwnProperty(loc)) continue;
+                var groupRows = groups[loc];
+                groupRows.forEach(function (row, idx) {
+                    var cell = row.querySelector('.routine-lokasi-cell');
+                    if (!cell) return;
+                    
+                    if (idx === 0) {
+                        cell.setAttribute('rowspan', groupRows.length);
+                        cell.style.display = ''; // Show it
+                        cell.removeAttribute('hidden');
+                    } else {
+                        cell.style.display = 'none'; // Hide it
+                    }
+                });
+            }
+        });
     }
 
     function applyLiveSearch() {
@@ -895,6 +1169,9 @@ function toggleCctvStatus(btn) {
         btn.classList.add('cctv-switch-btn--empty');
         label.textContent = '-';
     }
+    
+    // Auto save CCTV toggle
+    autoSaveCell(input);
 }
 
 function routineCellChange(select) {
@@ -908,12 +1185,97 @@ function routineCellChange(select) {
     
     var noteInput = wrapper.querySelector('.routine-cell-note');
     if (noteInput) {
-        if (status === 'KURANG BAIK' || status === 'BURUK') {
-            noteInput.classList.remove('routine-cell-note--hidden');
-        } else if (noteInput.value === '') {
-            noteInput.classList.add('routine-cell-note--hidden');
+        var isGate = false;
+        var section = select.closest('.routine-matrix-card');
+        var manageBtn = section ? section.querySelector('.js-open-category-manager') : null;
+        if (manageBtn && manageBtn.getAttribute('data-category') === 'GATE') {
+            isGate = true;
+        }
+        
+        var showNote = false;
+        if (isGate) {
+            showNote = (status === 'BURUK');
+        } else {
+            showNote = (status === 'KURANG BAIK' || status === 'BURUK');
+        }
+        
+        if (!showNote) {
+            noteInput.value = '';
+            var commentBtn = wrapper.querySelector('.js-open-comment-modal');
+            if (commentBtn) {
+                var icon = commentBtn.querySelector('i');
+                if (icon) {
+                    icon.className = 'fa-regular fa-comment text-muted';
+                }
+                commentBtn.setAttribute('title', 'Tambah Catatan');
+            }
+            autoSaveCell(noteInput);
         }
     }
+    
+    // Auto save select input
+    autoSaveCell(select);
+}
+
+function autoSaveCell(element) {
+    var name = element.getAttribute('name');
+    if (!name) return;
+    
+    var matches = name.match(/^items\[(\d+)\]\[([^\]]+)\]\[([^\]]+)\]$/);
+    if (!matches) return;
+    
+    var itemId = matches[1];
+    var dateKey = matches[2];
+    
+    var container = element.closest('td');
+    var statusInput = container.querySelector('[name^="items[' + itemId + '][' + dateKey + '][condition_status]"]');
+    var noteInput = container.querySelector('[name^="items[' + itemId + '][' + dateKey + '][keterangan]"]');
+    
+    var statusVal = statusInput ? statusInput.value : '';
+    var noteVal = noteInput ? noteInput.value : '';
+    
+    var formData = new FormData();
+    formData.append('item_id', itemId);
+    formData.append('monitor_date', dateKey);
+    formData.append('condition_status', statusVal);
+    formData.append('keterangan', noteVal);
+    
+    // Hapus indikator error sebelumnya jika ada
+    var prevIndicator = container.querySelector('.routine-save-indicator');
+    if (prevIndicator) {
+        prevIndicator.remove();
+    }
+    
+    fetch('index.php?page=routine-monitoring&ajax=save_routine_monitoring_cell', {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (data.status !== 'success') {
+            showErrorIndicator(container, data.message);
+        }
+    })
+    .catch(function(err) {
+        showErrorIndicator(container, 'Koneksi terputus');
+        console.error('Auto-save network error:', err);
+    });
+}
+
+function showErrorIndicator(container, message) {
+    var indicator = container.querySelector('.routine-save-indicator');
+    if (!indicator) {
+        indicator = document.createElement('span');
+        indicator.className = 'routine-save-indicator';
+        indicator.style.position = 'absolute';
+        indicator.style.top = '1px';
+        indicator.style.right = '1px';
+        indicator.style.fontSize = '8px';
+        indicator.style.pointerEvents = 'none';
+        container.style.position = 'relative';
+        container.appendChild(indicator);
+    }
+    indicator.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #dc2626;" title="Gagal menyimpan: ' + (message || '') + '"></i>';
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -954,6 +1316,19 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         hidden.value = JSON.stringify(items);
     }
+
+    // Attach blur and enter keypress to all note inputs for autosave
+    document.querySelectorAll('.routine-cell-note').forEach(function (noteInput) {
+        noteInput.addEventListener('blur', function () {
+            autoSaveCell(noteInput);
+        });
+        noteInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                noteInput.blur();
+            }
+        });
+    });
 
     // Intercept standard submit events for modal/management forms (excluding main matrix form)
     document.addEventListener('submit', function (event) {
@@ -1070,5 +1445,86 @@ document.addEventListener('DOMContentLoaded', function () {
         
         form.submit();
     });
-});
+})();
+</script>
+
+<script>
+(function () {
+    var modal = document.getElementById('routineCommentModal');
+    if (!modal) return;
+    var title = modal.querySelector('#routineCommentTitle');
+    var textarea = modal.querySelector('#routineCommentTextarea');
+    var saveBtn = modal.querySelector('.js-save-comment');
+    
+    var activeBtn = null;
+    
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.js-open-comment-modal');
+        if (btn) {
+            e.preventDefault();
+            activeBtn = btn;
+            
+            var itemName = btn.getAttribute('data-item-name') || '';
+            var day = btn.getAttribute('data-day') || '';
+            var itemId = btn.getAttribute('data-item-id') || '';
+            var dateKey = btn.getAttribute('data-date-key') || '';
+            
+            // Find the hidden input
+            var container = btn.closest('td');
+            var noteInput = container.querySelector('.routine-cell-note');
+            var currentComment = noteInput ? noteInput.value : '';
+            
+            title.textContent = "Catatan - " + itemName + " (Tanggal " + day + ")";
+            textarea.value = currentComment;
+            
+            modal.removeAttribute('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            setTimeout(function () {
+                modal.classList.add('active');
+                textarea.focus();
+            }, 10);
+        }
+        
+        var closeBtn = e.target.closest('.js-close-comment-modal');
+        if (closeBtn) {
+            e.preventDefault();
+            closeCommentModal();
+        }
+    });
+    
+    function closeCommentModal() {
+        modal.classList.remove('active');
+        modal.setAttribute('aria-hidden', 'true');
+        setTimeout(function () {
+            modal.setAttribute('hidden', 'true');
+            activeBtn = null;
+        }, 200);
+    }
+    
+    saveBtn.addEventListener('click', function () {
+        if (!activeBtn) return;
+        var value = textarea.value.trim();
+        
+        var container = activeBtn.closest('td');
+        var noteInput = container.querySelector('.routine-cell-note');
+        if (noteInput) {
+            noteInput.value = value;
+            autoSaveCell(noteInput);
+        }
+        
+        // Update icon and title
+        var icon = activeBtn.querySelector('i');
+        if (icon) {
+            if (value !== '') {
+                icon.className = 'fa-solid fa-comment text-primary';
+                activeBtn.setAttribute('title', value);
+            } else {
+                icon.className = 'fa-regular fa-comment text-muted';
+                activeBtn.setAttribute('title', 'Tambah Catatan');
+            }
+        }
+        
+        closeCommentModal();
+    });
+})();
 </script>

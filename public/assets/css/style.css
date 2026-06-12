@@ -13880,3 +13880,189 @@ button,
     transform: translateY(-1px);
     filter: brightness(1.05);
 }
+
+/* CCTV & GATE Table Date Columns styling */
+.routine-matrix-table--cctv:not(.routine-matrix-table--gate) th:not(.sticky-col),
+.routine-matrix-table--cctv:not(.routine-matrix-table--gate) td:not(.sticky-col) {
+    min-width: 70px;
+    max-width: 70px;
+    width: 70px;
+    box-sizing: border-box;
+}
+
+.routine-matrix-table--gate th:not(.sticky-col),
+.routine-matrix-table--gate td:not(.sticky-col) {
+    min-width: 140px;
+    max-width: 140px;
+    width: 140px;
+    box-sizing: border-box;
+}
+
+.routine-cell-note {
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    border: 1px solid #d5deed;
+    border-radius: 8px;
+    outline: none;
+    background: #ffffff;
+    box-sizing: border-box;
+}
+
+.routine-cell-note--hidden {
+    display: none !important;
+}
+
+.routine-cell-select option {
+    background-color: #ffffff !important;
+    color: #123f79 !important;
+}
+
+/* Align select dropdown and comment icon horizontally */
+.routine-cell-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.routine-cell-container .routine-cell-select {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+}
+
+/* Comment button styling */
+.routine-cell-comment-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+}
+
+.routine-cell-comment-btn:hover {
+    transform: scale(1.15);
+}
+
+.routine-cell-comment-btn i {
+    font-size: 1.25rem;
+    vertical-align: middle;
+}
+
+.routine-cell-comment-btn i.text-muted {
+    color: #94a3b8 !important;
+}
+
+.routine-cell-comment-btn i.text-primary {
+    color: #3b82f6 !important;
+}
+
+/* Custom Comment Modal overlay */
+.routine-comment-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(18, 36, 61, 0.46);
+    padding: 16px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.routine-comment-modal.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.routine-comment-modal[hidden] {
+    display: none !important;
+}
+
+/* Modal Dialog box */
+.routine-comment-dialog {
+    width: min(520px, 100%);
+    background: #ffffff;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(16, 40, 79, 0.24);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateY(-20px);
+    transition: transform 0.2s ease;
+    box-sizing: border-box;
+}
+
+.routine-comment-modal.active .routine-comment-dialog {
+    transform: translateY(0);
+}
+
+/* Head */
+.routine-comment-dialog__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #edf2f9;
+}
+
+.routine-comment-dialog__head h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--c-primary);
+}
+
+/* Body */
+.routine-comment-dialog__body {
+    padding: 20px;
+}
+
+.routine-comment-textarea {
+    width: 100%;
+    height: 120px;
+    padding: 12px 14px;
+    border: 1px solid #d5deed;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    resize: none;
+    outline: none;
+    box-sizing: border-box;
+    font-family: inherit;
+    color: var(--c-primary);
+    transition: border-color 0.15s ease;
+}
+
+.routine-comment-textarea:focus {
+    border-color: var(--c-secondary);
+}
+
+/* Foot */
+.routine-comment-dialog__foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 20px;
+    background: #f8fafc;
+    border-top: 1px solid #edf2f9;
+}
+
+.routine-comment-dialog__foot .btn {
+    min-height: 40px;
+    padding: 0 20px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+}
+

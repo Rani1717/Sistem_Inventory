@@ -1899,6 +1899,29 @@ SQL);
                 }
             }
 
+            // First pass: gather valid locations with cameras
+            $validLabels = [];
+            foreach ($rows as $row) {
+                $label = trim((string) ($row['lokasi'] ?? ''));
+                if ($label === '') continue;
+                $normalizedLabel = strtoupper($label);
+                $cameras = $camerasByLokasi[$normalizedLabel] ?? [];
+                $total = isset($hasInventoryForLocation[$normalizedLabel]) ? count($cameras) : 0;
+                if ($total > 0) {
+                    $validLabels[] = $label;
+                }
+            }
+
+            // Sort alphabetically case-insensitively
+            natcasesort($validLabels);
+            $validLabels = array_values($validLabels);
+            
+            // Map labels to sequential colors
+            $locColorMap = [];
+            foreach ($validLabels as $idx => $label) {
+                $locColorMap[strtoupper(trim($label))] = $this->getPaletteColor($idx);
+            }
+
             $result = [];
             foreach ($rows as $row) {
                 $label = trim((string) ($row['lokasi'] ?? ''));
@@ -1924,7 +1947,7 @@ SQL);
                     'id'      => (int) ($row['id'] ?? 0),
                     'label'   => $label,
                     'value'   => $total,
-                    'color'   => preg_match('/^#[0-9A-Fa-f]{6}$/', (string) ($row['color'] ?? '')) ? (string) $row['color'] : '#5B8DEF',
+                    'color'   => $locColorMap[$normalizedLabel] ?? '#5B8DEF',
                     'cameras' => $cameras,
                 ];
             }
@@ -2838,6 +2861,66 @@ SQL);
         return strpos($haystack, $needle) === 0;
     }
 
+    public function getPalette(): array
+    {
+        return [
+            '#3B82F6', // 1. Blue (Primary)
+            '#EF4444', // 2. Red
+            '#10B981', // 3. Emerald Green
+            '#F97316', // 4. Orange
+            '#8B5CF6', // 5. Purple
+            '#06B6D4', // 6. Cyan
+            '#EC4899', // 7. Pink
+            '#84CC16', // 8. Lime
+            '#6366F1', // 9. Indigo
+            '#F59E0B', // 10. Amber
+            '#D946EF', // 11. Fuchsia
+            '#14B8A6', // 12. Teal
+            '#F43F5E', // 13. Rose
+            '#0EA5E9', // 14. Sky Blue
+            '#A78BFA', // 15. Lavender
+            '#34D399', // 16. Mint Green
+            '#C026D3', // 17. Purple Pink
+            '#D97706', // 18. Gold-brown
+            '#7C3AED', // 19. Medium Purple
+            '#0891B2', // 20. Dark Cyan
+            '#DB2777', // 21. Dark Pink
+            '#65A30D', // 22. Dark Lime
+            '#CA8A04', // 23. Dark Yellow
+            '#0D9488', // 24. Dark Teal
+            '#BE123C', // 25. Crimson
+            '#0284C7', // 26. Ocean Blue
+            '#B45309', // 27. Bronze
+            '#4338CA', // 28. Navy
+            '#15803D', // 29. Forest Green
+            '#B2533E', // 30. Terracotta
+            '#6B28D9', // 31. Royal Purple
+            '#0F766E', // 32. Deep Teal
+            '#9D174D', // 33. Deep Pink
+            '#1E3A8A', // 34. Midnight Blue
+            '#475569', // 35. Slate
+            '#065F46', // 36. Dark Pine
+        ];
+    }
+
+    public function stringToColor(string $str): string
+    {
+        $palette = $this->getPalette();
+        $clean = strtoupper(trim($str));
+        if ($clean === '') {
+            return '#64748b';
+        }
+        $hash = crc32($clean);
+        $index = abs($hash) % count($palette);
+        return $palette[$index];
+    }
+
+    public function getPaletteColor(int $index): string
+    {
+        $palette = $this->getPalette();
+        return $palette[$index % count($palette)];
+    }
+
     private function buildPcChartData(PDO $pdo): array
     {
         $empty = ['labels' => [], 'aktif' => [], 'rusak' => [], 'total' => 0, 'division_codes' => [], 'division_urls' => [], 'full_labels' => []];
@@ -2959,6 +3042,11 @@ SQL);
                 }
             }
 
+            $colors = [];
+            foreach ($fullLabels as $index => $fl) {
+                $colors[] = $this->getPaletteColor($index);
+            }
+
             return [
                 'labels'         => $labels,
                 'full_labels'    => $fullLabels,
@@ -2968,6 +3056,7 @@ SQL);
                 'rusak'          => $rusak,
                 'total'          => $total,
                 'broken_pcs'     => $brokenPcsList,
+                'colors'         => $colors,
             ];
         } catch (Throwable $e) {
             return $empty;
