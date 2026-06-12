@@ -548,6 +548,9 @@ body.has-modal-open .routine-manager-modal {
                             <button type="button" class="btn btn--secondary routine-manage-link js-open-category-manager" data-category="<?= e($groupName); ?>"><i class="fa-solid fa-pen"></i> Kelola <?= e($meta['label']); ?></button>
                         <?php endif; ?>
                         <button type="submit" name="save_category" value="<?= e($groupName); ?>" class="btn btn--primary routine-save-btn"><i class="fa-solid fa-floppy-disk"></i> Simpan Checklist <?= e($meta['label']); ?></button>
+                        <?php if ($groupName === 'CCTV'): ?>
+                            <a href="index.php?page=laporan&amp;action=report_export&amp;type=routine&amp;format=xlsx&amp;report_month=<?= e($monthValue); ?>&amp;report_year=<?= e($yearValue); ?>&amp;report_category=<?= urlencode($groupName); ?>" class="btn routine-export-excel-btn"><i class="fa-solid fa-file-excel"></i> Export Excel</a>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div class="routine-matrix-table-wrap">

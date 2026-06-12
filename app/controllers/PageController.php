@@ -3364,9 +3364,61 @@ startxref
         if ($type === 'routine') {
             $rows = $this->fetchRoutineMonitoringReportRows($pdo, $filters);
             if ($format === 'xlsx') {
-                $xlsx = $this->buildGenericLaporanXlsx($title, $this->routineReportHeaders(), $this->routineReportRowsForOutput($rows));
+                if (!class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+                    if (file_exists(__DIR__ . '/../../peminjaman_laptop/vendor/autoload.php')) {
+                        require_once __DIR__ . '/../../peminjaman_laptop/vendor/autoload.php';
+                    } elseif (file_exists(__DIR__ . '/../../vendor/autoload.php')) {
+                        require_once __DIR__ . '/../../vendor/autoload.php';
+                    }
+                }
+                
+                $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+                $sheet = $spreadsheet->getActiveSheet();
+                
+                $sheet->setCellValue('A1', $title);
+                $sheet->getStyle('A1')->getFont()->setBold(true);
+                $sheet->getStyle('A1')->getAlignment()->setWrapText(true);
+                $sheet->mergeCells('A1:H1');
+                
+                $sheet->setCellValue('A2', 'Diexport');
+                $sheet->setCellValue('B2', date('d-m-Y H:i:s'));
+                
+                $headers = $this->routineReportHeaders();
+                $colIndex = 'A';
+                foreach ($headers as $header) {
+                    $sheet->setCellValue($colIndex . '4', $header);
+                    $sheet->getStyle($colIndex . '4')->getFont()->setBold(true);
+                    $colIndex++;
+                }
+                
+                $dataRows = $this->routineReportRowsForOutput($rows);
+                $barisSekarang = 5;
+                foreach ($dataRows as $rowOut) {
+                    $sheet->setCellValue('A' . $barisSekarang, $rowOut[0]);
+                    $sheet->setCellValue('B' . $barisSekarang, $rowOut[1]);
+                    $sheet->setCellValue('C' . $barisSekarang, $rowOut[2]);
+                    $sheet->setCellValue('D' . $barisSekarang, $rowOut[3]);
+                    $sheet->setCellValue('E' . $barisSekarang, $rowOut[4]);
+                    $sheet->setCellValue('F' . $barisSekarang, $rowOut[5]);
+                    $sheet->setCellValue('G' . $barisSekarang, $rowOut[6]);
+                    $sheet->setCellValue('H' . $barisSekarang, $rowOut[7]);
+                    
+                    $sheet->getStyle('A' . $barisSekarang)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                    $sheet->getStyle('B' . $barisSekarang)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                    
+                    $barisSekarang++;
+                }
+                
+                foreach (range('A', 'H') as $col) {
+                    $sheet->getColumnDimension($col)->setAutoSize(true);
+                }
+                
+                $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
                 header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                 header('Content-Disposition: attachment; filename="' . $base . '.xlsx"');
+                ob_start();
+                $writer->save('php://output');
+                $xlsx = ob_get_clean();
                 header('Content-Length: ' . strlen($xlsx));
                 echo $xlsx;
                 exit;
@@ -3964,7 +4016,7 @@ startxref
         }, $rows);
     }
 
-    private function buildGenericLaporanXlsx(string $title, array $headers, array $rows): string
+    private function buildGenericLaporanXlsx(string $title, array $headers, array $rows, array $centerCols = []): string
     {
         $sheetRows = [[$title], ['Diexport', date('d-m-Y H:i:s')], [], $headers];
         foreach ($rows as $row) { $sheetRows[] = $row; }
@@ -3972,6 +4024,7 @@ startxref
             'name' => $this->safeExcelSheetName($title),
             'rows' => $sheetRows,
             'widths' => array_fill(0, max(1, count($headers)), 18),
+            'center_cols' => $centerCols,
         ]]);
     }
 
@@ -3989,13 +4042,27 @@ startxref
                 $params['month'] = (int) $f['month'];
             }
         }
+        $category = trim((string) ($f['category'] ?? ''));
+        if ($category !== '') {
+            $where[] = 'UPPER(COALESCE(NULLIF(ri.category_field, ""), NULLIF(ri.item_group, ""), "")) = UPPER(:category)';
+            $params['category'] = $category;
+        }
         $sql = 'SELECT rm.monitor_date, COALESCE(NULLIF(ri.category_field, ""), NULLIF(ri.item_group, ""), "-") AS kategori, rm.item_name, rm.condition_status, rm.keterangan, rm.checked_by_name, rm.updated_at FROM routine_monitoring rm LEFT JOIN routine_monitoring_items ri ON ri.id = rm.item_id ' . ($where ? ('WHERE ' . implode(' AND ', $where)) : '') . ' ORDER BY rm.monitor_date ASC, kategori ASC, rm.item_name ASC';
         try {
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             $rawRows = $stmt->fetchAll();
         } catch (Throwable $e) {
-            $stmt = $pdo->prepare('SELECT monitor_date, "-" AS kategori, item_name, condition_status, keterangan, checked_by_name, updated_at FROM routine_monitoring rm ' . ($where ? ('WHERE ' . implode(' AND ', $where)) : '') . ' ORDER BY monitor_date ASC, item_name ASC');
+            $fallbackWhere = $where;
+            if ($category !== '') {
+                // If the join fails, we fallback to filtering item_name
+                // because category won't be available without the items table join
+                array_pop($fallbackWhere);
+                $fallbackWhere[] = 'UPPER(rm.item_name) LIKE :cat_like';
+                $params['cat_like'] = '%' . strtoupper($category) . '%';
+                unset($params['category']);
+            }
+            $stmt = $pdo->prepare('SELECT monitor_date, "-" AS kategori, item_name, condition_status, keterangan, checked_by_name, updated_at FROM routine_monitoring rm ' . ($fallbackWhere ? ('WHERE ' . implode(' AND ', $fallbackWhere)) : '') . ' ORDER BY monitor_date ASC, item_name ASC');
             $stmt->execute($params);
             $rawRows = $stmt->fetchAll();
         }
@@ -4347,7 +4414,7 @@ startxref
             $i = $index + 1; $name = $this->safeExcelSheetName((string) ($sheet['name'] ?? ('Sheet ' . $i))); $base = $name; $suffix = 2;
             while (isset($used[mb_strtolower($name)])) { $tail = ' ' . $suffix++; $name = mb_substr($base, 0, 31 - mb_strlen($tail)) . $tail; }
             $used[mb_strtolower($name)] = true;
-            $files['xl/worksheets/sheet' . $i . '.xml'] = $this->buildGenericWorksheetXml((array) ($sheet['rows'] ?? []), (array) ($sheet['widths'] ?? [18]));
+            $files['xl/worksheets/sheet' . $i . '.xml'] = $this->buildGenericWorksheetXml((array) ($sheet['rows'] ?? []), (array) ($sheet['widths'] ?? [18]), (array) ($sheet['center_cols'] ?? []));
             $contentTypes .= '<Override PartName="/xl/worksheets/sheet' . $i . '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
             $workbookSheets .= '<sheet name="' . $this->xml($name) . '" sheetId="' . $i . '" r:id="rId' . $i . '"/>';
             $workbookRels .= '<Relationship Id="rId' . $i . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' . $i . '.xml"/>';
@@ -4359,18 +4426,18 @@ startxref
         $files['docProps/app.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Microsoft Excel</Application></Properties>';
         $files['xl/workbook.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' . $workbookSheets . '</sheets></workbook>';
         $files['xl/_rels/workbook.xml.rels'] = $workbookRels;
-        $files['xl/styles.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+        $files['xl/styles.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
         foreach ($files as $fileName => $fileContent) { $files[$fileName] = str_replace('\\n', "
 ", $fileContent); }
         return $this->buildZipBinary($files);
     }
 
-    private function buildGenericWorksheetXml(array $rows, array $widths): string
+    private function buildGenericWorksheetXml(array $rows, array $widths, array $centerCols = []): string
     {
         $xmlRows = []; $maxCols = max(1, count($widths));
         foreach ($rows as $rIndex => $row) {
             $cells = [];
-            foreach (array_values($row) as $cIndex => $value) { $maxCols = max($maxCols, $cIndex + 1); if ($value === null || $value === '') { continue; } $firstCell = (string) ($row[0] ?? ''); $style = ($rIndex === 0 || $rIndex === 3 || $firstCell === 'No' || substr($firstCell, 0, 24) === 'Laporan Data Inventaris') ? ' s="1"' : ''; $ref = $this->excelColumnName($cIndex + 1) . ($rIndex + 1); $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>'; }
+            foreach (array_values($row) as $cIndex => $value) { $maxCols = max($maxCols, $cIndex + 1); if ($value === null || $value === '') { continue; } $firstCell = (string) ($row[0] ?? ''); $style = ($rIndex === 0 || $rIndex === 3 || $firstCell === 'No' || substr($firstCell, 0, 24) === 'Laporan Data Inventaris') ? ' s="1"' : (in_array($cIndex, $centerCols, true) ? ' s="2"' : ''); $ref = $this->excelColumnName($cIndex + 1) . ($rIndex + 1); $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>'; }
             $xmlRows[] = '<row r="' . ($rIndex + 1) . '">' . implode('', $cells) . '</row>';
         }
         $cols = ''; for ($i = 0; $i < $maxCols; $i++) { $cols .= '<col min="' . ($i + 1) . '" max="' . ($i + 1) . '" width="' . (float) ($widths[$i] ?? 18) . '" customWidth="1"/>'; }

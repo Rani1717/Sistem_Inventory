@@ -13853,3 +13853,30 @@ button,
         grid-template-columns: 1fr;
     }
 }
+
+/* Small minimalist buttons for routine actions */
+.routine-card-actions .btn {
+    min-height: 36px;
+    height: 36px;
+    padding: 0 18px;
+    font-size: 13px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+
+/* Custom Excel Export Button for CCTV Routine Monitoring */
+.routine-export-excel-btn {
+    background: #15803d !important;
+    color: #ffffff !important;
+    text-decoration: none;
+    border: none;
+    transition: transform 0.2s ease, filter 0.2s ease, background-color 0.2s ease;
+    cursor: pointer;
+}
+
+.routine-export-excel-btn:hover {
+    background: #166534 !important;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+}
