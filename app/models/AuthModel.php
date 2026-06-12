@@ -267,7 +267,7 @@ class AuthModel
         if (!$this->pdo instanceof PDO) {
             throw new RuntimeException('Koneksi database tidak tersedia.');
         }
-        if (!in_array($role, ['admin', 'operator', 'user'], true)) {
+        if (!in_array($role, ['admin', 'user'], true)) {
             throw new RuntimeException('Role tidak valid.');
         }
         $stmt = $this->pdo->prepare('UPDATE users SET role = :role WHERE id = :id LIMIT 1');
@@ -284,6 +284,15 @@ class AuthModel
         }
         $stmt = $this->pdo->prepare('UPDATE users SET password_hash = :password_hash, must_change_password = 0 WHERE id = :id LIMIT 1');
         $stmt->execute(['password_hash' => hash('sha256', $password), 'id' => $userId]);
+    }
+
+    public function deleteUser(int $userId): void
+    {
+        if (!$this->pdo instanceof PDO) {
+            throw new RuntimeException('Koneksi database tidak tersedia.');
+        }
+        $stmt = $this->pdo->prepare('DELETE FROM users WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $userId]);
     }
 
 }

@@ -235,8 +235,7 @@ class AuthController
         $inventoryPages = ['inventory-pc', 'inventory-other'];
         $dataInventoryPages = ['data-inventaris', 'data-inventaris-subreg', 'inventaris-detail'];
         $userPages = array_merge($inventoryPages, $dataInventoryPages, ['log-barang', 'routine-monitoring', 'dashboard']);
-        $operatorPages = array_merge($userPages, ['data-keluhan']);
-        $adminPages = array_merge($operatorPages, ['dashboard', 'laporan']);
+        $adminPages = array_merge($userPages, ['data-keluhan', 'dashboard', 'laporan']);
 
         if (self::isAdminSpmt()) {
             $adminPages[] = 'user-management';
@@ -247,10 +246,6 @@ class AuthController
 
         if ($role === 'admin') {
             return in_array($page, $adminPages, true) || $page === 'user-management';
-        }
-
-        if ($role === 'operator') {
-            return in_array($page, $operatorPages, true);
         }
 
         if ($role === 'user') {
@@ -301,7 +296,7 @@ class AuthController
         $unit = strtoupper(trim((string) ($auth['unit_kerja_default'] ?? '')));
         $divisionId = (int) ($auth['default_divisi_id'] ?? 0);
 
-        if (in_array($role, ['admin', 'operator'], true)) {
+        if ($role === 'admin') {
             return true;
         }
 

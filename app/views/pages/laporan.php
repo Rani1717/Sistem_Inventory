@@ -101,7 +101,7 @@ $renderReportCell = static function ($cell): void {
                     <label>Role
                         <select name="report_user_role">
                             <option value="">Semua Role</option>
-                            <?php foreach (['admin' => 'Admin', 'operator' => 'Operator', 'user' => 'User'] as $roleValue => $roleLabel): ?>
+                            <?php foreach (['admin' => 'Admin', 'user' => 'User'] as $roleValue => $roleLabel): ?>
                                 <option value="<?= e($roleValue); ?>" <?= ((string) ($reportFilters['user_role'] ?? '')) === $roleValue ? 'selected' : ''; ?>><?= e($roleLabel); ?></option>
                             <?php endforeach; ?>
                         </select>

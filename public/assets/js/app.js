@@ -2274,15 +2274,20 @@
 
 
 (function () {
-    var form = document.querySelector('.js-user-management-filter');
-    if (!form) return;
+    var searchInput = document.querySelector('.js-um-search');
+    var statusSelect = document.querySelector('.js-um-status-filter');
+    var divisionSelect = document.querySelector('.js-um-division-filter');
+    var counterText = document.querySelector('.js-um-counter');
+    var rows = Array.prototype.slice.call(document.querySelectorAll('.js-um-row'));
+    var emptyStateRow = document.querySelector('.js-um-empty-state');
+    var paginationBar = document.querySelector('.js-um-pagination');
+    var paginationRangeText = document.querySelector('.js-um-pagination-range');
+    var paginationTotalText = document.querySelector('.js-um-pagination-total');
+    var paginationControls = document.querySelector('.js-um-pagination-controls');
 
-    var searchInput = form.querySelector('[data-user-live-search]');
-    var statusSelect = form.querySelector('[data-user-status-filter]');
-    var resetLink = form.querySelector('[data-user-filter-reset]');
-    var rows = Array.prototype.slice.call(document.querySelectorAll('.js-user-row'));
-    var emptyRow = document.querySelector('.js-user-empty-row');
-    var countNode = document.querySelector('[data-user-visible-count]');
+    var ITEMS_PER_PAGE = 10;
+    var currentPage = 1;
+    var filteredRows = [];
 
     function normalize(value) {
         return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -2291,20 +2296,127 @@
     function applyUserFilter() {
         var keyword = normalize(searchInput ? searchInput.value : '');
         var status = statusSelect ? String(statusSelect.value || 'all') : 'all';
-        var visible = 0;
+        var division = divisionSelect ? String(divisionSelect.value || 'all') : 'all';
+
+        filteredRows = [];
 
         rows.forEach(function (row) {
             var haystack = normalize(row.getAttribute('data-search') || row.textContent || '');
             var rowStatus = String(row.getAttribute('data-status') || '');
+            var rowDivision = String(row.getAttribute('data-division') || '');
+
             var matchKeyword = !keyword || haystack.indexOf(keyword) !== -1;
             var matchStatus = status === 'all' || rowStatus === status;
-            var show = matchKeyword && matchStatus;
-            row.classList.toggle('is-hidden', !show);
-            if (show) visible += 1;
+            var matchDivision = division === 'all' || rowDivision === division;
+
+            var show = matchKeyword && matchStatus && matchDivision;
+            if (show) {
+                filteredRows.push(row);
+            } else {
+                row.classList.add('is-hidden');
+            }
         });
 
-        if (emptyRow) emptyRow.style.display = visible === 0 ? '' : 'none';
-        if (countNode) countNode.textContent = String(visible);
+        if (counterText) {
+            counterText.textContent = String(filteredRows.length);
+        }
+
+        currentPage = 1;
+        updatePagination();
+    }
+
+    function updatePagination() {
+        var totalItems = filteredRows.length;
+        
+        if (totalItems === 0) {
+            if (emptyStateRow) emptyStateRow.style.display = '';
+            if (paginationBar) paginationBar.style.display = 'none';
+            rows.forEach(function (row) { row.classList.add('is-hidden'); });
+            return;
+        }
+
+        if (emptyStateRow) emptyStateRow.style.display = 'none';
+        if (paginationBar) paginationBar.style.display = '';
+
+        var totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+        if (currentPage > totalPages) currentPage = totalPages;
+        if (currentPage < 1) currentPage = 1;
+
+        var startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+        var endIndex = Math.min(startIndex + ITEMS_PER_PAGE, totalItems);
+
+        // Hide all rows first
+        rows.forEach(function (row) { row.classList.add('is-hidden'); });
+
+        // Show only rows for current page
+        for (var i = startIndex; i < endIndex; i++) {
+            if (filteredRows[i]) {
+                filteredRows[i].classList.remove('is-hidden');
+            }
+        }
+
+        // Update range and total texts
+        if (paginationRangeText) {
+            paginationRangeText.textContent = (startIndex + 1) + '-' + endIndex;
+        }
+        if (paginationTotalText) {
+            paginationTotalText.textContent = String(totalItems);
+        }
+
+        // Render page buttons
+        renderPaginationControls(totalPages);
+    }
+
+    function renderPaginationControls(totalPages) {
+        if (!paginationControls) return;
+        paginationControls.innerHTML = '';
+
+        if (totalPages <= 1) {
+            return;
+        }
+
+        // Previous Button
+        var prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.className = 'um-page-btn';
+        prevBtn.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
+        prevBtn.disabled = currentPage === 1;
+        prevBtn.addEventListener('click', function () {
+            if (currentPage > 1) {
+                currentPage--;
+                updatePagination();
+            }
+        });
+        paginationControls.appendChild(prevBtn);
+
+        // Page Numbers
+        for (var p = 1; p <= totalPages; p++) {
+            (function (pageNum) {
+                var pageBtn = document.createElement('button');
+                pageBtn.type = 'button';
+                pageBtn.className = 'um-page-btn' + (pageNum === currentPage ? ' is-active' : '');
+                pageBtn.textContent = String(pageNum);
+                pageBtn.addEventListener('click', function () {
+                    currentPage = pageNum;
+                    updatePagination();
+                });
+                paginationControls.appendChild(pageBtn);
+            })(p);
+        }
+
+        // Next Button
+        var nextBtn = document.createElement('button');
+        nextBtn.type = 'button';
+        nextBtn.className = 'um-page-btn';
+        nextBtn.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
+        nextBtn.disabled = currentPage === totalPages;
+        nextBtn.addEventListener('click', function () {
+            if (currentPage < totalPages) {
+                currentPage++;
+                updatePagination();
+            }
+        });
+        paginationControls.appendChild(nextBtn);
     }
 
     if (searchInput) {
@@ -2313,18 +2425,63 @@
     if (statusSelect) {
         statusSelect.addEventListener('change', applyUserFilter);
     }
-    if (resetLink) {
-        resetLink.addEventListener('click', function (event) {
-            event.preventDefault();
-            if (searchInput) searchInput.value = '';
-            if (statusSelect) statusSelect.value = 'all';
-            applyUserFilter();
-            if (window.history && window.history.replaceState) {
-                window.history.replaceState(null, '', 'index.php?page=user-management');
+    if (divisionSelect) {
+        divisionSelect.addEventListener('change', applyUserFilter);
+    }
+
+    // Modal Trigger logic
+    var modalOverlay = document.querySelector('.js-um-modal');
+    var modalCancelBtn = document.querySelector('.js-um-modal-cancel');
+    var modalUsernameSpan = document.querySelector('.js-um-modal-username');
+    var modalUserIdInput = document.querySelector('.js-um-modal-userid');
+    var deleteButtons = document.querySelectorAll('.js-um-delete-btn');
+
+    if (modalOverlay) {
+        deleteButtons.forEach(function (btn) {
+            btn.addEventListener('click', function (event) {
+                event.preventDefault();
+                var userId = btn.getAttribute('data-user-id');
+                var userName = btn.getAttribute('data-user-name');
+                if (modalUsernameSpan) modalUsernameSpan.textContent = userName;
+                if (modalUserIdInput) modalUserIdInput.value = userId;
+                modalOverlay.hidden = false;
+            });
+        });
+
+        if (modalCancelBtn) {
+            modalCancelBtn.addEventListener('click', function () {
+                modalOverlay.hidden = true;
+            });
+        }
+
+        modalOverlay.addEventListener('click', function (e) {
+            if (e.target === modalOverlay) {
+                modalOverlay.hidden = true;
             }
         });
     }
 
+    // Dropdown toggles logic
+    document.addEventListener('click', function (event) {
+        var toggle = event.target.closest('.js-um-dropdown-toggle');
+        
+        var allMenus = document.querySelectorAll('.js-um-dropdown-menu');
+        allMenus.forEach(function (menu) {
+            if (!toggle || menu !== toggle.nextElementSibling) {
+                menu.hidden = true;
+            }
+        });
+
+        if (toggle) {
+            event.stopPropagation();
+            var menu = toggle.nextElementSibling;
+            if (menu) {
+                menu.hidden = !menu.hidden;
+            }
+        }
+    });
+
+    // Initialize list filter
     applyUserFilter();
 })();
 

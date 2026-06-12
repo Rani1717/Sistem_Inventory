@@ -177,6 +177,7 @@ class PageController
                 'status' => trim((string) ($_GET['status'] ?? 'all')),
             ];
             $data['user_management_rows'] = $authModel->fetchUsersForAdmin('', 'all');
+            $data['divisions'] = $authModel->fetchActiveDivisions();
         }
         if ($page === 'laporan') {
             $pdoForReport = Database::getConnection();
@@ -2224,6 +2225,12 @@ class PageController
                 $password = (string) ($_POST['new_password'] ?? '');
                 $authModel->resetUserPassword($userId, $password);
                 $_SESSION['flash'] = ['type' => 'success', 'message' => 'Password user berhasil direset.'];
+            } elseif ($action === 'delete') {
+                if ($userId === $currentUserId) {
+                    throw new RuntimeException('Akun admin.spmt yang sedang login tidak boleh dihapus.');
+                }
+                $authModel->deleteUser($userId);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'User berhasil dihapus.'];
             } else {
                 throw new RuntimeException('Aksi tidak dikenali.');
             }
@@ -5057,7 +5064,7 @@ startxref
         $division = trim((string) $f['user_division']);
         $where = [];
         $params = [];
-        if (in_array($role, ['admin', 'operator', 'user'], true)) {
+        if (in_array($role, ['admin', 'user'], true)) {
             $where[] = 'LOWER(u.role) = :role';
             $params['role'] = $role;
         }
