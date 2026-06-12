@@ -514,7 +514,7 @@ body.has-modal-open .routine-manager-modal {
                                     <input type="hidden" name="item_group" value="GATE">
                                     
                                     <div style="width: 48px; height: 46px; align-self: end;"></div>
-                                    <label class="routine-add-form__name"><span>Nama Checking</span><input type="text" name="item_name" placeholder="Contoh: Koneksi Internet" required></label>
+                                    <label class="routine-add-form__name"><span>Nama Gate</span><input type="text" name="item_name" placeholder="Contoh: Koneksi Internet" required></label>
                                     <label class="routine-add-form__lokasi" style="display: flex; flex-direction: column; gap: 4px;">
                                         <span>Pilih Lokasi</span>
                                         
@@ -548,7 +548,7 @@ body.has-modal-open .routine-manager-modal {
                                         </div>
                                     </label>
                                     <div style="width: 100%; height: 46px; align-self: end;"></div>
-                                    <button type="submit" class="btn btn--primary routine-btn-lg" style="align-self: end; height: 46px; min-width: auto !important; width: 100%; margin: 0; white-space: nowrap;"><i class="fa-solid fa-plus"></i> Tambah Item</button>
+                                    <button type="submit" class="btn btn--primary routine-btn-lg" style="align-self: end; height: 46px; min-width: auto !important; width: 100%; margin: 0; white-space: nowrap;"><i class="fa-solid fa-plus"></i> Tambah Gate</button>
                                 </form>
                                 <div class="routine-manage-list routine-manage-list--modal routine-manage-list--form-cards" style="margin-top: 16px;">
                                     <?php if (empty($categoryItems)): ?>
@@ -556,7 +556,7 @@ body.has-modal-open .routine-manager-modal {
                                     <?php else: ?>
                                         <div class="routine-manage-row-header routine-manage-row-header--gate" style="display: grid; grid-template-columns: 48px minmax(150px, 1fr) 280px minmax(70px, 90px) 240px !important; gap: 12px; padding: 8px 12px 4px; font-weight: 800; color: #6d84a4; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid transparent; border-bottom-color: rgba(42, 102, 165, 0.08); margin-bottom: 8px;">
                                             <div></div>
-                                            <div>Nama Checking</div>
+                                            <div>Nama Gate</div>
                                             <div>Pilih Lokasi</div>
                                             <div style="text-align: center;">Aktif</div>
                                             <div style="text-align: center;">Aksi</div>
@@ -580,11 +580,13 @@ body.has-modal-open .routine-manager-modal {
                                         ?>
                                         
                                         <?php foreach ($groupedGateLocItems as $locName => $locItems): ?>
+                                            <?php $locCol = $this->model->stringToColor($locName); ?>
                                             <!-- Group Accordion Header -->
                                             <div class="gate-group-header" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; background-color: #f8fafc; border-radius: 14px; margin-top: 12px; margin-bottom: 8px; border: 1px solid #cbd5e1; cursor: pointer; transition: background-color 0.15s;" onclick="toggleGateGroup(this)">
                                                 <span class="gate-group-toggle-icon" style="font-size: 14px; color: #64748b; width: 16px; text-align: center; display: inline-block; transition: transform 0.2s;"><i class="fa-solid fa-chevron-down"></i></span>
                                                 <strong style="font-size: 14px; color: #1e293b; letter-spacing: 0.3px; text-transform: uppercase;"><?= e($locName); ?></strong>
                                                 <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+                                                    <span style="display: inline-block; width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); background-color: <?= e($locCol); ?>; vertical-align: middle;" title="Warna: <?= e($locCol); ?>"></span>
                                                     <span class="badge" style="background-color: #e2e8f0; color: #475569; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;"><?= count($locItems); ?> unit</span>
                                                 </div>
                                             </div>
@@ -597,6 +599,7 @@ body.has-modal-open .routine-manager-modal {
                                                         <input type="hidden" name="action" value="update_routine_item">
                                                         <input type="hidden" name="item_id" value="<?= $manageId; ?>">
                                                         <input type="hidden" name="item_group" value="GATE">
+                                                        <input type="hidden" name="color" value="<?= e($locCol); ?>">
                                                         
                                                         <!-- Indentation tree pointer icon -->
                                                         <div style="display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; color: #94a3b8; font-size: 14px; height: 46px; align-self: end;">
@@ -614,7 +617,7 @@ body.has-modal-open .routine-manager-modal {
                                                         <label class="routine-active-toggle" style="display: flex; align-items: center; justify-content: center; height: 46px; align-self: end; margin: 0; padding: 0;"><input type="checkbox" name="is_active" value="1" <?= $manageActive ? 'checked' : ''; ?>></label>
                                                         <div class="routine-manage-row__actions" style="flex-wrap: nowrap; margin: 0; display: flex; gap: 8px;">
                                                             <button type="submit" class="btn btn--secondary routine-btn-lg" style="margin: 0; flex: 1;"><i class="fa-solid fa-floppy-disk"></i> Simpan</button>
-                                                            <button type="button" class="btn btn--danger routine-btn-lg js-confirm-delete" data-message="Hapus item checking GATE ini secara permanen dari database?" data-action="delete_routine_item" style="margin: 0; flex: 1;"><i class="fa-solid fa-trash"></i> Hapus</button>
+                                                            <button type="button" class="btn btn--danger routine-btn-lg js-confirm-delete" data-message="Hapus item checking GATE ini?" data-action="delete_routine_item" style="margin: 0; flex: 1;"><i class="fa-solid fa-trash"></i> Hapus</button>
                                                         </div>
                                                     </form>
                                                 <?php endforeach; ?>
@@ -718,6 +721,48 @@ body.has-modal-open .routine-manager-modal {
                                     }
                                 })();
                                 </script>
+                            <?php elseif ($groupName === 'SERVER'): ?>
+                                <style>
+                                    .routine-add-form--server {
+                                        grid-template-columns: minmax(150px, 1fr) 240px !important;
+                                        gap: 12px !important;
+                                    }
+                                    .routine-manage-row--server-child {
+                                        grid-template-columns: minmax(150px, 1fr) 90px 240px !important;
+                                        gap: 12px !important;
+                                    }
+                                </style>
+                                <form class="routine-add-form routine-add-form--modal routine-add-form--no-sort routine-add-form--server" method="post" action="index.php?page=routine-monitoring&amp;<?= e($returnQuery); ?>">
+                                    <input type="hidden" name="action" value="add_routine_item">
+                                    <input type="hidden" name="item_group" value="SERVER">
+                                    <label class="routine-add-form__name"><span>Nama Server</span><input type="text" name="item_name" placeholder="Contoh: Server Utama" required></label>
+                                    <button type="submit" class="btn btn--primary routine-btn-lg" style="align-self: end; height: 46px; min-width: auto !important; width: 100%; margin: 0; white-space: nowrap;"><i class="fa-solid fa-plus"></i> Tambah Server</button>
+                                </form>
+                                <div class="routine-manage-list routine-manage-list--modal routine-manage-list--form-cards" style="margin-top: 16px;">
+                                    <?php if (empty($categoryItems)): ?>
+                                        <div class="routine-empty-mini">Belum ada item checking.</div>
+                                    <?php else: ?>
+                                        <div class="routine-manage-row-header routine-manage-row-header--server" style="display: grid; grid-template-columns: minmax(150px, 1fr) 90px 240px !important; gap: 12px; padding: 8px 12px 4px; font-weight: 800; color: #6d84a4; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border: 1px solid transparent; border-bottom-color: rgba(42, 102, 165, 0.08); margin-bottom: 8px;">
+                                            <div>Nama Server</div>
+                                            <div style="text-align: center;">Aktif</div>
+                                            <div style="text-align: center;">Aksi</div>
+                                        </div>
+                                        <?php foreach ($categoryItems as $manageItem): ?>
+                                            <?php $manageId = (int) ($manageItem['id'] ?? 0); $manageActive = (int) ($manageItem['is_active'] ?? 1) === 1; ?>
+                                            <form class="routine-manage-row routine-manage-row--no-sort routine-manage-row--server-child <?= $manageActive ? '' : 'is-inactive'; ?>" method="post" action="index.php?page=routine-monitoring&amp;<?= e($returnQuery); ?>" style="display: grid; align-items: center; margin-bottom: 8px;">
+                                                <input type="hidden" name="action" value="update_routine_item">
+                                                <input type="hidden" name="item_id" value="<?= $manageId; ?>">
+                                                <input type="hidden" name="item_group" value="SERVER">
+                                                <label class="routine-manage-row__name" style="margin: 0;"><input type="text" name="item_name" value="<?= e((string) ($manageItem['item_name'] ?? '')); ?>" required></label>
+                                                <label class="routine-active-toggle" style="display: flex; align-items: center; justify-content: center; height: 46px; align-self: end; margin: 0; padding: 0;"><input type="checkbox" name="is_active" value="1" <?= $manageActive ? 'checked' : ''; ?>></label>
+                                                <div class="routine-manage-row__actions" style="flex-wrap: nowrap; margin: 0; display: flex; gap: 8px;">
+                                                    <button type="submit" class="btn btn--secondary routine-btn-lg" style="margin: 0; flex: 1;"><i class="fa-solid fa-floppy-disk"></i> Simpan</button>
+                                                    <button type="button" class="btn btn--danger routine-btn-lg js-confirm-delete" data-message="Hapus server ini?" data-action="delete_routine_item" style="margin: 0; flex: 1;"><i class="fa-solid fa-trash"></i> Hapus</button>
+                                                </div>
+                                            </form>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </div>
                             <?php else: ?>
                                 <form class="routine-add-form routine-add-form--modal routine-add-form--no-sort" method="post" action="index.php?page=routine-monitoring&amp;<?= e($returnQuery); ?>">
                                     <input type="hidden" name="action" value="add_routine_item">
@@ -779,7 +824,7 @@ body.has-modal-open .routine-manager-modal {
                             <button type="button" class="btn btn--secondary routine-manage-link js-open-category-manager" data-category="<?= e($groupName); ?>"><i class="fa-solid fa-pen-to-square"></i> Kelola <?= e($meta['label']); ?></button>
                         <?php endif; ?>
 
-                        <?php if (in_array($groupName, ['CCTV', 'GATE'], true)): ?>
+                        <?php if (in_array($groupName, ['CCTV', 'GATE', 'SERVER'], true)): ?>
                             <a href="index.php?page=laporan&amp;action=report_export&amp;type=routine&amp;format=xlsx&amp;report_month=<?= e($monthValue); ?>&amp;report_year=<?= e($yearValue); ?>&amp;report_category=<?= urlencode($groupName); ?>" class="btn routine-export-excel-btn"><i class="fa-solid fa-file-excel"></i> Export Excel</a>
                         <?php endif; ?>
                     </div>
@@ -790,9 +835,9 @@ body.has-modal-open .routine-manager-modal {
                             <tr>
                                 <?php if (in_array($groupName, ['CCTV', 'GATE'], true)): ?>
                                     <th class="sticky-col sticky-col--lokasi">Lokasi</th>
-                                    <th class="sticky-col sticky-col--nama"><?= $groupName === 'CCTV' ? 'Nama CCTV' : 'Data Barang'; ?></th>
+                                    <th class="sticky-col sticky-col--nama"><?= $groupName === 'CCTV' ? 'Nama CCTV' : ($groupName === 'GATE' ? 'Nama Barang' : 'Data Barang'); ?></th>
                                 <?php else: ?>
-                                    <th class="sticky-col">List Monitoring</th>
+                                    <th class="sticky-col"><?= $groupName === 'SERVER' ? 'Nama Server' : 'List Monitoring'; ?></th>
                                 <?php endif; ?>
                                 <?php foreach ($days as $day): ?>
                                     <th><?= e((string) ($day['day'] ?? '')); ?></th>
@@ -856,14 +901,21 @@ body.has-modal-open .routine-manager-modal {
                                             $needsNote = in_array($selectedStatus, ['KURANG BAIK', 'BURUK', 'OFF'], true);
                                             ?>
                                             <td>
-                                                <?php if ($groupName === 'CCTV'): ?>
+                                                <?php if (in_array($groupName, ['CCTV', 'SERVER'], true)): ?>
                                                     <?php
+                                                    $normStatus = '';
+                                                    if (in_array($selectedStatus, ['ON', 'BAIK', 'AKTIF'], true)) {
+                                                        $normStatus = 'ON';
+                                                    } elseif (in_array($selectedStatus, ['OFF', 'BURUK', 'RUSAK'], true)) {
+                                                        $normStatus = 'OFF';
+                                                    }
+                                                    
                                                     $btnClass = 'cctv-switch-btn--empty';
                                                     $btnLabel = '-';
-                                                    if ($selectedStatus === 'ON') {
+                                                    if ($normStatus === 'ON') {
                                                         $btnClass = 'cctv-switch-btn--on';
                                                         $btnLabel = 'ON';
-                                                    } elseif ($selectedStatus === 'OFF') {
+                                                    } elseif ($normStatus === 'OFF') {
                                                         $btnClass = 'cctv-switch-btn--off';
                                                         $btnLabel = 'OFF';
                                                     }
@@ -872,7 +924,7 @@ body.has-modal-open .routine-manager-modal {
                                                         <input type="hidden" 
                                                                class="js-cctv-status-input" 
                                                                name="items[<?= $itemId; ?>][<?= e($dateKey); ?>][condition_status]" 
-                                                               value="<?= e($selectedStatus); ?>">
+                                                               value="<?= e($normStatus); ?>">
                                                         <button type="button" 
                                                                 class="cctv-switch-btn <?= $btnClass; ?>" 
                                                                 onclick="toggleCctvStatus(this)">

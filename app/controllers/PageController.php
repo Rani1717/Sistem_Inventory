@@ -3501,7 +3501,7 @@ startxref
                 
                 $f = $this->buildLaporanFilters($filters);
                 $categoryUpper = strtoupper($f['category']);
-                if (in_array($categoryUpper, ['CCTV', 'GATE'], true) && $f['month'] !== 'all') {
+                if (in_array($categoryUpper, ['CCTV', 'GATE', 'SERVER'], true) && $f['month'] !== 'all') {
                     $monthNum = (int)$f['month'];
                     $yearNum = (int)$f['year'];
                     $monthNamesIndo = [
@@ -3525,6 +3525,16 @@ startxref
                                 'query_id' => (int)$cctv['id'] + 10000,
                                 'location' => (string)($cctv['lokasi'] ?? '-'),
                                 'name' => $cctv['nama_cctv']
+                            ];
+                        }
+                    } elseif ($categoryUpper === 'SERVER') {
+                        $serverStmt = $pdo->query("SELECT id, item_name FROM routine_monitoring_items WHERE UPPER(COALESCE(NULLIF(category_field, ''), item_group)) = 'SERVER' AND is_active = 1 ORDER BY sort_order ASC, item_name ASC");
+                        $serverItems = $serverStmt ? $serverStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                        foreach ($serverItems as $srv) {
+                            $pivotItems[] = [
+                                'query_id' => (int)$srv['id'],
+                                'location' => '',
+                                'name' => (string)$srv['item_name']
                             ];
                         }
                     } else { // GATE
@@ -3569,27 +3579,6 @@ startxref
                         }
                     }
                     
-                    $sheet->mergeCells('A1:A2');
-                    $sheet->setCellValue('A1', 'LOKASI');
-                    
-                    $sheet->mergeCells('B1:B2');
-                    $colBHeader = ($categoryUpper === 'CCTV') ? 'NAMA CCTV' : 'DATA BARANG';
-                    $sheet->setCellValue('B1', $colBHeader);
-                    
-                    $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($daysInMonth + 2);
-                    $sheet->mergeCells('C1:' . $lastColLetter . '1');
-                    $sheet->setCellValue('C1', 'TANGGAL');
-                    
-                    $keteranganColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($daysInMonth + 3);
-                    $sheet->mergeCells($keteranganColLetter . '1:' . $keteranganColLetter . '2');
-                    $sheet->setCellValue($keteranganColLetter . '1', 'KETERANGAN');
-                    
-                    for ($d = 1; $d <= $daysInMonth; $d++) {
-                        $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($d + 2);
-                        $dateStr = sprintf('%02d/%02d/%04d', $d, $monthNum, $yearNum);
-                        $sheet->setCellValue($colLetter . '2', $dateStr);
-                    }
-                    
                     $headerYellowStyle = [
                         'fill' => [
                             'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
@@ -3600,11 +3589,57 @@ startxref
                             'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
                         ]
                     ];
-                    $sheet->getStyle('A1:A2')->applyFromArray($headerYellowStyle);
-                    $sheet->getStyle('B1:B2')->applyFromArray($headerYellowStyle);
-                    $sheet->getStyle('C1:' . $lastColLetter . '1')->applyFromArray($headerYellowStyle);
-                    $sheet->getStyle('C2:' . $lastColLetter . '2')->applyFromArray($headerYellowStyle);
-                    $sheet->getStyle($keteranganColLetter . '1:' . $keteranganColLetter . '2')->applyFromArray($headerYellowStyle);
+                    
+                    if (in_array($categoryUpper, ['CCTV', 'GATE'], true)) {
+                        $sheet->mergeCells('A1:A2');
+                        $sheet->setCellValue('A1', 'LOKASI');
+                        
+                        $sheet->mergeCells('B1:B2');
+                        $colBHeader = ($categoryUpper === 'CCTV') ? 'NAMA CCTV' : ($categoryUpper === 'GATE' ? 'NAMA BARANG' : 'DATA BARANG');
+                        $sheet->setCellValue('B1', $colBHeader);
+                        
+                        $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($daysInMonth + 2);
+                        $sheet->mergeCells('C1:' . $lastColLetter . '1');
+                        $sheet->setCellValue('C1', 'TANGGAL');
+                        
+                        $keteranganColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($daysInMonth + 3);
+                        $sheet->mergeCells($keteranganColLetter . '1:' . $keteranganColLetter . '2');
+                        $sheet->setCellValue($keteranganColLetter . '1', 'KETERANGAN');
+                        
+                        for ($d = 1; $d <= $daysInMonth; $d++) {
+                            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($d + 2);
+                            $dateStr = sprintf('%02d/%02d/%04d', $d, $monthNum, $yearNum);
+                            $sheet->setCellValue($colLetter . '2', $dateStr);
+                        }
+                        
+                        $sheet->getStyle('A1:A2')->applyFromArray($headerYellowStyle);
+                        $sheet->getStyle('B1:B2')->applyFromArray($headerYellowStyle);
+                        $sheet->getStyle('C1:' . $lastColLetter . '1')->applyFromArray($headerYellowStyle);
+                        $sheet->getStyle('C2:' . $lastColLetter . '2')->applyFromArray($headerYellowStyle);
+                        $sheet->getStyle($keteranganColLetter . '1:' . $keteranganColLetter . '2')->applyFromArray($headerYellowStyle);
+                    } else { // SERVER
+                        $sheet->mergeCells('A1:A2');
+                        $sheet->setCellValue('A1', 'NAMA SERVER');
+                        
+                        $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($daysInMonth + 1);
+                        $sheet->mergeCells('B1:' . $lastColLetter . '1');
+                        $sheet->setCellValue('B1', 'TANGGAL');
+                        
+                        $keteranganColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($daysInMonth + 2);
+                        $sheet->mergeCells($keteranganColLetter . '1:' . $keteranganColLetter . '2');
+                        $sheet->setCellValue($keteranganColLetter . '1', 'KETERANGAN');
+                        
+                        for ($d = 1; $d <= $daysInMonth; $d++) {
+                            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($d + 1);
+                            $dateStr = sprintf('%02d/%02d/%04d', $d, $monthNum, $yearNum);
+                            $sheet->setCellValue($colLetter . '2', $dateStr);
+                        }
+                        
+                        $sheet->getStyle('A1:A2')->applyFromArray($headerYellowStyle);
+                        $sheet->getStyle('B1:' . $lastColLetter . '1')->applyFromArray($headerYellowStyle);
+                        $sheet->getStyle('B2:' . $lastColLetter . '2')->applyFromArray($headerYellowStyle);
+                        $sheet->getStyle($keteranganColLetter . '1:' . $keteranganColLetter . '2')->applyFromArray($headerYellowStyle);
+                    }
                     
                     $rowHeights = [];
                     $rowHeights[1] = 14.5;
@@ -3616,18 +3651,24 @@ startxref
                         $itemName = $item['name'];
                         $itemQueryId = $item['query_id'];
                         
-                        $sheet->setCellValue('A' . $currentRow, $itemLocation);
-                        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
-                        $sheet->getStyle('A' . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
-                        
-                        $sheet->setCellValue('B' . $currentRow, $itemName);
-                        $sheet->getStyle('B' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
-                        $sheet->getStyle('B' . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                        if (in_array($categoryUpper, ['CCTV', 'GATE'], true)) {
+                            $sheet->setCellValue('A' . $currentRow, $itemLocation);
+                            $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                            $sheet->getStyle('A' . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                            
+                            $sheet->setCellValue('B' . $currentRow, $itemName);
+                            $sheet->getStyle('B' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                            $sheet->getStyle('B' . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                        } else { // SERVER
+                            $sheet->setCellValue('A' . $currentRow, $itemName);
+                            $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                            $sheet->getStyle('A' . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                        }
                         
                         $offCount = 0;
                         
                         for ($d = 1; $d <= $daysInMonth; $d++) {
-                            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($d + 2);
+                            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(in_array($categoryUpper, ['CCTV', 'GATE'], true) ? $d + 2 : $d + 1);
                             $dateKey = sprintf('%04d-%02d-%02d', $yearNum, $monthNum, $d);
                             
                             $idKey = 'id_' . $itemQueryId;
@@ -3645,10 +3686,10 @@ startxref
                             }
                             
                             $normalizedStatus = '';
-                            if ($categoryUpper === 'CCTV') {
+                            if (in_array($categoryUpper, ['CCTV', 'SERVER'], true)) {
                                 if ($status === 'ON' || $status === 'BAIK' || $status === 'AKTIF') {
                                     $normalizedStatus = 'ON';
-                                } elseif ($status === 'OFF' || $status === 'RUSAK' || $status === 'TIDAK AKTIF') {
+                                } elseif ($status === 'OFF' || $status === 'RUSAK' || $status === 'TIDAK AKTIF' || $status === 'BURUK') {
                                     $normalizedStatus = 'OFF';
                                     $offCount++;
                                 }
@@ -3690,7 +3731,7 @@ startxref
                         }
                         
                         $keteranganText = '';
-                        if ($categoryUpper === 'CCTV') {
+                        if (in_array($categoryUpper, ['CCTV', 'SERVER'], true)) {
                             $keteranganText = "Mati: " . $offCount . " kali";
                             $rowHeights[$currentRow] = 14.5;
                         } else { // GATE
@@ -3721,7 +3762,7 @@ startxref
                             }
                         }
                         $sheet->setCellValue($keteranganColLetter . $currentRow, $keteranganText);
-                        $sheet->getStyle($keteranganColLetter . $currentRow)->getAlignment()->setHorizontal($categoryUpper === 'CCTV' ? \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER : \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                        $sheet->getStyle($keteranganColLetter . $currentRow)->getAlignment()->setHorizontal(in_array($categoryUpper, ['CCTV', 'SERVER'], true) ? \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER : \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
                         $sheet->getStyle($keteranganColLetter . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
                         
                         $currentRow++;
@@ -3729,24 +3770,28 @@ startxref
                     
                     $lastRowIndex = $currentRow - 1;
                     
-                    // Merge consecutive locations in Column A
-                    $mergeStart = 3;
-                    for ($r = 3; $r <= $lastRowIndex; $r++) {
-                        $currentLoc = $sheet->getCell('A' . $r)->getValue();
-                        $nextLoc = ($r < $lastRowIndex) ? $sheet->getCell('A' . ($r + 1))->getValue() : null;
-                        
-                        if ($currentLoc !== $nextLoc) {
-                            if ($r > $mergeStart) {
-                                $sheet->mergeCells('A' . $mergeStart . ':A' . $r);
+                    if (in_array($categoryUpper, ['CCTV', 'GATE'], true)) {
+                        // Merge consecutive locations in Column A
+                        $mergeStart = 3;
+                        for ($r = 3; $r <= $lastRowIndex; $r++) {
+                            $currentLoc = $sheet->getCell('A' . $r)->getValue();
+                            $nextLoc = ($r < $lastRowIndex) ? $sheet->getCell('A' . ($r + 1))->getValue() : null;
+                            
+                            if ($currentLoc !== $nextLoc) {
+                                if ($r > $mergeStart) {
+                                    $sheet->mergeCells('A' . $mergeStart . ':A' . $r);
+                                }
+                                $mergeStart = $r + 1;
                             }
-                            $mergeStart = $r + 1;
                         }
                     }
                     
                     $sheet->getColumnDimension('A')->setAutoSize(true);
-                    $sheet->getColumnDimension('B')->setAutoSize(true);
+                    if (in_array($categoryUpper, ['CCTV', 'GATE'], true)) {
+                        $sheet->getColumnDimension('B')->setAutoSize(true);
+                    }
                     for ($d = 1; $d <= $daysInMonth; $d++) {
-                        $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($d + 2);
+                        $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(in_array($categoryUpper, ['CCTV', 'GATE'], true) ? $d + 2 : $d + 1);
                         $sheet->getColumnDimension($colLetter)->setWidth(13.0);
                     }
                     $sheet->getColumnDimension($keteranganColLetter)->setWidth(30.0); // Make it slightly wider for comments text
