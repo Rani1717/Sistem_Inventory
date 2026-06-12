@@ -47,19 +47,13 @@ foreach ($days as $day) {
     $dateKey = (string) ($day['date'] ?? '');
     $count = 0;
     foreach (($recapByDate[$dateKey] ?? []) as $statusRows) {
-        $count += count($statusRows['BAIK'] ?? []) + count($statusRows['KURANG BAIK'] ?? []) + count($statusRows['BURUK'] ?? []);
+        foreach ($statusRows as $status => $rows) {
+            $count += count($rows);
+        }
     }
     $recapCounts[$dateKey] = $count;
 }
 $monthPdfUrl = 'index.php?' . http_build_query([
-    'page' => 'routine-monitoring',
-    'action' => 'export_routine_pdf',
-    'recap_scope' => 'month',
-    'routine_month' => $monthValue,
-    'routine_year' => $yearValue,
-    'routine_search' => $searchValue,
-]);
-$monthPdfPivotUrl = 'index.php?' . http_build_query([
     'page' => 'routine-monitoring',
     'action' => 'export_routine_pdf_pivot',
     'recap_scope' => 'month',
@@ -67,7 +61,7 @@ $monthPdfPivotUrl = 'index.php?' . http_build_query([
     'routine_year' => $yearValue,
     'routine_search' => $searchValue,
 ]);
-// Build week options for dropdown (list PDF + pivot PDF per minggu)
+// Build week options for dropdown (only pivot PDF per minggu)
 $weekDropdownOptions = [];
 if (!empty($days)) {
     $firstDate = new DateTimeImmutable((string) ($days[0]['date'] ?? date('Y-m-01')));
@@ -84,15 +78,6 @@ if (!empty($days)) {
             'label'      => $rangeLabel,
             'week_no'    => $weekNo,
             'week_start' => $weekStart->format('Y-m-d'),
-            'url_list'   => 'index.php?' . http_build_query([
-                'page' => 'routine-monitoring',
-                'action' => 'export_routine_pdf',
-                'recap_scope' => 'week',
-                'week_start' => $weekStart->format('Y-m-d'),
-                'routine_month' => $monthValue,
-                'routine_year' => $yearValue,
-                'routine_search' => $searchValue,
-            ]),
             'url_pivot'  => 'index.php?' . http_build_query([
                 'page' => 'routine-monitoring',
                 'action' => 'export_routine_pdf_pivot',
@@ -271,6 +256,102 @@ body.has-modal-open .routine-manager-modal {
 .recap-legend-dot--empty { background: #cbd5e1; }
 .recap-legend-text { margin-right: 8px; }
 .recap-legend-hint { margin-left: 4px; color: #94a3b8; font-style: italic; }
+
+/* ── Daily Recap Modal Flexbox Row Redesign ── */
+.routine-recap-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 16px 18px;
+    background: #fff;
+    border-top: none;
+}
+.routine-recap-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    gap: 16px;
+    transition: background 0.15s, border-color 0.15s;
+}
+.routine-recap-row:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+.routine-recap-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.routine-recap-name {
+    font-size: 13px;
+    color: #1e293b;
+    font-weight: 600;
+    word-break: break-word;
+    line-height: 1.45;
+}
+.routine-recap-group-title {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #0f172a;
+    padding: 8px 4px 4px;
+    margin-top: 16px;
+    border-bottom: 1px solid #e2e8f0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.routine-recap-group-title:first-of-type {
+    margin-top: 0;
+}
+.routine-recap-note {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 3px;
+    word-break: break-word;
+}
+.routine-recap-badge-wrap {
+    flex-shrink: 0;
+    width: 80px;
+    display: flex;
+    justify-content: flex-end;
+}
+.routine-recap-badge-wrap .routine-badge {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+    padding: 5px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 8px;
+    text-transform: uppercase;
+    box-shadow: none;
+}
+.routine-recap-empty-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: #f8fafc;
+    border: 1.5px dashed #cbd5e1;
+    border-radius: 14px;
+    color: #64748b;
+    gap: 8px;
+    text-align: center;
+    margin: 12px;
+}
+.routine-recap-empty-card i {
+    font-size: 26px;
+    color: #94a3b8;
+}
+.routine-recap-empty-card span {
+    font-size: 12.5px;
+    font-weight: 500;
+}
 </style>
 
 <div class="routine-page routine-page--matrix">
@@ -1153,25 +1234,15 @@ body.has-modal-open .routine-manager-modal {
                 <?php if (!empty($weekDropdownOptions)): ?>
                 <div class="recap-week-dropdown-wrap">
                     <button type="button" class="recap-week-trigger js-recap-week-trigger" aria-haspopup="true" aria-expanded="false" id="recapWeekTrigger">
-                        <span class="js-recap-week-label">Minggu 1</span>
+                        <span class="js-recap-week-label">Pilih Minggu</span>
                         <i class="fa-solid fa-chevron-down recap-week-chevron"></i>
                     </button>
                     <div class="recap-week-menu" id="recapWeekMenu" hidden>
                         <?php foreach ($weekDropdownOptions as $opt): ?>
-                        <div class="recap-week-group">
-                            <div class="recap-week-group-label"><?= e($opt['label']); ?></div>
-                            <a class="recap-week-item" href="<?= e($opt['url_list']); ?>">
-                                <i class="fa-regular fa-file-pdf"></i> PDF List
-                            </a>
-                            <a class="recap-week-item recap-week-item--pivot" href="<?= e($opt['url_pivot']); ?>">
-                                <i class="fa-solid fa-table-cells"></i> PDF Pivot
-                            </a>
-                        </div>
-                        <?php endforeach; ?>
-                        <div class="recap-week-divider"></div>
-                        <a class="recap-week-item recap-week-item--pivot" href="<?= e($monthPdfPivotUrl); ?>">
-                            <i class="fa-solid fa-table-cells"></i> PDF Pivot Bulanan
+                        <a class="recap-week-item" href="<?= e($opt['url_pivot']); ?>">
+                            <i class="fa-regular fa-file-pdf"></i> <?= e($opt['label']); ?>
                         </a>
+                        <?php endforeach; ?>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -1253,6 +1324,71 @@ body.has-modal-open .routine-manager-modal {
     var search = <?= json_encode($searchValue); ?>;
     var groupOrder = Object.keys(categoryMeta);
 
+    window.updateRoutineRecapData = function (dateKey, groupName, itemName, lokasi, statusVal, noteVal) {
+        if (!recapData[dateKey]) {
+            recapData[dateKey] = {};
+        }
+        if (!recapData[dateKey][groupName]) {
+            recapData[dateKey][groupName] = {'BAIK': [], 'KURANG BAIK': [], 'BURUK': [], 'ON': [], 'OFF': []};
+        }
+        var groupRows = recapData[dateKey][groupName];
+        
+        // Remove existing item from all statuses
+        ['BAIK', 'KURANG BAIK', 'BURUK', 'ON', 'OFF'].forEach(function (st) {
+            if (groupRows[st]) {
+                groupRows[st] = groupRows[st].filter(function (row) {
+                    return (row.item_name || '').trim().toLowerCase() !== itemName.trim().toLowerCase();
+                });
+            }
+        });
+        
+        // Add if not empty
+        if (statusVal !== '') {
+            if (!groupRows[statusVal]) {
+                groupRows[statusVal] = [];
+            }
+            groupRows[statusVal].push({
+                item_name: itemName,
+                lokasi: lokasi,
+                condition_status: statusVal,
+                keterangan: noteVal,
+                updated_at: ''
+            });
+        }
+        
+        // Update dashboard tile count
+        var newCount = 0;
+        var groupKeys = Object.keys(recapData[dateKey]);
+        groupKeys.forEach(function (gName) {
+            var gRows = recapData[dateKey][gName] || {};
+            ['BAIK', 'KURANG BAIK', 'BURUK', 'ON', 'OFF'].forEach(function (st) {
+                newCount += (gRows[st] || []).length;
+            });
+        });
+        
+        var tileBtn = document.querySelector('.recap-date-tile[data-recap-date="' + dateKey + '"]');
+        if (tileBtn) {
+            var countSpan = tileBtn.querySelector('.recap-tile-count');
+            if (countSpan) {
+                countSpan.textContent = newCount;
+            }
+            if (newCount > 0) {
+                tileBtn.classList.remove('recap-date-tile--empty');
+                tileBtn.classList.add('recap-date-tile--has-data');
+            } else {
+                tileBtn.classList.remove('recap-date-tile--has-data');
+                tileBtn.classList.add('recap-date-tile--empty');
+            }
+        }
+
+        // If modal is open for this date, re-render it
+        if (!modal.hidden && modal.getAttribute('aria-hidden') === 'false') {
+            if (modal.getAttribute('data-current-date') === dateKey) {
+                renderDate(dateKey);
+            }
+        }
+    };
+
     function formatDate(dateKey) {
         var parts = (dateKey || '').split('-');
         if (parts.length !== 3) {
@@ -1262,13 +1398,17 @@ body.has-modal-open .routine-manager-modal {
     }
 
     function emptyHtml() {
-        return '<div class="routine-empty-mini">Belum ada checklist untuk tanggal ini.</div>';
+        return '<div class="routine-recap-empty-card">' +
+               '<i class="fa-regular fa-clipboard-check"></i>' +
+               '<span>Belum ada checking untuk tanggal ini</span>' +
+               '</div>';
     }
 
     function renderDate(dateKey) {
         if (!modal || !body || !title || !pdfLink) {
             return;
         }
+        modal.setAttribute('data-current-date', dateKey);
         var groups = recapData[dateKey] || {};
         title.textContent = 'Rekap Harian ' + formatDate(dateKey);
         pdfLink.href = 'index.php?page=routine-monitoring&action=export_routine_pdf&recap_scope=day&routine_month=' + encodeURIComponent(month) + '&routine_year=' + encodeURIComponent(year) + '&routine_search=' + encodeURIComponent(search) + '&recap_date=' + encodeURIComponent(dateKey);
@@ -1278,23 +1418,122 @@ body.has-modal-open .routine-manager-modal {
             var meta = categoryMeta[groupName] || {label: groupName, icon: 'fa-solid fa-list-check'};
             var rows = groups[groupName] || {'BAIK': [], 'KURANG BAIK': [], 'BURUK': [], 'ON': [], 'OFF': []};
             var total = (rows['BAIK'] || []).length + (rows['KURANG BAIK'] || []).length + (rows['BURUK'] || []).length + (rows['ON'] || []).length + (rows['OFF'] || []).length;
+            
+            // Calculate positive/ON checks and negative/OFF checks count dynamically
+            var onCount = (rows['BAIK'] || []).length + (rows['ON'] || []).length;
+            var offCount = (rows['BURUK'] || []).length + (rows['OFF'] || []).length;
+            
+            var labelText = '';
+            if (groupName === 'GATE') {
+                labelText = onCount + ' AKTIF | ' + offCount + ' RUSAK';
+            } else {
+                labelText = onCount + ' ON | ' + offCount + ' OFF';
+            }
+
             if (total > 0) {
                 hasAny = true;
             }
             html += '<section class="routine-recap-section">';
-            html += '<div class="routine-recap-section__head"><span><i class="' + meta.icon + '"></i> ' + meta.label + '</span><strong>' + total + ' item</strong></div>';
-            html += '<table class="routine-recap-table"><thead><tr><th>Nama Checking</th><th>Kondisi</th></tr></thead><tbody>';
+            html += '<div class="routine-recap-section__head"><span><i class="' + meta.icon + '"></i> ' + meta.label + '</span><strong>' + labelText + '</strong></div>';
+            
             if (total === 0) {
-                html += '<tr><td colspan="2">Belum ada data.</td></tr>';
+                html += '<div class="routine-recap-empty-card">';
+                html += '<i class="fa-regular fa-clipboard-check"></i>';
+                html += '<span>Belum ada checking untuk tanggal ini</span>';
+                html += '</div>';
             } else {
+                html += '<div class="routine-recap-list">';
+                
+                // Collect all items in this section
+                var allItems = [];
                 ['BAIK', 'KURANG BAIK', 'BURUK', 'ON', 'OFF'].forEach(function (status) {
                     (rows[status] || []).forEach(function (row) {
-                        var noteHtml = row.keterangan ? '<br><small class="routine-recap-note">' + row.keterangan + '</small>' : '';
-                        html += '<tr><td><strong>' + (row.item_name || '-') + '</strong>' + noteHtml + '</td><td><span class="routine-badge routine-badge--' + status.toLowerCase().replace(/\s+/g, '-') + '">' + status + '</span></td></tr>';
+                        allItems.push({
+                            item_name: row.item_name || '-',
+                            lokasi: row.lokasi || '',
+                            status: status,
+                            keterangan: row.keterangan || ''
+                        });
                     });
                 });
+
+                if (groupName === 'GATE' || groupName === 'CCTV') {
+                    // Group by lokasi
+                    var grouped = {};
+                    var locs = [];
+                    allItems.forEach(function (item) {
+                        var loc = (item.lokasi || '').trim();
+                        if (loc === '') {
+                            loc = 'Lainnya';
+                        }
+                        if (!grouped[loc]) {
+                            grouped[loc] = [];
+                            locs.push(loc);
+                        }
+                        grouped[loc].push(item);
+                    });
+                    
+                    // Sort locations alphabetically
+                    locs.sort();
+                    
+                    locs.forEach(function (loc) {
+                        // Render group header
+                        html += '<div class="routine-recap-group-title">' + loc + '</div>';
+                        
+                        // Sort items alphabetically under this location
+                        grouped[loc].sort(function (a, b) {
+                            return a.item_name.localeCompare(b.item_name);
+                        });
+
+                        // Render group items
+                        grouped[loc].forEach(function (item, idx) {
+                            var displayStatus = item.status;
+                            if (item.status === 'BURUK') {
+                                displayStatus = 'RUSAK';
+                            } else if (item.status === 'BAIK') {
+                                displayStatus = 'AKTIF';
+                            }
+                            var noteHtml = item.keterangan ? '<small class="routine-recap-note">' + item.keterangan + '</small>' : '';
+                            html += '<div class="routine-recap-row">';
+                            html += '  <div class="routine-recap-info">';
+                            html += '    <span class="routine-recap-name">' + (idx + 1) + '. ' + item.item_name + '</span>';
+                            html += '    ' + noteHtml;
+                            html += '  </div>';
+                            html += '  <div class="routine-recap-badge-wrap">';
+                            html += '    <span class="routine-badge routine-badge--' + item.status.toLowerCase().replace(/\s+/g, '-') + '">' + displayStatus + '</span>';
+                            html += '  </div>';
+                            html += '</div>';
+                        });
+                    });
+                } else {
+                    // SERVER - Simple list without grouping
+                    // Sort items alphabetically
+                    allItems.sort(function (a, b) {
+                        return a.item_name.localeCompare(b.item_name);
+                    });
+
+                    allItems.forEach(function (item, idx) {
+                        var displayStatus = item.status;
+                        if (item.status === 'BURUK') {
+                            displayStatus = 'RUSAK';
+                        } else if (item.status === 'BAIK') {
+                            displayStatus = 'AKTIF';
+                        }
+                        var noteHtml = item.keterangan ? '<small class="routine-recap-note">' + item.keterangan + '</small>' : '';
+                        html += '<div class="routine-recap-row">';
+                        html += '  <div class="routine-recap-info">';
+                        html += '    <span class="routine-recap-name">' + (idx + 1) + '. ' + item.item_name + '</span>';
+                        html += '    ' + noteHtml;
+                        html += '  </div>';
+                        html += '  <div class="routine-recap-badge-wrap">';
+                        html += '    <span class="routine-badge routine-badge--' + item.status.toLowerCase().replace(/\s+/g, '-') + '">' + displayStatus + '</span>';
+                        html += '  </div>';
+                        html += '</div>';
+                    });
+                }
+                html += '</div>';
             }
-            html += '</tbody></table></section>';
+            html += '</section>';
         });
         body.innerHTML = hasAny ? html : emptyHtml();
         modal.hidden = false;
@@ -1311,6 +1550,7 @@ body.has-modal-open .routine-manager-modal {
         if (!modal) {
             return;
         }
+        modal.removeAttribute('data-current-date');
         modal.hidden = true;
         modal.setAttribute('aria-hidden', 'true');
     }
@@ -1533,6 +1773,22 @@ function autoSaveCell(element) {
     
     var statusVal = statusInput ? statusInput.value : '';
     var noteVal = noteInput ? noteInput.value : '';
+    
+    // Dynamically update the daily recap count on select/note update
+    var tr = element.closest('tr');
+    if (tr) {
+        var lokasi = tr.getAttribute('data-lokasi') || '';
+        var itemNameCell = tr.querySelector('.routine-item-name-cell strong') || tr.querySelector('.routine-item-name-cell');
+        var itemName = itemNameCell ? itemNameCell.textContent.trim() : '';
+        
+        var section = tr.closest('.routine-matrix-card');
+        var manageBtn = section ? section.querySelector('.js-open-category-manager') : null;
+        var groupName = manageBtn ? manageBtn.getAttribute('data-category') : '';
+        
+        if (groupName && itemName !== '' && typeof window.updateRoutineRecapData === 'function') {
+            window.updateRoutineRecapData(dateKey, groupName, itemName, lokasi, statusVal, noteVal);
+        }
+    }
     
     var formData = new FormData();
     formData.append('item_id', itemId);

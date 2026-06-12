@@ -943,6 +943,27 @@ class PageController
         return 'BAIK';
     }
 
+    private function getRoutineItemLocationAndName(array $item, string $group): array
+    {
+        $group = strtoupper($group);
+        $fullName = (string) ($item['item_name'] ?? '');
+        
+        if ($group === 'GATE') {
+            $parts = explode(' - ', $fullName, 2);
+            if (count($parts) === 2) {
+                return [trim($parts[0]), trim($parts[1])];
+            }
+            return ['Lainnya', $fullName];
+        }
+        
+        if ($group === 'CCTV') {
+            $loc = trim((string) ($item['lokasi'] ?? ''));
+            return [$loc !== '' ? $loc : 'Lainnya', $fullName];
+        }
+        
+        return ['', $fullName];
+    }
+
     private function routineAllItems(PDO $pdo): array
     {
         $this->ensureRoutineMonitoringTable($pdo);
@@ -1093,11 +1114,7 @@ class PageController
             return;
         }
         $this->ensureRoutineMonitoringTable($pdo);
-        if (($_GET['action'] ?? '') === 'export_routine_pdf') {
-            $this->streamRoutineMonitoringPdf($filters);
-            exit;
-        }
-        if (($_GET['action'] ?? '') === 'export_routine_pdf_pivot') {
+        if (($_GET['action'] ?? '') === 'export_routine_pdf' || ($_GET['action'] ?? '') === 'export_routine_pdf_pivot') {
             $this->streamRoutineMonitoringPivotPdf($filters);
             exit;
         }
@@ -1517,8 +1534,18 @@ class PageController
                 if (!isset($recapByDate[$date][$group])) {
                     $recapByDate[$date][$group] = ['BAIK' => [], 'KURANG BAIK' => [], 'BURUK' => [], 'ON' => [], 'OFF' => []];
                 }
+                $itemName = (string) ($item['item_name'] ?? '-');
+                $lokasi = (string) ($item['lokasi'] ?? '');
+                if ($group === 'GATE') {
+                    $parts = explode(' - ', $itemName, 2);
+                    if (count($parts) === 2) {
+                        $lokasi = trim($parts[0]);
+                        $itemName = trim($parts[1]);
+                    }
+                }
                 $entry = [
-                    'item_name' => (string) ($item['item_name'] ?? '-'),
+                    'item_name' => $itemName,
+                    'lokasi' => $lokasi,
                     'condition_status' => $status,
                     'keterangan' => (string) ($cell['keterangan'] ?? ''),
                     'updated_at' => (string) ($cell['updated_at'] ?? ''),
@@ -1555,145 +1582,68 @@ class PageController
             'recap_by_date' => $recapByDate,
         ];
     }
-    private function streamRoutineMonitoringPdf(array $filters): void
-    {
-        $routine = $this->buildRoutineMonitoringData($filters);
-        $context = $routine['context'] ?? [];
-        $recapByDate = $routine['recap_by_date'] ?? [];
-        $scope = strtolower(trim((string) ($_GET['recap_scope'] ?? 'day')));
-        if (!in_array($scope, ['day', 'week', 'month'], true)) {
-            $scope = 'day';
-        }
-
-        $monthStart = (string) ($context['start_date'] ?? date('Y-m-01'));
-        $monthEnd = (string) ($context['end_date'] ?? date('Y-m-t'));
-        $rangeStart = $monthStart;
-        $rangeEnd = $monthEnd;
-        $titleSuffix = (string) ($context['month_label'] ?? date('F Y'));
-        $baseSuffix = preg_replace('/[^A-Za-z0-9_-]+/', '-', $titleSuffix) ?: date('Y-m');
-
-        if ($scope === 'day') {
-            $requestedDate = trim((string) ($_GET['recap_date'] ?? ''));
-            if ($requestedDate === '') {
-                $requestedDate = $monthStart;
-            }
-            $rangeStart = $requestedDate;
-            $rangeEnd = $requestedDate;
-            $titleSuffix = date('d/m/Y', strtotime($requestedDate));
-            $baseSuffix = preg_replace('/[^A-Za-z0-9_-]+/', '-', $requestedDate);
-        } elseif ($scope === 'week') {
-            $weekStartInput = trim((string) ($_GET['week_start'] ?? $_GET['recap_date'] ?? $monthStart));
-            try {
-                $weekStartDate = new DateTimeImmutable($weekStartInput);
-            } catch (Throwable $e) {
-                $weekStartDate = new DateTimeImmutable($monthStart);
-            }
-            $weekStartDate = $weekStartDate->modify('monday this week');
-            $weekEndDate = $weekStartDate->modify('+6 days');
-            $monthStartDate = new DateTimeImmutable($monthStart);
-            $monthEndDate = new DateTimeImmutable($monthEnd);
-            if ($weekStartDate < $monthStartDate) {
-                $weekStartDate = $monthStartDate;
-            }
-            if ($weekEndDate > $monthEndDate) {
-                $weekEndDate = $monthEndDate;
-            }
-            $rangeStart = $weekStartDate->format('Y-m-d');
-            $rangeEnd = $weekEndDate->format('Y-m-d');
-            $titleSuffix = date('d/m/Y', strtotime($rangeStart)) . ' - ' . date('d/m/Y', strtotime($rangeEnd));
-            $baseSuffix = $rangeStart . '-sd-' . $rangeEnd;
-        }
-
-        $rows = [];
-        $no = 1;
-        foreach ($recapByDate as $dateKey => $groupRows) {
-            if ($dateKey < $rangeStart || $dateKey > $rangeEnd) {
-                continue;
-            }
-            foreach ($groupRows as $group => $statusRows) {
-                foreach (['BAIK', 'KURANG BAIK', 'BURUK', 'ON', 'OFF'] as $status) {
-                    foreach (($statusRows[$status] ?? []) as $row) {
-                        $rows[] = [
-                            'no' => (string) $no++,
-                            'tanggal' => date('d/m/Y', strtotime((string) $dateKey)),
-                            'kategori' => (string) $group,
-                            'checking' => (string) ($row['item_name'] ?? '-'),
-                            'kondisi' => ucwords(strtolower((string) ($row['condition_status'] ?? $status))),
-                            'keterangan' => trim((string) ($row['keterangan'] ?? '')) !== '' ? (string) $row['keterangan'] : '-',
-                            'update' => trim((string) ($row['updated_at'] ?? '')) !== '' ? (string) $row['updated_at'] : '-',
-                        ];
-                    }
-                }
-            }
-        }
-        if (empty($rows)) {
-            $rows[] = [
-                'no' => '1',
-                'tanggal' => $scope === 'month' ? $titleSuffix : date('d/m/Y', strtotime($rangeStart)),
-                'kategori' => '-',
-                'checking' => 'Belum ada data monitoring',
-                'kondisi' => '-',
-                'keterangan' => '-',
-                'update' => '-',
-            ];
-        }
-
-        $scopeLabel = match ($scope) {
-            'week' => 'Mingguan',
-            'month' => 'Bulanan',
-            default => 'Harian',
-        };
-        $title = 'Rekap Routine Monitoring ' . $scopeLabel . ' - ' . $titleSuffix;
-        $columns = [
-            ['key' => 'no', 'title' => 'No', 'width' => 28, 'chars' => 4],
-            ['key' => 'tanggal', 'title' => 'Tanggal', 'width' => 60, 'chars' => 10],
-            ['key' => 'kategori', 'title' => 'Kategori', 'width' => 65, 'chars' => 12],
-            ['key' => 'checking', 'title' => 'Nama Checking', 'width' => 150, 'chars' => 28],
-            ['key' => 'kondisi', 'title' => 'Kondisi', 'width' => 85, 'chars' => 14],
-            ['key' => 'keterangan', 'title' => 'Keterangan', 'width' => 235, 'chars' => 42],
-            ['key' => 'update', 'title' => 'Update', 'width' => 110, 'chars' => 18],
-        ];
-        $pdf = $this->buildGenericReportPdf($title, $columns, $rows);
-        $base = 'rekap-routine-monitoring-' . $scope . '-' . preg_replace('/[^A-Za-z0-9_-]+/', '-', (string) $baseSuffix);
-        header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="' . $base . '.pdf"');
-        header('Content-Length: ' . strlen($pdf));
-        echo $pdf;
-    }
     private function streamRoutineMonitoringPivotPdf(array $filters): void
     {
-        $routine = $this->buildRoutineMonitoringData($filters);
-        $context = $routine['context'] ?? [];
-        $groupedItems = $routine['grouped_items'] ?? [];
+        $pdo = Database::getConnection();
+        if (!$pdo instanceof PDO) {
+            return;
+        }
+
         $scope = strtolower(trim((string) ($_GET['recap_scope'] ?? 'week')));
-        if (!in_array($scope, ['week', 'month'], true)) {
+        if (!in_array($scope, ['day', 'week', 'month'], true)) {
             $scope = 'week';
         }
 
-        $monthStart = (string) ($context['start_date'] ?? date('Y-m-01'));
-        $monthEnd   = (string) ($context['end_date']   ?? date('Y-m-t'));
-        $rangeStart = $monthStart;
-        $rangeEnd   = $monthEnd;
-        $titleSuffix = (string) ($context['month_label'] ?? date('F Y'));
-        $baseSuffix  = preg_replace('/[^A-Za-z0-9_-]+/', '-', $titleSuffix) ?: date('Y-m');
+        $yearNum = (int) ($filters['routine_year'] ?? $_GET['routine_year'] ?? date('Y'));
+        $monthNum = (int) ($filters['routine_month'] ?? $_GET['routine_month'] ?? date('m'));
+        if ($monthNum < 1 || $monthNum > 12) { $monthNum = (int)date('m'); }
+        if ($yearNum < 2020 || $yearNum > 2100) { $yearNum = (int)date('Y'); }
 
-        if ($scope === 'week') {
-            $weekStartInput = trim((string) ($_GET['week_start'] ?? $_GET['recap_date'] ?? $monthStart));
+        $daysInMonth = (int)date('t', mktime(0, 0, 0, $monthNum, 1, $yearNum));
+
+        // Setup Date Range depending on Scope
+        if ($scope === 'day') {
+            $requestedDate = trim((string) ($_GET['recap_date'] ?? ''));
+            if ($requestedDate === '') {
+                $requestedDate = sprintf('%04d-%02d-01', $yearNum, $monthNum);
+            }
+            $rangeStart = $requestedDate;
+            $rangeEnd   = $requestedDate;
+            $titleSuffix = date('d/m/Y', strtotime($requestedDate));
+            $baseSuffix  = preg_replace('/[^A-Za-z0-9_-]+/', '-', $requestedDate);
+        } elseif ($scope === 'week') {
+            $weekStartInput = trim((string) ($_GET['week_start'] ?? $_GET['recap_date'] ?? ''));
+            if ($weekStartInput === '') {
+                $weekStartInput = sprintf('%04d-%02d-01', $yearNum, $monthNum);
+            }
             try {
                 $weekStartDate = new DateTimeImmutable($weekStartInput);
             } catch (Throwable $e) {
-                $weekStartDate = new DateTimeImmutable($monthStart);
+                $weekStartDate = new DateTimeImmutable(sprintf('%04d-%02d-01', $yearNum, $monthNum));
             }
             $weekStartDate = $weekStartDate->modify('monday this week');
             $weekEndDate   = $weekStartDate->modify('+6 days');
-            $monthStartDate = new DateTimeImmutable($monthStart);
-            $monthEndDate   = new DateTimeImmutable($monthEnd);
-            if ($weekStartDate < $monthStartDate) { $weekStartDate = $monthStartDate; }
-            if ($weekEndDate   > $monthEndDate)   { $weekEndDate   = $monthEndDate;   }
+            
+            $monthStart = new DateTimeImmutable(sprintf('%04d-%02d-01', $yearNum, $monthNum));
+            $monthEnd   = new DateTimeImmutable(sprintf('%04d-%02d-%02d', $yearNum, $monthNum, $daysInMonth));
+            if ($weekStartDate < $monthStart) { $weekStartDate = $monthStart; }
+            if ($weekEndDate   > $monthEnd)   { $weekEndDate   = $monthEnd;   }
+            
             $rangeStart  = $weekStartDate->format('Y-m-d');
             $rangeEnd    = $weekEndDate->format('Y-m-d');
             $titleSuffix = date('d/m/Y', strtotime($rangeStart)) . ' - ' . date('d/m/Y', strtotime($rangeEnd));
             $baseSuffix  = $rangeStart . '-sd-' . $rangeEnd;
+        } else { // month
+            $rangeStart = sprintf('%04d-%02d-01', $yearNum, $monthNum);
+            $rangeEnd   = sprintf('%04d-%02d-%02d', $yearNum, $monthNum, $daysInMonth);
+            $monthNamesIndo = [
+                1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 
+                5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus', 
+                9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
+            ];
+            $monthName = $monthNamesIndo[$monthNum] ?? date('F', mktime(0, 0, 0, $monthNum, 1, $yearNum));
+            $titleSuffix = $monthName . ' ' . $yearNum;
+            $baseSuffix  = sprintf('%04d-%02d', $yearNum, $monthNum);
         }
 
         // Collect dates in range
@@ -1707,19 +1657,37 @@ class PageController
 
         $scopeLabel = match ($scope) {
             'month' => 'Bulanan',
+            'week'  => 'Mingguan',
+            'day'   => 'Harian',
             default => 'Mingguan',
         };
-        $mainTitle = 'Rekap Routine Monitoring ' . $scopeLabel . ' - ' . $titleSuffix . ' (Pivot)';
+        $mainTitle = 'Rekap Routine Monitoring ' . $scopeLabel . ' - ' . $titleSuffix;
+
+        // Fetch Items and checking records using exact same logic as Web UI modal Rekap Harian
+        $routineData = $this->buildRoutineMonitoringData($filters);
+        $groupedItems = $routineData['grouped_items'] ?? [];
+        $categories = $routineData['categories'] ?? [];
+
+        $categoryOrder = [];
+        foreach ($categories as $cat) {
+            $catName = strtoupper((string) ($cat['category_name'] ?? ''));
+            if ($catName !== '' && $catName !== 'UMUM' && !in_array($catName, $categoryOrder, true)) {
+                $categoryOrder[] = $catName;
+            }
+        }
+        if (empty($categoryOrder)) {
+            $categoryOrder = ['GATE', 'CCTV', 'SERVER'];
+        }
 
         // ─── Pure-PHP PDF builder (landscape A4) ─────────────────────────────
-        $pageW = 842; $pageH = 595; $margin = 24;
+        $pageW = 842; $pageH = 595; $margin = 18.0;
         $blue  = '0.16 0.37 0.65';
         $textColor = '0.15 0.18 0.22';
         $hdrFill = $blue;
         $altFill = '0.97 0.98 1.00';
         $border  = '0.78 0.84 0.90';
-        $green   = '0.09 0.63 0.35';
-        $red     = '0.84 0.10 0.10';
+        $green   = '0.00 0.69 0.31'; // #00B050
+        $red     = '1.00 0.00 0.00'; // #FF0000
         $objects = [
             1 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
             2 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
@@ -1735,9 +1703,9 @@ class PageController
             $t = preg_replace('/[^ -~\x80-\xFF]/', '', $t) ?? $t;
             return str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $t === '' ? '-' : $t);
         };
-        $addText = function (float $x, float $yP, string $txt, int $font = 1, int $sz = 7, string $col = '0 0 0') use (&$current, $escape) {
+        $addText = function (float $x, float $yP, string $txt, int $font = 1, float $sz = 7, string $col = '0 0 0') use (&$current, $escape) {
             $current[] = 'BT';
-            $current[] = sprintf('/F%d %d Tf', $font, $sz);
+            $current[] = sprintf('/F%d %.1f Tf', $font, $sz);
             $current[] = $col . ' rg';
             $current[] = sprintf('1 0 0 1 %.2f %.2f Tm', $x, $yP);
             $current[] = '(' . $escape($txt) . ') Tj';
@@ -1755,35 +1723,105 @@ class PageController
         };
 
         $dateCount = count($rangeDates);
-        $nameColW  = 110.0;
-        $dateColW  = $dateCount > 0 ? max(22.0, min(38.0, floor(($pageW - 2 * $margin - $nameColW) / $dateCount))) : 30.0;
-        $tableW    = $nameColW + $dateColW * $dateCount;
+        $usableW = $pageW - 2 * $margin; // 806.0
+        
+        if ($scope === 'day') {
+            $locColW = 100.0;
+            $nameColW = 200.0;
+            $ketColW = 220.0;
+            $timeColW = 136.0;
+            $dateColW = $usableW - ($locColW + $nameColW + $ketColW + $timeColW);
+        } elseif ($scope === 'week') {
+            $locColW = 90.0;
+            $nameColW = 160.0;
+            $ketColW = 200.0;
+            $timeColW = 110.0;
+            $dateColW = ($usableW - ($locColW + $nameColW + $ketColW + $timeColW)) / $dateCount;
+        } else { // month
+            $locColW = 80.0;
+            $nameColW = 95.0;
+            $ketColW = 90.0;
+            $timeColW = 70.0;
+            $dateColW = ($usableW - ($locColW + $nameColW + $ketColW + $timeColW)) / $dateCount;
+        }
+
         $hdrH      = 18.0;
         $rowH      = 14.0;
-        $titleH    = 44.0; // space for title + export line
+        $titleH    = 40.0;
 
         $startPage = function () use (&$current, &$y, $pageH, $margin, $mainTitle, $addText, $blue, $textColor, $titleH) {
             $current = [];
             $y = $pageH - $margin;
-            $addText($margin, $y - 4, $mainTitle, 2, 11, $blue);
-            $addText($margin, $y - 18, 'Diexport: ' . date('d-m-Y H:i:s'), 1, 7, $textColor);
+            $addText($margin, $y - 4, $mainTitle, 2, 14, $blue);
+            $addText($margin, $y - 20, 'Diexport: ' . date('d-m-Y H:i:s'), 1, 8, $textColor);
             $y -= $titleH;
         };
 
-        $drawPivotHeader = function () use (&$y, $margin, $nameColW, $dateColW, $rangeDates, $addRect, $addText, $hdrFill, $hdrH) {
+        $drawTableHeaderForCategory = function (string $catLabel) use (
+            &$y, $margin, $rangeDates, $addRect, $addText, $hdrFill, $hdrH,
+            $locColW, $nameColW, $ketColW, $dateColW, $timeColW
+        ) {
             $x = $margin;
             $rowY = $y - $hdrH;
-            // Name column header
-            $addRect($x, $rowY, $nameColW, $hdrH, $hdrFill, $hdrFill, 0.6);
-            $addText($x + 3, $rowY + 6, 'Nama Checking', 2, 6, '1 1 1');
-            $x += $nameColW;
+            $isCg = in_array(strtoupper($catLabel), ['CCTV', 'GATE'], true);
+            
+            if ($isCg) {
+                // Lokasi header
+                $addRect($x, $rowY, $locColW, $hdrH, $hdrFill, $hdrFill, 0.7);
+                $title = 'Lokasi';
+                $offset = ($locColW - (strlen($title) * 6 * 0.6)) / 2;
+                $addText($x + max(0.5, $offset), $rowY + 6, $title, 2, 6, '1 1 1');
+                $x += $locColW;
+                
+                // Nama Checking header
+                $addRect($x, $rowY, $nameColW, $hdrH, $hdrFill, $hdrFill, 0.7);
+                $colTitle = (strtoupper($catLabel) === 'CCTV') ? 'Nama CCTV' : 'Nama Barang';
+                $offset = ($nameColW - (strlen($colTitle) * 6 * 0.6)) / 2;
+                $addText($x + max(0.5, $offset), $rowY + 6, $colTitle, 2, 6, '1 1 1');
+                $x += $nameColW;
+            } else {
+                // Nama Checking header
+                $totalW = $locColW + $nameColW;
+                $addRect($x, $rowY, $totalW, $hdrH, $hdrFill, $hdrFill, 0.7);
+                $colTitle = (strtoupper($catLabel) === 'SERVER') ? 'Nama Server' : 'Nama Checking';
+                $offset = ($totalW - (strlen($colTitle) * 6 * 0.6)) / 2;
+                $addText($x + max(0.5, $offset), $rowY + 6, $colTitle, 2, 6, '1 1 1');
+                $x += $totalW;
+            }
+
+            // Keterangan header
+            $addRect($x, $rowY, $ketColW, $hdrH, $hdrFill, $hdrFill, 0.7);
+            $title = 'Keterangan';
+            $offset = ($ketColW - (strlen($title) * 6 * 0.6)) / 2;
+            $addText($x + max(0.5, $offset), $rowY + 6, $title, 2, 6, '1 1 1');
+            $x += $ketColW;
+            
             // Date column headers
             foreach ($rangeDates as $dk) {
-                $addRect($x, $rowY, $dateColW, $hdrH, $hdrFill, $hdrFill, 0.6);
-                $addText($x + 2, $rowY + 10, date('d', strtotime($dk)), 2, 6, '1 1 1');
-                $addText($x + 2, $rowY + 3,  date('D', strtotime($dk)), 1, 5, '0.85 0.90 1.00');
+                $addRect($x, $rowY, $dateColW, $hdrH, $hdrFill, $hdrFill, 0.7);
+                
+                $dayStr = date('d', strtotime($dk));
+                $dayStrW = strlen($dayStr) * 5.5 * 0.6;
+                $dayStrOffset = ($dateColW - $dayStrW) / 2;
+                $addText($x + max(0.5, $dayStrOffset), $rowY + 10, $dayStr, 2, 5.5, '1 1 1');
+                
+                $dayAbbr = date('D', strtotime($dk));
+                $dayMap = ['Mon'=>'Sen','Tue'=>'Sel','Wed'=>'Rab','Thu'=>'Kam','Fri'=>'Jum','Sat'=>'Sab','Sun'=>'Min'];
+                $dayName = $dayMap[$dayAbbr] ?? $dayAbbr;
+                $dayNameW = strlen($dayName) * 4.5 * 0.55;
+                $dayNameOffset = ($dateColW - $dayNameW) / 2;
+                $addText($x + max(0.5, $dayNameOffset), $rowY + 3.5,  $dayName, 1, 4.5, '0.85 0.90 1.00');
+                
                 $x += $dateColW;
             }
+
+            // Waktu Update header
+            $addRect($x, $rowY, $timeColW, $hdrH, $hdrFill, $hdrFill, 0.7);
+            $title = 'Waktu Update';
+            $offset = ($timeColW - (strlen($title) * 6 * 0.6)) / 2;
+            $addText($x + max(0.5, $offset), $rowY + 6, $title, 2, 6, '1 1 1');
+            $x += $timeColW;
+
             $y = $rowY - 1;
         };
 
@@ -1793,78 +1831,312 @@ class PageController
             array  $items,
             array  $rangeDates
         ) use (
-            &$y, $margin, $nameColW, $dateColW, $hdrH, $rowH, $pageH, $titleH,
+            &$y, $margin, $hdrH, $rowH, $pageH, $titleH, $scope,
             $addRect, $addText, $blue, $textColor, $altFill, $border, $green, $red,
-            $startPage, $drawPivotHeader, $finishPage
+            $startPage, $drawTableHeaderForCategory, $finishPage, $locColW, $nameColW, $ketColW, $dateColW, $timeColW
         ): void {
-            // Section heading
-            if (($y - ($hdrH + $rowH)) < $margin + 4) {
+            $isCg = in_array(strtoupper($catLabel), ['CCTV', 'GATE'], true);
+            $usableW = $locColW + $nameColW + $ketColW + $dateColW * count($rangeDates) + $timeColW;
+
+            // Draw category section heading
+            $secH = 14.0;
+            if (($y - ($secH + $hdrH + $rowH)) < $margin + 4) {
                 $finishPage();
                 $startPage();
-                $drawPivotHeader();
             }
-            $secH = 14.0;
-            $addRect($margin, $y - $secH, $nameColW + $dateColW * count($rangeDates), $secH, '0.93 0.96 1.00', $border, 0.4);
+            $addRect($margin, $y - $secH, $usableW, $secH, '0.93 0.96 1.00', $border, 0.4);
             $addText($margin + 3, $y - $secH + 5, strtoupper($catLabel), 2, 7, $blue);
             $y -= ($secH + 1);
+            
+            // Helper to draw vertically merged Lokasi cells
+            $drawMergedLocationCell = function (
+                float $x,
+                float $bottomY,
+                float $w,
+                float $h,
+                string $locText
+            ) use ($addRect, $addText, $textColor, $border) {
+                // Background fill white, border color $border, line width 0.45
+                $addRect($x, $bottomY, $w, $h, '1 1 1', $border, 0.45);
+                
+                // Adjust font size dynamically to fit cell width
+                $fontSize = 6.0;
+                $textLen = strlen($locText);
+                $textWidth = $textLen * $fontSize * 0.55;
+                if ($textWidth > $w - 4) {
+                    $fontSize = ($w - 4) / ($textLen * 0.55);
+                    if ($fontSize < 4.0) {
+                        $fontSize = 4.0;
+                    }
+                    $textWidth = $textLen * $fontSize * 0.55;
+                }
+                
+                // Center alignment
+                $textOffset = ($w - $textWidth) / 2;
+                $textY = $bottomY + ($h / 2) - ($fontSize / 2) + 0.5;
+                $addText($x + max(2.0, $textOffset), $textY, $locText, 1, $fontSize, $textColor);
+            };
+
+            // Draw table header
+            $drawTableHeaderForCategory($catLabel);
+
+            $currentLocation = null;
+            $groupStartY = $y;
+            $lastRowY = $y;
 
             foreach ($items as $idx => $item) {
-                if (($y - $rowH) < $margin + 4) {
-                    $finishPage();
-                    $startPage();
-                    $drawPivotHeader();
+                list($locVal, $nameVal) = $this->getRoutineItemLocationAndName($item, $catLabel);
+
+                if ($isCg) {
+                    if ($currentLocation === null) {
+                        $currentLocation = $locVal;
+                        $groupStartY = $y;
+                    } elseif ($locVal !== $currentLocation) {
+                        if ($groupStartY > $lastRowY) {
+                            $drawMergedLocationCell($margin, $lastRowY, $locColW, $groupStartY - $lastRowY, $currentLocation);
+                        }
+                        $currentLocation = $locVal;
+                        $groupStartY = $y;
+                    }
+
+                    if (($y - $rowH) < $margin + 4) {
+                        if ($groupStartY > $lastRowY) {
+                            $drawMergedLocationCell($margin, $lastRowY, $locColW, $groupStartY - $lastRowY, $currentLocation);
+                        }
+                        $finishPage();
+                        $startPage();
+                        $drawTableHeaderForCategory($catLabel);
+                        $groupStartY = $y;
+                    }
+                } else {
+                    if (($y - $rowH) < $margin + 4) {
+                        $finishPage();
+                        $startPage();
+                        $drawTableHeaderForCategory($catLabel);
+                    }
                 }
+
                 $rowY = $y - $rowH;
                 $bgFill = $idx % 2 === 0 ? $altFill : '1 1 1';
-                // Name cell
-                $displayName = (string) ($item['item_name'] ?? '-');
-                $addRect($margin, $rowY, $nameColW, $rowH, $bgFill, $border, 0.35);
-                $addText($margin + 3, $rowY + 5, $displayName, 1, 6, $textColor);
-                // Date cells
-                $cx = $margin + $nameColW;
-                foreach ($rangeDates as $dk) {
-                    $cell   = $item['calendar'][$dk] ?? ['condition_status' => ''];
-                    $status = trim((string) ($cell['condition_status'] ?? ''));
-                    $normSt = '';
-                    if (in_array($status, ['ON', 'BAIK', 'AKTIF'], true))        { $normSt = 'ON'; }
-                    elseif (in_array($status, ['OFF', 'BURUK', 'RUSAK'], true))  { $normSt = 'OFF'; }
-                    elseif ($status === 'KURANG BAIK')                           { $normSt = 'KB'; }
-                    elseif ($status !== '')                                       { $normSt = substr($status, 0, 3); }
-
-                    $cellFill = $bgFill;
-                    $cellTxtColor = $textColor;
-                    if ($normSt === 'ON')  { $cellFill = $green; $cellTxtColor = '1 1 1'; }
-                    elseif ($normSt === 'OFF') { $cellFill = $red;   $cellTxtColor = '1 1 1'; }
-                    elseif ($normSt !== '')    { $cellFill = '0.98 0.91 0.55'; $cellTxtColor = '0.30 0.20 0'; }
-
-                    $addRect($cx, $rowY, $dateColW, $rowH, $cellFill, $border, 0.35);
-                    if ($normSt !== '') {
-                        $addText($cx + 2, $rowY + 5, $normSt, 2, 5, $cellTxtColor);
-                    }
-                    $cx += $dateColW;
+                
+                $x = $margin;
+                if ($isCg) {
+                    // Skip Lokasi cell drawing here - it is deferred!
+                    $x += $locColW;
+                    
+                    // Draw Nama Checking cell
+                    $addRect($x, $rowY, $nameColW, $rowH, $bgFill, $border, 0.45);
+                    $fontSizeName = 6;
+                    if (strlen($nameVal) > 22) { $fontSizeName = 5; }
+                    if (strlen($nameVal) > 30) { $fontSizeName = 4.5; }
+                    $addText($x + 3, $rowY + 5, $nameVal, 1, $fontSizeName, $textColor);
+                    $x += $nameColW;
+                } else {
+                    // Draw Nama Checking cell (full width locColW + nameColW)
+                    $addRect($x, $rowY, $locColW + $nameColW, $rowH, $bgFill, $border, 0.45);
+                    $fontSizeName = 6;
+                    if (strlen($nameVal) > 30) { $fontSizeName = 5; }
+                    if (strlen($nameVal) > 40) { $fontSizeName = 4.5; }
+                    $addText($x + 3, $rowY + 5, $nameVal, 1, $fontSizeName, $textColor);
+                    $x += ($locColW + $nameColW);
                 }
+
+                // Collect notes/keterangan during period as a numbered list
+                $noteEntries = [];
+                $hasAnyUpdate = false;
+                foreach ($rangeDates as $dk) {
+                    $note = trim((string) ($item['calendar'][$dk]['keterangan'] ?? ''));
+                    $statusVal = (string) ($item['calendar'][$dk]['condition_status'] ?? '');
+                    
+                    $norm = '';
+                    if ($statusVal === 'ON' || $statusVal === 'BAIK' || $statusVal === 'AKTIF') {
+                        $norm = 'ON';
+                    } elseif ($statusVal === 'OFF' || $statusVal === 'RUSAK' || $statusVal === 'TIDAK AKTIF' || $statusVal === 'BURUK') {
+                        $norm = 'OFF';
+                    }
+
+                    if ($note !== '' || $norm === 'ON' || $norm === 'OFF') {
+                        $hasAnyUpdate = true;
+                    }
+
+                    $dateLabel = date('d/m', strtotime($dk));
+                    if ($note !== '') {
+                        $noteEntries[] = "[{$dateLabel}] {$note}";
+                    } elseif ($norm === 'OFF') {
+                        $noteEntries[] = "[{$dateLabel}] Butuh Maintenance";
+                    }
+                }
+                
+                if (!$hasAnyUpdate) {
+                    $keteranganText = '-';
+                } elseif (empty($noteEntries)) {
+                    $keteranganText = 'Aman';
+                } else {
+                    $keteranganText = '';
+                    foreach ($noteEntries as $idx => $entry) {
+                        $keteranganText .= ($idx + 1) . ". " . $entry . "\n";
+                    }
+                    $keteranganText = rtrim($keteranganText);
+                }
+
+                // Draw Keterangan cell with word-wrap and vertical centering
+                $addRect($x, $rowY, $ketColW, $rowH, $bgFill, $border, 0.45);
+                $fontSizeKet = 5.5;
+                if ($scope === 'month') {
+                    $fontSizeKet = 4.5;
+                }
+                
+                $charWidth = $fontSizeKet * 0.55; 
+                $maxChars = max(10, (int)($ketColW / $charWidth));
+                $wrappedLines = explode("\n", wordwrap($keteranganText, $maxChars, "\n", true));
+                
+                if (count($wrappedLines) > 2) {
+                    $fontSizeKet = 4.5;
+                    $charWidth = $fontSizeKet * 0.55;
+                    $maxChars = max(10, (int)($ketColW / $charWidth));
+                    $wrappedLines = explode("\n", wordwrap($keteranganText, $maxChars, "\n", true));
+                    if (count($wrappedLines) > 3) {
+                        $wrappedLines = array_slice($wrappedLines, 0, 2);
+                        $wrappedLines[] = '...';
+                    }
+                }
+                
+                $numLines = count($wrappedLines);
+                $lineHeight = $fontSizeKet + 1.0;
+                $startY = $rowY + ($rowH / 2) + (($numLines - 1) * $lineHeight / 2) - ($fontSizeKet / 2) + 0.3;
+                
+                foreach ($wrappedLines as $lineIdx => $lineText) {
+                    $lineY = $startY - ($lineIdx * $lineHeight);
+                    $addText($x + 3, $lineY, $lineText, 1, $fontSizeKet, $textColor);
+                }
+                $x += $ketColW;
+                
+                // Draw Date cells
+                foreach ($rangeDates as $dk) {
+                    $status = (string) ($item['calendar'][$dk]['condition_status'] ?? '');
+                    
+                    $normalizedStatus = '';
+                    if (in_array(strtoupper($catLabel), ['CCTV', 'SERVER'], true)) {
+                        if ($status === 'ON' || $status === 'BAIK' || $status === 'AKTIF') {
+                            $normalizedStatus = 'ON';
+                        } elseif ($status === 'OFF' || $status === 'RUSAK' || $status === 'TIDAK AKTIF' || $status === 'BURUK') {
+                            $normalizedStatus = 'OFF';
+                        }
+                    } else { // GATE
+                        if ($status === 'BAIK' || $status === 'AKTIF' || $status === 'ON') {
+                            $normalizedStatus = 'AKTIF';
+                        } elseif ($status === 'BURUK' || $status === 'RUSAK' || $status === 'OFF') {
+                            $normalizedStatus = 'RUSAK';
+                        }
+                    }
+
+                    if ($normalizedStatus === '') {
+                        $cellFill = $bgFill;
+                        $normSt = '-';
+                        $cellTxtColor = '0.50 0.55 0.60';
+                    } else {
+                        $normSt = $normalizedStatus;
+                        $cellFill = ($normSt === 'ON' || $normSt === 'AKTIF') ? $green : $red;
+                        $cellTxtColor = '1 1 1';
+                    }
+
+                    $addRect($x, $rowY, $dateColW, $rowH, $cellFill, $border, 0.45);
+                    
+                    $fontSizeSt = 4.8;
+                    if ($scope === 'month') {
+                        $fontSizeSt = 3.6;
+                    }
+                    
+                    $textLen = strlen($normSt);
+                    $textWidth = $textLen * $fontSizeSt * 0.70;
+                    if ($textWidth > $dateColW - 1.0) {
+                        $fontSizeSt = ($dateColW - 1.0) / ($textLen * 0.70);
+                        if ($fontSizeSt < 3.0) { $fontSizeSt = 3.0; }
+                        $textWidth = $textLen * $fontSizeSt * 0.70;
+                    }
+                    
+                    $textOffset = ($dateColW - $textWidth) / 2;
+                    $addText($x + max(0.5, $textOffset), $rowY + 5, $normSt, $normSt === '-' ? 1 : 2, $fontSizeSt, $cellTxtColor);
+                    
+                    $x += $dateColW;
+                }
+
+                // Draw Waktu Update cell
+                $updatedAtText = '-';
+                $latestTime = 0;
+                foreach ($rangeDates as $dk) {
+                    $ua = trim((string) ($item['calendar'][$dk]['updated_at'] ?? ''));
+                    if ($ua !== '') {
+                        $ts = strtotime($ua);
+                        if ($ts > $latestTime) {
+                            $latestTime = $ts;
+                        }
+                    }
+                }
+                if ($latestTime > 0) {
+                    $updatedAtText = date('d/m/Y H:i', $latestTime);
+                }
+                
+                $addRect($x, $rowY, $timeColW, $rowH, $bgFill, $border, 0.45);
+                $fontSizeTime = 6;
+                if ($scope === 'month') { $fontSizeTime = 5; }
+                
+                $textLen = strlen($updatedAtText);
+                $textWidth = $textLen * $fontSizeTime * 0.55;
+                $timeTextOffset = ($timeColW - $textWidth) / 2;
+                $addText($x + max(0.5, $timeTextOffset), $rowY + 5, $updatedAtText, 1, $fontSizeTime, $textColor);
+                $x += $timeColW;
+
                 $y = $rowY - 1;
+                $lastRowY = $rowY;
+            }
+            if ($isCg && $currentLocation !== null && $groupStartY > $lastRowY) {
+                $drawMergedLocationCell($margin, $lastRowY, $locColW, $groupStartY - $lastRowY, $currentLocation);
             }
             $y -= 4; // gap between categories
         };
 
         $startPage();
-        $drawPivotHeader();
 
-        $categoryOrder = ['GATE', 'CCTV', 'SERVER'];
         $rendered = false;
         foreach ($categoryOrder as $catName) {
             $items = $groupedItems[$catName] ?? [];
             if (empty($items)) { continue; }
+            
+            // Sort items alphabetically (grouped by location if GATE or CCTV)
+            usort($items, function ($a, $b) use ($catName) {
+                list($locA, $nameA) = $this->getRoutineItemLocationAndName($a, $catName);
+                list($locB, $nameB) = $this->getRoutineItemLocationAndName($b, $catName);
+                
+                if ($locA !== $locB) {
+                    return strcasecmp($locA, $locB);
+                }
+                return strcasecmp($nameA, $nameB);
+            });
+
             $rendered = true;
             $renderCategory($catName, $items, $rangeDates);
         }
+        
         // Also handle any extra categories not in the default order
         foreach ($groupedItems as $catName => $items) {
             if (in_array($catName, $categoryOrder, true) || empty($items)) { continue; }
+            
+            // Sort items alphabetically
+            usort($items, function ($a, $b) use ($catName) {
+                list($locA, $nameA) = $this->getRoutineItemLocationAndName($a, $catName);
+                list($locB, $nameB) = $this->getRoutineItemLocationAndName($b, $catName);
+                
+                if ($locA !== $locB) {
+                    return strcasecmp($locA, $locB);
+                }
+                return strcasecmp($nameA, $nameB);
+            });
+
             $rendered = true;
             $renderCategory($catName, $items, $rangeDates);
         }
+
         if (!$rendered) {
             $addText($margin, $y - 18, 'Belum ada data monitoring pada periode ini.', 1, 9, $textColor);
         }
