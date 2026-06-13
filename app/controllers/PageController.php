@@ -38,6 +38,7 @@ class PageController
 
     public function __construct()
     {
+        date_default_timezone_set('Asia/Jakarta');
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
@@ -2710,39 +2711,487 @@ SQL);
 
     private function buildComplaintExcelXlsx(string $title, array $rows): string
     {
-        $sheetRows = [
-            [$title],
-            ['Diexport', date('d-m-Y H:i:s')],
-            [],
-            ['No', 'Gambar', 'Ticket', 'Tanggal & Jam', 'Status', 'Nama', 'Email', 'Divisi', 'Barang', 'Lokasi', 'Deskripsi', 'Catatan Penanganan', 'Ditangani Oleh'],
-        ];
+        return $this->buildComplaintExcelXlsxWithImages($title, $rows);
+    }
 
-        foreach (array_values($rows) as $index => $row) {
-            $sheetRows[] = [
-                (string) ($index + 1),
-                (string) (($row['doc_image'] ?? '') !== '' ? $row['doc_image'] : '-'),
-                (string) ($row['ticket_no'] ?? '-'),
-                (string) ($row['datetime_plain'] ?? '-'),
-                (string) ($row['status'] ?? '-'),
-                (string) ($row['name'] ?? '-'),
-                (string) ($row['email_plain'] ?? ($row['email'] ?? '-')),
-                (string) ($row['division'] ?? '-'),
-                (string) ($row['item'] ?? '-'),
-                (string) ($row['location'] ?? '-'),
-                (string) ($row['description'] ?? '-'),
-                (string) (($row['catatan_penanganan'] ?? '') !== '' ? $row['catatan_penanganan'] : '-'),
-                (string) (($row['handled_by_name'] ?? '') !== '' ? $row['handled_by_name'] : '-'),
+    private function buildComplaintExcelXlsxWithImages(string $title, array $rows): string
+    {
+        $baseDir = rtrim(str_replace('\\', '/', __DIR__ . '/../../'), '/');
+
+        // ── Resolve absolute filesystem path for an image stored in DB ─────────
+        // DB stores paths like:
+        //   "public/uploads/it-support/gform_xxx.jpg"       → direct relative
+        //   "public/assets/images/complaint-1.png"           → normalizeReportAssetPath strips public/assets/ → "images/complaint-1.png" (wrong)
+        // We bypass normalizeReportAssetPath and always try the RAW DB value first.
+        $resolveImagePath = function (string $rawDbPath) use ($baseDir): string {
+            $rawDbPath = trim(str_replace('\\', '/', $rawDbPath));
+            if ($rawDbPath === '' || $rawDbPath === '-') {
+                return '';
+            }
+            // Already absolute on the filesystem
+            if (file_exists($rawDbPath)) {
+                return $rawDbPath;
+            }
+            // Try directly under project root (handles "public/..." paths correctly)
+            $candidate = $baseDir . '/' . ltrim($rawDbPath, '/');
+            if (file_exists($candidate)) {
+                return $candidate;
+            }
+            // Also try without leading "public/" in case a different prefix is used
+            $candidate2 = $baseDir . '/public/' . ltrim($rawDbPath, '/');
+            if (file_exists($candidate2)) {
+                return $candidate2;
+            }
+            return '';
+        };
+
+        // ── Detect submission source ───────────────────────────────────────────
+        $detectSource = function (array $row): string {
+            $img = (string) ($row['doc_image_raw'] ?? $row['doc_image'] ?? '');
+            if (strpos($img, 'gform_') !== false) {
+                return 'Google Form';
+            }
+            if (strpos($img, 'it_support_') !== false) {
+                return 'Lokal';
+            }
+            $email = strtolower((string) ($row['email_plain'] ?? $row['email'] ?? ''));
+            if (strpos($email, '@spmt') !== false || strpos($email, '@pelindo') !== false) {
+                return 'Lokal';
+            }
+            return 'Lokal';
+        };
+
+        // ── Column layout ──────────────────────────────────────────────────────
+        // No | Gambar | Ticket | Tanggal & Jam | Status | Nama | Email | Divisi | Barang | Lokasi | Deskripsi | Catatan Penanganan | Ditangani Oleh | Sumber
+        $colWidths = [6, 18, 18, 22, 18, 22, 30, 18, 22, 20, 38, 38, 22, 12];
+        $headerRow    = 4;   // row 4 = column headers
+        $dataStartRow = 5;   // first data row
+        $rowHtPt      = 60;  // data row height in points
+
+        // ── Resolve raw DB image paths (before normalizeReportAssetPath stripped them)
+        // Re-query the raw dokumentasi_kerusakan field so we get the original path
+        // We do this by fetching it ourselves via the already-passed $rows,
+        // but doc_image in $rows already went through normalizeReportAssetPath.
+        // So we need to reconstruct: if doc_image looks like "images/complaint-1.png"
+        // it was stripped from "public/assets/images/complaint-1.png" — we fix that here.
+        $fixDocImagePath = function (string $docImage): string {
+            if ($docImage === '' || $docImage === '-') {
+                return '';
+            }
+            // Already starts with public/ → untouched by normalizeReportAssetPath → use as-is
+            if (strpos($docImage, 'public/') === 0) {
+                return $docImage;
+            }
+            // Looks like it had public/assets/ stripped. Add it back to try.
+            return 'public/assets/' . ltrim($docImage, '/');
+        };
+
+        // ── Collect image data ─────────────────────────────────────────────────
+        $images   = [];
+        $mediaIdx = 0;
+        $rowData  = array_values($rows);
+
+        foreach ($rowData as $idx => $row) {
+            $excelRow  = $dataStartRow + $idx;
+            $docImage  = (string) ($row['doc_image'] ?? '');
+            $fixedPath = $fixDocImagePath($docImage);
+            $absPath   = $resolveImagePath($fixedPath);
+            if ($absPath === '') {
+                continue;
+            }
+            $rawData = @file_get_contents($absPath);
+            if ($rawData === false || strlen($rawData) < 8) {
+                continue;
+            }
+            // Detect MIME to pick extension
+            $ext   = 'jpg';
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime  = $finfo ? finfo_buffer($finfo, $rawData) : '';
+            if ($finfo) {
+                finfo_close($finfo);
+            }
+            if ($mime === 'image/png') {
+                $ext = 'png';
+            } elseif ($mime === 'image/gif') {
+                $ext = 'gif';
+            }
+
+            // Normalisasi/Resize gambar ke lebar 100px x tinggi 75px (4:3) dengan GD
+            if (extension_loaded('gd') && function_exists('imagecreatefromstring')) {
+                $srcImg = @imagecreatefromstring($rawData);
+                if ($srcImg !== false) {
+                    $origWidth  = imagesx($srcImg);
+                    $origHeight = imagesy($srcImg);
+                    if ($origWidth > 0 && $origHeight > 0) {
+                        $targetW = 100;
+                        $targetH = 75;
+                        $newImg  = imagecreatetruecolor($targetW, $targetH);
+
+                        if ($ext === 'png' || $ext === 'gif') {
+                            imagealphablending($newImg, false);
+                            imagesavealpha($newImg, true);
+                            $transparent = imagecolorallocatealpha($newImg, 255, 255, 255, 127);
+                            imagefilledrectangle($newImg, 0, 0, $targetW, $targetH, $transparent);
+                        } else {
+                            $white = imagecolorallocate($newImg, 255, 255, 255);
+                            imagefill($newImg, 0, 0, $white);
+                        }
+
+                        imagecopyresampled($newImg, $srcImg, 0, 0, 0, 0, $targetW, $targetH, $origWidth, $origHeight);
+
+                        ob_start();
+                        if ($ext === 'png') {
+                            imagepng($newImg);
+                        } elseif ($ext === 'gif') {
+                            imagegif($newImg);
+                        } else {
+                            imagejpeg($newImg, null, 90);
+                        }
+                        $resizedData = ob_get_clean();
+                        if ($resizedData !== false && strlen($resizedData) > 0) {
+                            $rawData = $resizedData;
+                        }
+                        imagedestroy($newImg);
+                    }
+                    imagedestroy($srcImg);
+                }
+            }
+
+            $mediaIdx++;
+            $images[$excelRow] = [
+                'ext'      => $ext,
+                'data'     => $rawData,
+                'mediaIdx' => $mediaIdx,
             ];
         }
 
-        return $this->buildSimpleSheetXlsx('DataKeluhan', $sheetRows, [8, 20, 18, 22, 14, 22, 28, 20, 22, 22, 36, 36, 22]);
+        // ── OOXML style index map ──────────────────────────────────────────────
+        // s=0  normal data cell:   Calibri 11, wrap, vcenter, thin black border
+        // s=1  header cell:        Calibri 11 bold, center h+v, wrap, yellow bg, thin border
+        // s=2  title cell (row1):  Calibri 13 bold, no border
+        // s=3  meta cell (row2):   Calibri 10 normal
+        // s=4  status DONE:        green bg, dark green bold, center, thin border
+        // s=5  status ON PROGRESS: amber bg, dark orange bold, center, thin border
+        // s=6  status NOT YET:     pink bg, dark red bold, center, thin border
+        // s=7  normal center:      Calibri 11, center h, vcenter, thin border
+
+        // We'll build the styles XML manually
+        $stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+            . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            // Fonts: 0=normal, 1=bold-11, 2=bold-14-title, 3=normal-10, 4=bold-green, 5=bold-orange, 6=bold-red
+            . '<fonts count="7">'
+            . '<font><sz val="11"/><name val="Calibri"/></font>'                                         // 0 normal
+            . '<font><b/><sz val="11"/><name val="Calibri"/></font>'                                     // 1 bold header
+            . '<font><b/><sz val="14"/><name val="Calibri"/></font>'                                     // 2 bold title (14)
+            . '<font><sz val="10"/><name val="Calibri"/></font>'                                         // 3 normal-10 meta
+            . '<font><b/><sz val="11"/><color rgb="FF1D6F42"/><name val="Calibri"/></font>'              // 4 dark green
+            . '<font><b/><sz val="11"/><color rgb="FF974706"/><name val="Calibri"/></font>'              // 5 dark orange
+            . '<font><b/><sz val="11"/><color rgb="FF9C1A1A"/><name val="Calibri"/></font>'              // 6 dark red
+            . '</fonts>'
+            // Fills: 0=none, 1=gray125(required), 2=yellow header, 3=green status, 4=amber status, 5=pink status
+            . '<fills count="6">'
+            . '<fill><patternFill patternType="none"/></fill>'
+            . '<fill><patternFill patternType="gray125"/></fill>'
+            . '<fill><patternFill patternType="solid"><fgColor rgb="FFFFD965"/></patternFill></fill>'   // 2 yellow
+            . '<fill><patternFill patternType="solid"><fgColor rgb="FFE1F5EE"/></patternFill></fill>'   // 3 light green
+            . '<fill><patternFill patternType="solid"><fgColor rgb="FFFAEEDA"/></patternFill></fill>'   // 4 light amber
+            . '<fill><patternFill patternType="solid"><fgColor rgb="FFFCEBEB"/></patternFill></fill>'   // 5 light pink
+            . '</fills>'
+            // Borders: 0=none, 1=thin-black all sides
+            . '<borders count="2">'
+            . '<border><left/><right/><top/><bottom/><diagonal/></border>'
+            . '<border>'
+            . '<left style="thin"><color rgb="FF000000"/></left>'
+            . '<right style="thin"><color rgb="FF000000"/></right>'
+            . '<top style="thin"><color rgb="FF000000"/></top>'
+            . '<bottom style="thin"><color rgb="FF000000"/></bottom>'
+            . '<diagonal/>'
+            . '</border>'
+            . '</borders>'
+            . '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+            // Cell XFs (s= values):
+            . '<cellXfs count="9">'
+            // s=0 default: no border, standard Calibri 11
+            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+            // s=1 header: yellow bg, bold, center h+v, border
+            . '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+            // s=2 title row1: bold-14, no border, center h+v
+            . '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+            // s=3 meta row2: normal-10, no border, center h+v
+            . '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+            // s=4 DONE: green bg, dark green bold, center, border
+            . '<xf numFmtId="0" fontId="4" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+            // s=5 ON PROGRESS: amber bg, orange bold, center, border
+            . '<xf numFmtId="0" fontId="5" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+            // s=6 NOT YET: pink bg, red bold, center, border
+            . '<xf numFmtId="0" fontId="6" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+            // s=7 normal center: border, center h, vcenter
+            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+            // s=8 normal data: border, wrap, vcenter
+            . '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
+            . '</cellXfs>'
+            . '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+            . '</styleSheet>';
+
+        // ── XML helpers ────────────────────────────────────────────────────────
+        $xmlEsc = fn(string $v): string => htmlspecialchars($v, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+
+        $colName = function (int $n): string {
+            $letters = '';
+            while ($n > 0) {
+                $n--;
+                $letters = chr(65 + ($n % 26)) . $letters;
+                $n = (int) ($n / 26);
+            }
+            return $letters;
+        };
+
+        // Status → style index
+        $statusStyle = function (string $status): int {
+            $s = strtoupper(trim($status));
+            if ($s === 'DONE') {
+                return 4;
+            }
+            if ($s === 'ON PROGRESS') {
+                return 5;
+            }
+            return 6; // NOT YET and anything else
+        };
+
+        // ── Build worksheet rows ───────────────────────────────────────────────
+        $xmlRowParts = [];
+
+        // Row 1: title (merged, centered, bold-14)
+        $xmlRowParts[] = '<row r="1" ht="26" customHeight="1">'
+            . '<c r="A1" t="inlineStr" s="2"><is><t>' . $xmlEsc($title) . '</t></is></c>'
+            . '</row>';
+
+        // Row 2: export date (merged, centered, normal-10)
+        $xmlRowParts[] = '<row r="2" ht="18" customHeight="1">'
+            . '<c r="A2" t="inlineStr" s="3"><is><t>Diexport: ' . $xmlEsc(date('d-m-Y H:i:s')) . '</t></is></c>'
+            . '</row>';
+
+        // Row 3: empty
+        $xmlRowParts[] = '<row r="3"></row>';
+
+        // Row 4: header
+        $headers = ['No', 'Gambar', 'Ticket', 'Tanggal & Jam', 'Status', 'Nama', 'Email', 'Divisi', 'Barang', 'Lokasi', 'Deskripsi', 'Catatan Penanganan', 'Ditangani Oleh', 'Sumber'];
+        $headerCells = '';
+        foreach ($headers as $ci => $hdr) {
+            $ref = $colName($ci + 1) . '4';
+            $headerCells .= '<c r="' . $ref . '" t="inlineStr" s="1"><is><t>' . $xmlEsc($hdr) . '</t></is></c>';
+        }
+        $xmlRowParts[] = '<row r="4" ht="22" customHeight="1">' . $headerCells . '</row>';
+
+        // Data rows
+        foreach ($rowData as $idx => $row) {
+            $excelRow = $dataStartRow + $idx;
+            $hasImage = isset($images[$excelRow]);
+            $sumber   = $detectSource($row);
+            $docImage = (string) ($row['doc_image'] ?? '');
+
+            // Status style
+            $statusVal = (string) ($row['status'] ?? '-');
+            $sStyle    = $statusStyle($statusVal);
+
+            // Gambar cell: always render with style s="7" (center with border) to ensure border is drawn,
+            // even if image is embedded over it.
+            $gambarText = '';
+            if (!$hasImage) {
+                $fixedP = $fixDocImagePath($docImage);
+                $absP   = $resolveImagePath($fixedP);
+                $gambarText = ($docImage !== '' && $docImage !== '-' && $absP === '') ? 'Gambar tidak tersedia' : '-';
+            }
+            $gambarCellStr = '<c r="B' . $excelRow . '" t="inlineStr" s="7"><is><t>' . $xmlEsc($gambarText) . '</t></is></c>';
+
+            $cellParts = [
+                '<c r="A' . $excelRow . '" t="inlineStr" s="7"><is><t>' . $xmlEsc((string)($idx + 1)) . '</t></is></c>',
+                $gambarCellStr,
+                '<c r="C' . $excelRow . '" t="inlineStr" s="8"><is><t>' . $xmlEsc((string)($row['ticket_no'] ?? '-')) . '</t></is></c>',
+                '<c r="D' . $excelRow . '" t="inlineStr" s="8"><is><t>' . $xmlEsc((string)($row['datetime_plain'] ?? '-')) . '</t></is></c>',
+                '<c r="E' . $excelRow . '" t="inlineStr" s="' . $sStyle . '"><is><t>' . $xmlEsc($statusVal) . '</t></is></c>',
+                '<c r="F' . $excelRow . '" t="inlineStr" s="8"><is><t>' . $xmlEsc((string)($row['name'] ?? '-')) . '</t></is></c>',
+                '<c r="G' . $excelRow . '" t="inlineStr" s="8"><is><t>' . $xmlEsc((string)($row['email_plain'] ?? ($row['email'] ?? '-'))) . '</t></is></c>',
+                '<c r="H' . $excelRow . '" t="inlineStr" s="8"><is><t>' . $xmlEsc((string)($row['division'] ?? '-')) . '</t></is></c>',
+                '<c r="I' . $excelRow . '" t="inlineStr" s="8"><is><t>' . $xmlEsc((string)($row['item'] ?? '-')) . '</t></is></c>',
+                '<c r="J' . $excelRow . '" t="inlineStr" s="8"><is><t>' . $xmlEsc((string)($row['location'] ?? '-')) . '</t></is></c>',
+                '<c r="K' . $excelRow . '" t="inlineStr" s="8"><is><t>' . $xmlEsc((string)($row['description'] ?? '-')) . '</t></is></c>',
+                '<c r="L' . $excelRow . '" t="inlineStr" s="8"><is><t>' . $xmlEsc(($row['catatan_penanganan'] ?? '') !== '' ? (string)$row['catatan_penanganan'] : '-') . '</t></is></c>',
+                '<c r="M' . $excelRow . '" t="inlineStr" s="8"><is><t>' . $xmlEsc(($row['handled_by_name'] ?? '') !== '' ? (string)$row['handled_by_name'] : '-') . '</t></is></c>',
+                '<c r="N' . $excelRow . '" t="inlineStr" s="7"><is><t>' . $xmlEsc($sumber) . '</t></is></c>',
+            ];
+
+            $xmlRowParts[] = '<row r="' . $excelRow . '" customHeight="1" ht="' . $rowHtPt . '">'
+                . implode('', array_filter($cellParts, fn($c) => $c !== ''))
+                . '</row>';
+        }
+
+        // ── Column widths XML ──────────────────────────────────────────────────
+        $colDefsXml = '';
+        foreach ($colWidths as $i => $w) {
+            $colDefsXml .= '<col min="' . ($i + 1) . '" max="' . ($i + 1) . '" width="' . $w . '" customWidth="1"/>';
+        }
+
+        $totalRows   = $dataStartRow + count($rowData) - 1;
+        $lastColLtr  = $colName(count($colWidths));
+        $hasAnyImage = !empty($images);
+        $drawingTag  = $hasAnyImage ? '<drawing r:id="rId1"/>' : '';
+
+        // ── Build sheet XML with freeze pane on row 5 ─────────────────────────
+        $mergeCellsTag = '<mergeCells count="2">'
+            . '<mergeCell ref="A1:N1"/>'
+            . '<mergeCell ref="A2:N2"/>'
+            . '</mergeCells>';
+
+        $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+            . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            . '<dimension ref="A1:' . $lastColLtr . $totalRows . '"/>'
+            . '<sheetViews>'
+            .   '<sheetView workbookViewId="0">'
+            .     '<pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>'
+            .     '<selection pane="bottomLeft" activeCell="A5" sqref="A5"/>'
+            .   '</sheetView>'
+            . '</sheetViews>'
+            . '<sheetFormatPr defaultRowHeight="18"/>'
+            . '<cols>' . $colDefsXml . '</cols>'
+            . '<sheetData>' . implode('', $xmlRowParts) . '</sheetData>'
+            . $mergeCellsTag
+            . $drawingTag
+            . '</worksheet>';
+
+        // ── Drawing XML (image anchors) ────────────────────────────────────────
+        $drawingXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+            . '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"'
+            . ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+            . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
+
+        $drawingRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+
+        foreach ($images as $excelRow => $img) {
+            $rId  = 'rId' . $img['mediaIdx'];
+            $col  = 1;               // Column B = 0-based index 1
+            $row0 = $excelRow - 1;   // 0-based row index
+
+            $cx = 100 * 9525;  // 100px in EMUs (952500)
+            $cy = 75 * 9525;   // 75px in EMUs (714375)
+            $colOff = 200000;  // Center horizontally inside Column B (width 18)
+            $rowOff = 20000;   // Center vertically inside 60pt row height
+
+            $drawingXml .= '<xdr:oneCellAnchor>'
+                . '<xdr:from>'
+                .   '<xdr:col>' . $col . '</xdr:col><xdr:colOff>' . $colOff . '</xdr:colOff>'
+                .   '<xdr:row>' . $row0 . '</xdr:row><xdr:rowOff>' . $rowOff . '</xdr:rowOff>'
+                . '</xdr:from>'
+                . '<xdr:ext cx="' . $cx . '" cy="' . $cy . '"/>'
+                . '<xdr:pic>'
+                .   '<xdr:nvPicPr>'
+                .     '<xdr:cNvPr id="' . $img['mediaIdx'] . '" name="Gambar' . $img['mediaIdx'] . '"/>'
+                .     '<xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr>'
+                .   '</xdr:nvPicPr>'
+                .   '<xdr:blipFill>'
+                .     '<a:blip r:embed="' . $rId . '"/>'
+                .     '<a:stretch><a:fillRect/></a:stretch>'
+                .   '</xdr:blipFill>'
+                .   '<xdr:spPr>'
+                .     '<a:xfrm><a:off x="0" y="0"/><a:ext cx="' . $cx . '" cy="' . $cy . '"/></a:xfrm>'
+                .     '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+                .   '</xdr:spPr>'
+                . '</xdr:pic>'
+                . '<xdr:clientData/>'
+                . '</xdr:oneCellAnchor>';
+
+            $drawingRels .= '<Relationship Id="' . $rId . '"'
+                . ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"'
+                . ' Target="../media/image' . $img['mediaIdx'] . '.' . $img['ext'] . '"/>';
+        }
+
+        $drawingXml  .= '</xdr:wsDr>';
+        $drawingRels .= '</Relationships>';
+
+        // ── [Content_Types].xml ────────────────────────────────────────────────
+        $mediaDefaultTypes = '';
+        $seenExts = [];
+        foreach ($images as $img) {
+            if (!isset($seenExts[$img['ext']])) {
+                $mimeMap = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif'];
+                $mediaDefaultTypes .= '<Default Extension="' . $img['ext'] . '" ContentType="' . ($mimeMap[$img['ext']] ?? 'image/jpeg') . '"/>';
+                $seenExts[$img['ext']] = true;
+            }
+        }
+
+        $contentTypesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+            . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            . '<Default Extension="xml" ContentType="application/xml"/>'
+            . $mediaDefaultTypes
+            . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            . '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            . '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+            . ($hasAnyImage ? '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' : '')
+            . '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+            . '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
+            . '</Types>';
+
+        $workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            . '</Relationships>';
+
+        $sheetRels = $hasAnyImage
+            ? ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+                . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>'
+                . '</Relationships>')
+            : '';
+
+        // ── Assemble ZIP ───────────────────────────────────────────────────────
+        $files = [
+            '[Content_Types].xml'        => $contentTypesXml,
+            '_rels/.rels'                => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+                . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+                . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>'
+                . '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>'
+                . '</Relationships>',
+            'docProps/core.xml'          => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+                . '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"'
+                . ' xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/"'
+                . ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+                . '<dc:title>DataKeluhan</dc:title><dc:creator>Sistem Inventory</dc:creator>'
+                . '<dcterms:created xsi:type="dcterms:W3CDTF">' . gmdate('Y-m-d\TH:i:s\Z') . '</dcterms:created>'
+                . '</cp:coreProperties>',
+            'docProps/app.xml'           => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+                . '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
+                . '<Application>Microsoft Excel</Application></Properties>',
+            'xl/workbook.xml'            => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n"
+                . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+                . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                . '<sheets><sheet name="DataKeluhan" sheetId="1" r:id="rId1"/></sheets></workbook>',
+            'xl/_rels/workbook.xml.rels' => $workbookRels,
+            'xl/styles.xml'              => $stylesXml,
+            'xl/worksheets/sheet1.xml'   => $sheetXml,
+        ];
+
+        if ($hasAnyImage) {
+            $files['xl/drawings/drawing1.xml']            = $drawingXml;
+            $files['xl/drawings/_rels/drawing1.xml.rels'] = $drawingRels;
+            foreach ($images as $img) {
+                $files['xl/media/image' . $img['mediaIdx'] . '.' . $img['ext']] = $img['data'];
+            }
+            $files['xl/worksheets/_rels/sheet1.xml.rels'] = $sheetRels;
+        }
+
+        return $this->buildZipBinary($files);
     }
 
     private function buildComplaintPdf(string $title, array $rows): string
     {
         $pageWidth = 842;
         $pageHeight = 595;
-        $margin = 26;
+        $margin = 33;
         $blue = '0.18 0.41 0.67';
         $lightBlue = '0.90 0.95 0.99';
         $textColor = '0.12 0.18 0.25';
@@ -2751,6 +3200,98 @@ SQL);
         $objects = [];
         $objects[1] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
         $objects[2] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+
+        // ── Resolve image absolute path and create PDF Image XObjects ───────────
+        $baseDir = rtrim(str_replace('\\', '/', __DIR__ . '/../../'), '/');
+
+        $resolveImagePath = function (string $rawDbPath) use ($baseDir): string {
+            $rawDbPath = trim(str_replace('\\', '/', $rawDbPath));
+            if ($rawDbPath === '' || $rawDbPath === '-') {
+                return '';
+            }
+            if (file_exists($rawDbPath)) {
+                return $rawDbPath;
+            }
+            $candidate = $baseDir . '/' . ltrim($rawDbPath, '/');
+            if (file_exists($candidate)) {
+                return $candidate;
+            }
+            $candidate2 = $baseDir . '/public/' . ltrim($rawDbPath, '/');
+            if (file_exists($candidate2)) {
+                return $candidate2;
+            }
+            return '';
+        };
+
+        $fixDocImagePath = function (string $docImage): string {
+            if ($docImage === '' || $docImage === '-') {
+                return '';
+            }
+            if (strpos($docImage, 'public/') === 0) {
+                return $docImage;
+            }
+            return 'public/assets/' . ltrim($docImage, '/');
+        };
+
+        $detectSource = function (array $row): string {
+            $img = (string) ($row['doc_image_raw'] ?? $row['doc_image'] ?? '');
+            if (strpos($img, 'gform_') !== false) {
+                return 'Google Form';
+            }
+            if (strpos($img, 'it_support_') !== false) {
+                return 'Lokal';
+            }
+            $email = strtolower((string) ($row['email_plain'] ?? $row['email'] ?? ''));
+            if (strpos($email, '@spmt') !== false || strpos($email, '@pelindo') !== false) {
+                return 'Lokal';
+            }
+            return 'Lokal';
+        };
+
+        $imgObjMap = [];
+        foreach (array_values($rows) as $idx => $row) {
+            $docImage  = (string) ($row['doc_image'] ?? '');
+            $fixedPath = $fixDocImagePath($docImage);
+            $absPath   = $resolveImagePath($fixedPath);
+            if ($absPath === '') {
+                continue;
+            }
+            $rawData = @file_get_contents($absPath);
+            if ($rawData === false || strlen($rawData) < 8) {
+                continue;
+            }
+
+            if (extension_loaded('gd') && function_exists('imagecreatefromstring')) {
+                $srcImg = @imagecreatefromstring($rawData);
+                if ($srcImg !== false) {
+                    $origWidth  = imagesx($srcImg);
+                    $origHeight = imagesy($srcImg);
+                    if ($origWidth > 0 && $origHeight > 0) {
+                        $targetW = 100;
+                        $targetH = 75;
+                        $newImg  = imagecreatetruecolor($targetW, $targetH);
+                        $white = imagecolorallocate($newImg, 255, 255, 255);
+                        imagefill($newImg, 0, 0, $white);
+                        imagecopyresampled($newImg, $srcImg, 0, 0, 0, 0, $targetW, $targetH, $origWidth, $origHeight);
+
+                        ob_start();
+                        imagejpeg($newImg, null, 80);
+                        $jpgData = ob_get_clean();
+                        imagedestroy($newImg);
+
+                        if ($jpgData !== false && strlen($jpgData) > 0) {
+                            $objId = count($objects) + 1;
+                            $objects[$objId] = "<< /Type /XObject /Subtype /Image /Width $targetW /Height $targetH /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " . strlen($jpgData) . " >>\nstream\n" . $jpgData . "\nendstream";
+                            $imgObjMap[$idx] = [
+                                'objId' => $objId,
+                                'name' => 'Img' . $objId
+                            ];
+                        }
+                    }
+                    imagedestroy($srcImg);
+                }
+            }
+        }
 
         $streams = [];
         $current = [];
@@ -2781,7 +3322,7 @@ SQL);
 
         $wrapText = function (string $text, int $maxChars): array {
             $text = trim((string) preg_replace('/\s+/u', ' ', $text));
-            if ($text === '') {
+            if ($text === '' || $text === '-') {
                 return ['-'];
             }
             $words = preg_split('/\s+/u', $text) ?: [];
@@ -2827,17 +3368,19 @@ SQL);
         };
 
         $columns = [
-            ['title' => 'NO', 'width' => 22, 'chars' => 3],
-            ['title' => 'GAMBAR', 'width' => 54, 'chars' => 9],
-            ['title' => 'TICKET', 'width' => 58, 'chars' => 9],
-            ['title' => 'TGL/JAM', 'width' => 58, 'chars' => 9],
-            ['title' => 'STATUS', 'width' => 46, 'chars' => 8],
-            ['title' => 'PELAPOR / EMAIL', 'width' => 92, 'chars' => 15],
-            ['title' => 'DIVISI', 'width' => 46, 'chars' => 8],
-            ['title' => 'BARANG', 'width' => 52, 'chars' => 10],
-            ['title' => 'LOKASI', 'width' => 52, 'chars' => 9],
-            ['title' => 'DESKRIPSI', 'width' => 148, 'chars' => 28],
-            ['title' => 'CATATAN IT', 'width' => 162, 'chars' => 31],
+            ['title' => 'NO', 'width' => 20, 'chars' => 3],
+            ['title' => 'GAMBAR', 'width' => 46, 'chars' => 8],
+            ['title' => 'TICKET', 'width' => 62, 'chars' => 13],
+            ['title' => 'TGL/JAM', 'width' => 65, 'chars' => 14],
+            ['title' => 'STATUS', 'width' => 45, 'chars' => 9],
+            ['title' => 'NAMA', 'width' => 75, 'chars' => 16],
+            ['title' => 'DIVISI', 'width' => 45, 'chars' => 9],
+            ['title' => 'BARANG', 'width' => 50, 'chars' => 10],
+            ['title' => 'LOKASI', 'width' => 45, 'chars' => 9],
+            ['title' => 'DESKRIPSI', 'width' => 110, 'chars' => 24],
+            ['title' => 'CATATAN PENANGANAN', 'width' => 110, 'chars' => 24],
+            ['title' => 'DITANGANI OLEH', 'width' => 65, 'chars' => 13],
+            ['title' => 'SUMBER', 'width' => 38, 'chars' => 7],
         ];
 
         $drawTableHeader = function () use (&$y, $margin, $columns, $addRect, $addText, $blue, $borderColor) {
@@ -2845,7 +3388,17 @@ SQL);
             $x = $margin;
             foreach ($columns as $column) {
                 $addRect($x, $y - $headerHeight, $column['width'], $headerHeight, $blue, $borderColor, 0.7);
-                $addText($x + 3, $y - 14, $column['title'], 2, 8, '1 1 1');
+                $title = $column['title'];
+                $fontSize = 6.5;
+                if ($title === 'CATATAN PENANGANAN') {
+                    $addText($x + 2, $y - 10, 'CATATAN', 2, 6, '1 1 1');
+                    $addText($x + 2, $y - 18, 'PENANGANAN', 2, 6, '1 1 1');
+                } else if ($title === 'DITANGANI OLEH') {
+                    $addText($x + 2, $y - 10, 'DITANGANI', 2, 6, '1 1 1');
+                    $addText($x + 2, $y - 18, 'OLEH', 2, 6, '1 1 1');
+                } else {
+                    $addText($x + 2, $y - 14, $title, 2, $fontSize, '1 1 1');
+                }
                 $x += $column['width'];
             }
             $y -= $headerHeight;
@@ -2855,28 +3408,46 @@ SQL);
         $drawTableHeader();
 
         foreach (array_values($rows) as $index => $row) {
+            $sumber = $detectSource($row);
+            $hasImage = isset($imgObjMap[$index]);
+
+            $docImage = (string) ($row['doc_image'] ?? '');
+            $fixedP = $fixDocImagePath($docImage);
+            $absP   = $resolveImagePath($fixedP);
+            $gambarText = ($docImage !== '' && $docImage !== '-' && $absP === '') ? 'Gambar tidak tersedia' : '-';
+
             $cells = [
                 (string) ($index + 1),
-                (string) (($row['doc_image'] ?? '') !== '' ? $row['doc_image'] : '-'),
+                $gambarText,
                 (string) ($row['ticket_no'] ?? '-'),
                 (string) ($row['datetime_plain'] ?? '-'),
                 (string) ($row['status'] ?? '-'),
-                trim((string) (($row['name'] ?? '-') . ' / ' . (($row['email_plain'] ?? '') !== '' ? $row['email_plain'] : '-'))),
+                (string) ($row['name'] ?? '-'),
                 (string) ($row['division'] ?? '-'),
                 (string) ($row['item'] ?? '-'),
                 (string) ($row['location'] ?? '-'),
                 (string) ($row['description'] ?? '-'),
                 (string) (($row['catatan_penanganan'] ?? '') !== '' ? $row['catatan_penanganan'] : '-'),
+                (string) (($row['handled_by_name'] ?? '') !== '' ? $row['handled_by_name'] : '-'),
+                (string) $sumber,
             ];
 
             $wrapped = [];
             $maxLines = 1;
             foreach ($columns as $i => $column) {
-                $wrapped[$i] = $wrapText($cells[$i] ?? '-', (int) $column['chars']);
-                $maxLines = max($maxLines, count($wrapped[$i]));
+                if ($i === 1 && $hasImage) {
+                    $wrapped[$i] = [];
+                } else {
+                    $wrapped[$i] = $wrapText($cells[$i] ?? '-', (int) $column['chars']);
+                    $maxLines = max($maxLines, count($wrapped[$i]));
+                }
             }
 
             $rowHeight = max(24, 8 + ($maxLines * 11));
+            if ($hasImage) {
+                $rowHeight = max($rowHeight, 40);
+            }
+
             if ($y - $rowHeight < 40) {
                 $flushPage();
                 $renderHeader();
@@ -2886,10 +3457,26 @@ SQL);
             $x = $margin;
             foreach ($columns as $i => $column) {
                 $addRect($x, $y - $rowHeight, $column['width'], $rowHeight, '1 1 1', $borderColor, 0.5);
-                $lineY = $y - 12;
-                foreach ($wrapped[$i] as $line) {
-                    $addText($x + 3, $lineY, $line, 1, 7, $textColor);
-                    $lineY -= 10;
+                
+                if ($i === 1 && $hasImage) {
+                    $img = $imgObjMap[$index];
+                    $imgW = 40;
+                    $imgH = 30;
+                    $dx = ($column['width'] - $imgW) / 2;
+                    $dy = ($rowHeight - $imgH) / 2;
+                    $imgX = $x + $dx;
+                    $imgY = ($y - $rowHeight) + $dy;
+
+                    $current[] = 'q';
+                    $current[] = sprintf('%.2f 0 0 %.2f %.2f %.2f cm', $imgW, $imgH, $imgX, $imgY);
+                    $current[] = '/' . $img['name'] . ' Do';
+                    $current[] = 'Q';
+                } else {
+                    $lineY = $y - 12;
+                    foreach ($wrapped[$i] as $line) {
+                        $addText($x + 2, $lineY, $line, 1, 6.5, $textColor);
+                        $lineY -= 9;
+                    }
                 }
                 $x += $column['width'];
             }
@@ -2913,9 +3500,18 @@ SQL);
             $objects[] = '';
         }
 
+        $xobjectDict = '';
+        if (!empty($imgObjMap)) {
+            $xobjectDict = ' /XObject <<';
+            foreach ($imgObjMap as $img) {
+                $xobjectDict .= ' /' . $img['name'] . ' ' . $img['objId'] . ' 0 R';
+            }
+            $xobjectDict .= ' >>';
+        }
+
         $pagesObjectNumber = count($objects) + 1;
         foreach ($pageObjectNumbers as $index => $pageObjectNumber) {
-            $objects[$pageObjectNumber] = '<< /Type /Page /Parent ' . $pagesObjectNumber . ' 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents ' . $contentObjectNumbers[$index] . ' 0 R >>';
+            $objects[$pageObjectNumber] = '<< /Type /Page /Parent ' . $pagesObjectNumber . ' 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 1 0 R /F2 2 0 R >>' . $xobjectDict . ' >> /Contents ' . $contentObjectNumbers[$index] . ' 0 R >>';
         }
 
         $kids = implode(' ', array_map(static fn ($n) => $n . ' 0 R', $pageObjectNumbers));
