@@ -3893,12 +3893,12 @@ SQL);
         }
 
         $postAction = (string) ($_POST['action'] ?? '');
-        if (!in_array($postAction, ['save_log_barang', 'edit_log_barang', 'delete_log_barang'], true)) {
+        if (!in_array($postAction, ['save_log_barang', 'edit_log_barang', 'delete_log_barang', 'complete_transfer'], true)) {
             return;
         }
 
-        if (AuthController::role() === 'user' && in_array($postAction, ['edit_log_barang', 'delete_log_barang'], true)) {
-            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Akses ditolak. Sebagai User, Anda hanya diperbolehkan menambah log dan tidak bisa mengedit atau menghapus.'];
+        if (AuthController::role() === 'user' && in_array($postAction, ['edit_log_barang', 'delete_log_barang', 'complete_transfer'], true)) {
+            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Akses ditolak. Sebagai User, Anda hanya diperbolehkan menambah log dan tidak bisa mengedit, menghapus, atau menyerahkan barang.'];
             header('Location: ' . $this->buildLogBarangUrl($filters));
             exit;
         }
@@ -3910,6 +3910,9 @@ SQL);
             } elseif ($postAction === 'edit_log_barang') {
                 $this->updateLogBarang($pdo, $_POST, $_FILES);
                 $_SESSION['flash'] = ['type' => 'success', 'message' => 'Log barang berhasil diperbarui.'];
+            } elseif ($postAction === 'complete_transfer') {
+                $this->completeTransfer($pdo, $_POST);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Barang berhasil diserahkan ke Divisi Peminta.'];
             } else {
                 $this->deleteLogBarang($pdo, (int) ($_POST['id'] ?? 0));
                 $_SESSION['flash'] = ['type' => 'success', 'message' => 'Log barang berhasil dihapus.'];
@@ -3924,43 +3927,11 @@ SQL);
 
     private function ensureLogBarangSchema(PDO $pdo): void
     {
-        static $done = false;
-        if ($done) {
-            return;
-        }
-        $done = true;
-        try {
-            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS no_po VARCHAR(50) NULL AFTER qty');
-            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS surat_pemesanan_pdf VARCHAR(255) NULL AFTER no_po');
-            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER surat_pemesanan_pdf');
-        } catch (Throwable $e) {
-        }
-        try {
-            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS satuan VARCHAR(20) NULL AFTER qty');
-        } catch (Throwable $e) {
-        }
-        try {
-            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS harga DECIMAL(15, 2) NULL DEFAULT 0.00 AFTER satuan');
-        } catch (Throwable $e) {
-        }
-        try {
-            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS pic_id BIGINT(20) NULL DEFAULT NULL AFTER harga');
-            $pdo->exec('ALTER TABLE log_barang MODIFY COLUMN pic_id BIGINT(20) NULL DEFAULT NULL');
-        } catch (Throwable $e) {
-        }
-        try {
-            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS divisi_terkait VARCHAR(255) NULL AFTER divisi');
-        } catch (Throwable $e) {
-        }
-        try {
-            $pdo->exec('ALTER TABLE log_barang ADD CONSTRAINT fk_log_barang_pic FOREIGN KEY (pic_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE');
-        } catch (Throwable $e) {
-        }
+        // Table structure is now fully created and managed by migration.
     }
 
     private function insertLogBarang(PDO $pdo, array $payload, array $files): void
     {
-        $status = $this->normalizeLogStatus((string) ($payload['status'] ?? 'MASUK'));
         $satuan = trim((string) ($payload['satuan'] ?? ''));
         if ($satuan === '') {
             throw new RuntimeException('Satuan wajib diisi.');
@@ -3970,37 +3941,51 @@ SQL);
         if ($picId <= 0) {
             throw new RuntimeException('PIC wajib dipilih.');
         }
-        $harga = 0.00;
-        if ($status === 'MASUK') {
-            $hargaInput = trim((string) ($payload['harga'] ?? ''));
-            if ($hargaInput === '') {
-                throw new RuntimeException('Harga wajib diisi untuk barang masuk.');
-            }
-            $harga = (double) $hargaInput;
-            if ($harga < 0) {
-                throw new RuntimeException('Harga tidak boleh negatif.');
-            }
-        } else {
-            $hargaInput = trim((string) ($payload['harga'] ?? ''));
-            $harga = $hargaInput !== '' ? (double) $hargaInput : 0.00;
+        
+        $hargaInput = trim((string) ($payload['harga'] ?? ''));
+        if ($hargaInput === '') {
+            throw new RuntimeException('Harga wajib diisi.');
+        }
+        $harga = (double) $hargaInput;
+        if ($harga < 0) {
+            throw new RuntimeException('Harga tidak boleh negatif.');
         }
 
-        $stmt = $pdo->prepare('INSERT INTO log_barang (log_no, tanggal, nama_barang, status, divisi, divisi_terkait, inventory_database, sumber_tabel, id_inventaris, qty, satuan, harga, pic_id, no_po, surat_pemesanan_pdf, dibuat_oleh_user_id, keterangan, created_at) VALUES (:log_no, :tanggal, :nama_barang, :status, :divisi, :divisi_terkait, NULL, NULL, NULL, :qty, :satuan, :harga, :pic_id, :no_po, :pdf, :user_id, :keterangan, NOW())');
+        $stmt = $pdo->prepare('INSERT INTO log_barang (log_no, tanggal_masuk, waktu_input_masuk, tanggal_keluar, waktu_input_keluar, nama_barang, qty, satuan, harga, pic_id, no_po, dokumen_po, divisi_pengelola, divisi_peminta, keterangan, dibuat_oleh_user_id, created_at) VALUES (:log_no, :tanggal_masuk, :waktu_input_masuk, NULL, NULL, :nama_barang, :qty, :satuan, :harga, :pic_id, :no_po, :pdf, :divisi_pengelola, :divisi_peminta, :keterangan, :user_id, NOW())');
         $stmt->execute([
             'log_no' => $this->generateLogNo($pdo),
-            'tanggal' => $this->requiredDate((string) ($payload['tanggal'] ?? '')),
+            'tanggal_masuk' => $this->requiredDate((string) ($payload['tanggal'] ?? '')),
+            'waktu_input_masuk' => date('H:i:s'),
             'nama_barang' => $this->requiredText((string) ($payload['nama_barang'] ?? ''), 'Nama barang wajib diisi.'),
-            'status' => $status,
-            'divisi' => $this->clean((string) ($payload['divisi'] ?? '')),
-            'divisi_terkait' => $this->clean((string) ($payload['divisi_terkait'] ?? '')),
             'qty' => max(1, (int) ($payload['qty'] ?? 1)),
             'satuan' => $satuan,
             'harga' => $harga,
             'pic_id' => $picId,
             'no_po' => $this->clean((string) ($payload['no_po'] ?? '')),
             'pdf' => $this->handleLogPdfUpload($files, 'surat_pemesanan_pdf'),
-            'user_id' => $currUserId ?: null,
+            'divisi_pengelola' => $this->clean((string) ($payload['divisi'] ?? '')),
+            'divisi_peminta' => $this->clean((string) ($payload['divisi_terkait'] ?? '')),
             'keterangan' => $this->clean((string) ($payload['keterangan'] ?? '')),
+            'user_id' => $currUserId ?: null,
+        ]);
+    }
+
+    private function completeTransfer(PDO $pdo, array $payload): void
+    {
+        $id = (int) ($payload['id'] ?? 0);
+        if ($id <= 0) {
+            throw new RuntimeException('ID log barang tidak valid.');
+        }
+        $tanggalKeluar = $this->requiredDate((string) ($payload['tanggal_keluar'] ?? ''));
+        
+        $stmt = $pdo->prepare('UPDATE log_barang SET 
+            tanggal_keluar = :tanggal_keluar, 
+            waktu_input_keluar = :waktu_input_keluar 
+            WHERE id = :id AND (tanggal_keluar IS NULL OR tanggal_keluar = \'0000-00-00\')');
+        $stmt->execute([
+            'id' => $id,
+            'tanggal_keluar' => $tanggalKeluar,
+            'waktu_input_keluar' => date('H:i:s'),
         ]);
     }
 
@@ -4016,7 +4001,7 @@ SQL);
         if (!$current) {
             throw new RuntimeException('Data log barang tidak ditemukan.');
         }
-        $pdfPath = trim((string) ($current['surat_pemesanan_pdf'] ?? ''));
+        $pdfPath = trim((string) ($current['dokumen_po'] ?? ''));
         if (!empty($payload['remove_pdf']) && $pdfPath !== '') {
             $this->deleteLogPdfFile($pdfPath);
             $pdfPath = '';
@@ -4029,7 +4014,6 @@ SQL);
             $pdfPath = $newPdfPath;
         }
 
-        $status = $this->normalizeLogStatus((string) ($payload['status'] ?? 'MASUK'));
         $satuan = trim((string) ($payload['satuan'] ?? ''));
         if ($satuan === '') {
             throw new RuntimeException('Satuan wajib diisi.');
@@ -4039,35 +4023,61 @@ SQL);
         if ($picId <= 0) {
             throw new RuntimeException('PIC wajib dipilih.');
         }
-        $harga = 0.00;
-        if ($status === 'MASUK') {
-            $hargaInput = trim((string) ($payload['harga'] ?? ''));
-            if ($hargaInput === '') {
-                throw new RuntimeException('Harga wajib diisi untuk barang masuk.');
-            }
-            $harga = (double) $hargaInput;
-            if ($harga < 0) {
-                throw new RuntimeException('Harga tidak boleh negatif.');
-            }
-        } else {
-            $hargaInput = trim((string) ($payload['harga'] ?? ''));
-            $harga = $hargaInput !== '' ? (double) $hargaInput : 0.00;
+        
+        $hargaInput = trim((string) ($payload['harga'] ?? ''));
+        if ($hargaInput === '') {
+            throw new RuntimeException('Harga wajib diisi.');
+        }
+        $harga = (double) $hargaInput;
+        if ($harga < 0) {
+            throw new RuntimeException('Harga tidak boleh negatif.');
         }
 
-        $update = $pdo->prepare('UPDATE log_barang SET tanggal = :tanggal, nama_barang = :nama_barang, status = :status, divisi = :divisi, divisi_terkait = :divisi_terkait, qty = :qty, satuan = :satuan, harga = :harga, pic_id = :pic_id, no_po = :no_po, surat_pemesanan_pdf = :pdf, keterangan = :keterangan WHERE id = :id');
+        $tanggalMasuk = $this->requiredDate((string) ($payload['tanggal_masuk'] ?? $payload['tanggal'] ?? ''));
+        $tanggalKeluarInput = trim((string) ($payload['tanggal_keluar'] ?? ''));
+        $tanggalKeluar = ($tanggalKeluarInput !== '' && $tanggalKeluarInput !== '0000-00-00') ? $tanggalKeluarInput : null;
+        
+        $waktuMasuk = $current['waktu_input_masuk'] ?: date('H:i:s');
+        $waktuKeluar = $current['waktu_input_keluar'];
+        if ($tanggalKeluar !== null) {
+            if (empty($waktuKeluar) || $waktuKeluar === '00:00:00') {
+                $waktuKeluar = date('H:i:s');
+            }
+        } else {
+            $waktuKeluar = null;
+        }
+
+        $update = $pdo->prepare('UPDATE log_barang SET 
+            tanggal_masuk = :tanggal_masuk, 
+            waktu_input_masuk = :waktu_input_masuk,
+            tanggal_keluar = :tanggal_keluar, 
+            waktu_input_keluar = :waktu_input_keluar,
+            nama_barang = :nama_barang, 
+            qty = :qty, 
+            satuan = :satuan, 
+            harga = :harga, 
+            pic_id = :pic_id, 
+            no_po = :no_po, 
+            dokumen_po = :pdf, 
+            divisi_pengelola = :divisi_pengelola, 
+            divisi_peminta = :divisi_peminta, 
+            keterangan = :keterangan 
+            WHERE id = :id');
         $update->execute([
             'id' => $id,
-            'tanggal' => $this->requiredDate((string) ($payload['tanggal'] ?? '')),
+            'tanggal_masuk' => $tanggalMasuk,
+            'waktu_input_masuk' => $waktuMasuk,
+            'tanggal_keluar' => $tanggalKeluar,
+            'waktu_input_keluar' => $waktuKeluar,
             'nama_barang' => $this->requiredText((string) ($payload['nama_barang'] ?? ''), 'Nama barang wajib diisi.'),
-            'status' => $status,
-            'divisi' => $this->clean((string) ($payload['divisi'] ?? '')),
-            'divisi_terkait' => $this->clean((string) ($payload['divisi_terkait'] ?? '')),
             'qty' => max(1, (int) ($payload['qty'] ?? 1)),
             'satuan' => $satuan,
             'harga' => $harga,
             'pic_id' => $picId,
             'no_po' => $this->clean((string) ($payload['no_po'] ?? '')),
             'pdf' => $pdfPath !== '' ? $pdfPath : null,
+            'divisi_pengelola' => $this->clean((string) ($payload['divisi'] ?? '')),
+            'divisi_peminta' => $this->clean((string) ($payload['divisi_terkait'] ?? '')),
             'keterangan' => $this->clean((string) ($payload['keterangan'] ?? '')),
         ]);
     }
@@ -4077,7 +4087,7 @@ SQL);
         if ($id <= 0) {
             throw new RuntimeException('ID log barang tidak valid.');
         }
-        $stmt = $pdo->prepare('SELECT surat_pemesanan_pdf FROM log_barang WHERE id = :id LIMIT 1');
+        $stmt = $pdo->prepare('SELECT dokumen_po FROM log_barang WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => $id]);
         $row = $stmt->fetch();
         if (!$row) {
@@ -4085,7 +4095,7 @@ SQL);
         }
         $delete = $pdo->prepare('DELETE FROM log_barang WHERE id = :id');
         $delete->execute(['id' => $id]);
-        $this->deleteLogPdfFile((string) ($row['surat_pemesanan_pdf'] ?? ''));
+        $this->deleteLogPdfFile((string) ($row['dokumen_po'] ?? ''));
     }
 
     private function handleLogPdfUpload(array $files, string $field, bool $required = true): ?string
@@ -4172,7 +4182,7 @@ SQL);
     {
         $query = [
             'page' => 'log-barang',
-            'log_year' => (string) ($filters['log_year'] ?? date('Y')),
+            'log_year' => (string) ($filters['log_year'] ?? 0),
             'log_month' => (string) ($filters['log_month'] ?? 0),
             'log_date' => (string) ($filters['log_date'] ?? ''),
             'log_status' => (string) ($filters['log_status'] ?? ''),
@@ -4290,11 +4300,18 @@ SQL);
 
     private function buildLogBarangExcelXlsx(string $title, array $rows): string
     {
+        $configFile = __DIR__ . '/../config/config.php';
+        if (is_file($configFile)) {
+            require_once $configFile;
+        }
+        $baseUrl = defined('BASE_URL') ? BASE_URL : 'http://localhost/Sistem_Inventory/';
+        $baseUrl = rtrim($baseUrl, '/\\') . '/';
+
         $sheetRows = [
             [$title],
             ['Diexport: ' . date('d-m-Y H:i:s')],
             [],
-            ['No', 'Tanggal', 'Waktu Input', 'Nama Barang', 'Qty', 'Satuan', 'Harga', 'Status', 'Divisi', 'Divisi Terkait', 'No. PO', 'Dokumen', 'PIC', 'Log No', 'Keterangan'],
+            ['No', 'Tanggal Masuk', 'Tanggal Keluar', 'Nama Barang', 'Qty', 'Satuan', 'Harga', 'Status', 'Divisi Pengelola', 'Divisi Peminta', 'No. PO', 'Dokumen', 'PIC', 'Log No', 'Keterangan'],
         ];
 
         $number = 1;
@@ -4320,8 +4337,11 @@ SQL);
             $docStr = '-';
             $pdfPath = trim((string) ($row['pdf'] ?? ''));
             if ($pdfPath !== '') {
-                $poUrl = 'index.php?page=log-barang&action=download_po&file=' . rawurlencode($pdfPath);
+                $poUrl = $baseUrl . 'index.php?page=log-barang&action=download_po&file=' . rawurlencode($pdfPath);
                 $docStr = '=HYPERLINK("' . $poUrl . '", "Lihat Dokumen")';
+                if ($noPo !== '-') {
+                    $noPo = '=HYPERLINK("' . $poUrl . '", "' . $noPo . '")';
+                }
             }
 
             $keteranganStr = trim((string) ($row['keterangan'] ?? ''));
@@ -4342,7 +4362,7 @@ SQL);
             $sheetRows[] = [
                 (string) $number++,
                 (string) ($row['date'] ?? '-'),
-                (string) ($row['created_time'] ?? '-'),
+                (string) ($row['date_keluar'] ?? '-'),
                 (string) ($row['item'] ?? '-'),
                 (string) ($row['qty'] ?? '0'),
                 $satuanStr,
@@ -4410,8 +4430,6 @@ SQL);
                         $statusVal = strtoupper(trim((string) $value));
                         if ($statusVal === 'MASUK') {
                             $style = ' s="2"';
-                        } elseif ($statusVal === 'KELUAR') {
-                            $style = ' s="3"';
                         } else {
                             $style = ' s="0"';
                         }
@@ -4530,15 +4548,15 @@ SQL);
     {
         $columns = [
             ['title' => 'No', 'key' => 'no', 'width' => 20, 'align' => 'C'],
-            ['title' => 'Tanggal', 'key' => 'date', 'width' => 42, 'align' => 'C'],
-            ['title' => 'Waktu Input', 'key' => 'time', 'width' => 42, 'align' => 'C'],
+            ['title' => 'Tanggal Masuk', 'key' => 'date', 'width' => 42, 'align' => 'C'],
+            ['title' => 'Tanggal Keluar', 'key' => 'time', 'width' => 42, 'align' => 'C'],
             ['title' => 'Nama Barang', 'key' => 'item', 'width' => 85, 'align' => 'L'],
             ['title' => 'Qty', 'key' => 'qty', 'width' => 20, 'align' => 'C'],
             ['title' => 'Satuan', 'key' => 'satuan', 'width' => 32, 'align' => 'L'],
             ['title' => 'Harga', 'key' => 'harga', 'width' => 60, 'align' => 'R'],
             ['title' => 'Status', 'key' => 'status', 'width' => 38, 'align' => 'C'],
-            ['title' => 'Divisi', 'key' => 'division', 'width' => 55, 'align' => 'L'],
-            ['title' => 'Divisi Terkait', 'key' => 'divisi_terkait', 'width' => 55, 'align' => 'L'],
+            ['title' => 'Divisi Pengelola', 'key' => 'division', 'width' => 55, 'align' => 'L'],
+            ['title' => 'Divisi Peminta', 'key' => 'divisi_terkait', 'width' => 55, 'align' => 'L'],
             ['title' => 'No. PO', 'key' => 'no_po', 'width' => 55, 'align' => 'L'],
             ['title' => 'Dokumen', 'key' => 'doc', 'width' => 38, 'align' => 'C'],
             ['title' => 'PIC', 'key' => 'pic', 'width' => 62, 'align' => 'L'],
@@ -4549,7 +4567,7 @@ SQL);
         $charMap = [
             'no' => 4,
             'date' => 10,
-            'time' => 8,
+            'time' => 10,
             'item' => 18,
             'qty' => 4,
             'satuan' => 7,
@@ -4704,7 +4722,7 @@ SQL);
             $addText($margin + 12, $y - 18, strtoupper($title), 2, 14, '1 1 1');
             $addText($margin + 12, $y - 32, 'Sistem Inventory & Monitoring', 1, 8.5, '1 1 1');
             $y -= 60;
-
+ 
             // Render Info Bar
             $infoText = 'Diexport: ' . date('d-m-Y H:i:s') . '   |   ' . $periodeText;
             $addRect($margin, $y - 18, $pageWidth - ($margin * 2), 18, $lightBlue, $borderColor, 0.8);
@@ -4779,7 +4797,7 @@ SQL);
             $cells = [
                 'no' => (string) $number++,
                 'date' => (string) ($row['date'] ?? '-'),
-                'time' => (string) ($row['created_time'] ?? '-'),
+                'time' => (string) ($row['date_keluar'] ?? '-'),
                 'item' => (string) ($row['item'] ?? '-'),
                 'qty' => (string) ($row['qty'] ?? '0'),
                 'satuan' => $satuanStr,
@@ -4824,8 +4842,8 @@ SQL);
                         $cellFill = '0.0 0.69 0.31';
                         $fontColor = '1 1 1';
                         $fontId = 2;
-                    } elseif ($statusVal === 'KELUAR') {
-                        $cellFill = '1.0 0.0 0.0';
+                    } elseif ($statusVal === 'SELESAI') {
+                        $cellFill = '0.1 0.45 0.9';
                         $fontColor = '1 1 1';
                         $fontId = 2;
                     }
@@ -6258,13 +6276,48 @@ endstream";
     private function fetchAllLogReportRows(PDO $pdo, array $filters = []): array
     {
         try {
-            $f = $this->buildLaporanFilters($filters); [$from, $to] = $this->laporanDateBounds($filters); $where = []; $params = [];
-            if ($from !== '') { $where[] = 'tanggal >= ?'; $params[] = $from; }
-            if ($to !== '') { $where[] = 'tanggal <= ?'; $params[] = $to; }
-            if ($f['division'] !== '') { $aliases = $this->reportDivisionAliases($pdo, $f['division']); $where[] = 'divisi IN (' . implode(',', array_fill(0, count($aliases), '?')) . ')'; foreach ($aliases as $alias) { $params[] = $alias; } }
-            $sql = 'SELECT id, log_no, tanggal, created_at, nama_barang, status, qty, no_po, surat_pemesanan_pdf, divisi, keterangan FROM log_barang ' . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY tanggal DESC, created_at DESC, id DESC';
-            $stmt = $pdo->prepare($sql); $stmt->execute($params); $out = []; $no = 1;
-            foreach (($stmt ? $stmt->fetchAll() : []) as $row) { $status = strtoupper((string) ($row['status'] ?? 'MASUK')); $out[] = ['id' => (int) ($row['id'] ?? 0), 'no' => $no++, 'date' => $this->formatDateShortSimple((string) ($row['tanggal'] ?? '')), 'raw_date' => (string) ($row['tanggal'] ?? ''), 'datetime' => trim((string) (($row['tanggal'] ?? '') . ' ' . ($row['created_at'] ?? ''))), 'item' => (string) ($row['nama_barang'] ?? '-'), 'status' => $status, 'status_class' => $status === 'KELUAR' ? 'out' : 'in', 'qty' => (int) ($row['qty'] ?? 1), 'no_po' => (string) ($row['no_po'] ?? '-'), 'pdf' => (string) ($row['surat_pemesanan_pdf'] ?? ''), 'pdf_name' => basename((string) ($row['surat_pemesanan_pdf'] ?? '')), 'division' => (string) ($row['divisi'] ?? '-'), 'log_no' => (string) ($row['log_no'] ?? '-'), 'keterangan' => (string) ($row['keterangan'] ?? '')]; }
+            $f = $this->buildLaporanFilters($filters); 
+            [$from, $to] = $this->laporanDateBounds($filters); 
+            $where = []; 
+            $params = [];
+            if ($from !== '') { $where[] = 'tanggal_masuk >= ?'; $params[] = $from; }
+            if ($to !== '') { $where[] = 'tanggal_masuk <= ?'; $params[] = $to; }
+            if ($f['division'] !== '') { 
+                $aliases = $this->reportDivisionAliases($pdo, $f['division']); 
+                $where[] = 'divisi_pengelola IN (' . implode(',', array_fill(0, count($aliases), '?')) . ')'; 
+                foreach ($aliases as $alias) { $params[] = $alias; } 
+            }
+            $sql = 'SELECT id, log_no, tanggal_masuk, waktu_input_masuk, tanggal_keluar, waktu_input_keluar, created_at, nama_barang, qty, no_po, dokumen_po, divisi_pengelola, divisi_peminta, keterangan FROM log_barang ' . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY tanggal_masuk DESC, created_at DESC, id DESC';
+            $stmt = $pdo->prepare($sql); 
+            $stmt->execute($params); 
+            $out = []; 
+            $no = 1;
+            foreach (($stmt ? $stmt->fetchAll() : []) as $row) { 
+                $isSelesai = (!empty($row['tanggal_keluar']) && $row['tanggal_keluar'] !== '0000-00-00');
+                $status = $isSelesai ? 'SELESAI' : 'MASUK'; 
+                $out[] = [
+                    'id' => (int) ($row['id'] ?? 0), 
+                    'no' => $no++, 
+                    'date' => $this->formatDateShortSimple((string) ($row['tanggal_masuk'] ?? '')), 
+                    'raw_date' => (string) ($row['tanggal_masuk'] ?? ''),
+                    'date_keluar' => $isSelesai ? $this->formatDateShortSimple((string) $row['tanggal_keluar']) : '-',
+                    'raw_date_keluar' => $isSelesai ? (string) $row['tanggal_keluar'] : '',
+                    'datetime' => trim((string) (($row['tanggal_masuk'] ?? '') . ' ' . ($row['created_at'] ?? ''))), 
+                    'item' => (string) ($row['nama_barang'] ?? '-'), 
+                    'status' => $status, 
+                    'status_class' => $isSelesai ? 'selesai' : 'in', 
+                    'qty' => (int) ($row['qty'] ?? 1), 
+                    'no_po' => (string) ($row['no_po'] ?? '-'), 
+                    'pdf' => (string) ($row['dokumen_po'] ?? ''), 
+                    'pdf_name' => basename((string) ($row['dokumen_po'] ?? '')), 
+                    'division' => (string) ($row['divisi_pengelola'] ?? '-'), 
+                    'divisi_terkait' => (string) ($row['divisi_peminta'] ?? '-'), 
+                    'log_no' => (string) ($row['log_no'] ?? '-'), 
+                    'keterangan' => (string) ($row['keterangan'] ?? ''),
+                    'created_time' => $row['waktu_input_masuk'] ? date('H:i:s', strtotime($row['waktu_input_masuk'])) : '-',
+                    'waktu_input_keluar' => $row['waktu_input_keluar'] ? date('H:i:s', strtotime($row['waktu_input_keluar'])) : '-',
+                ]; 
+            }
             return $out;
         } catch (Throwable $e) { return []; }
     }

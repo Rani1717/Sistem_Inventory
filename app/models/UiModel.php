@@ -58,7 +58,7 @@ class UiModel
             $data['log_rows'] = $this->fetchLogRows($pdo, $filters);
             $data['log_filters'] = $this->buildLogFilters($pdo, $filters);
             $selected = $data['log_filters']['selected'];
-            $data['log_summary'] = $this->getLogSummaryStats($pdo, (int)$selected['year'], (int)$selected['month']);
+            $data['log_summary'] = $this->getLogSummaryStats($pdo, $filters);
             $data['log_distinct_divisions'] = $this->fetchDistinctLogDivisions($pdo);
             $data['log_distinct_months'] = $this->fetchDistinctLogMonths($pdo);
         } catch (Throwable $e) {
@@ -2268,18 +2268,37 @@ SQL);
                 $state['date'] = '';
             }
 
-            $rows = $this->fetchInventoryFlowRows($pdo, $state);
-            $masuk = 0;
-            $keluar = 0;
-            foreach ($rows as $row) {
-                $status = (string) ($row['status_name'] ?? '');
-                $total = (int) ($row['total'] ?? 0);
-                if ($status === 'MASUK') {
-                    $masuk = $total;
-                } elseif ($status === 'KELUAR') {
-                    $keluar = $total;
-                }
+            // Count BARANG MASUK in active period
+            $whereMasuk = ['YEAR(tanggal_masuk) = :year'];
+            $paramsMasuk = ['year' => $state['year']];
+            if ($state['month'] > 0) {
+                $whereMasuk[] = 'MONTH(tanggal_masuk) = :month';
+                $paramsMasuk['month'] = $state['month'];
             }
+            if ($state['date'] !== '') {
+                $whereMasuk[] = 'tanggal_masuk = :date';
+                $paramsMasuk['date'] = $state['date'];
+            }
+            $sqlMasuk = 'SELECT COALESCE(SUM(qty), 0) FROM log_barang WHERE ' . implode(' AND ', $whereMasuk);
+            $stmtM = $pdo->prepare($sqlMasuk);
+            $stmtM->execute($paramsMasuk);
+            $masuk = (int) $stmtM->fetchColumn();
+
+            // Count BARANG KELUAR in active period (based on tanggal_keluar)
+            $whereKeluar = ['YEAR(tanggal_keluar) = :year'];
+            $paramsKeluar = ['year' => $state['year']];
+            if ($state['month'] > 0) {
+                $whereKeluar[] = 'MONTH(tanggal_keluar) = :month';
+                $paramsKeluar['month'] = $state['month'];
+            }
+            if ($state['date'] !== '') {
+                $whereKeluar[] = 'tanggal_keluar = :date';
+                $paramsKeluar['date'] = $state['date'];
+            }
+            $sqlKeluar = 'SELECT COALESCE(SUM(qty), 0) FROM log_barang WHERE ' . implode(' AND ', $whereKeluar);
+            $stmtK = $pdo->prepare($sqlKeluar);
+            $stmtK->execute($paramsKeluar);
+            $keluar = (int) $stmtK->fetchColumn();
 
             return [
                 'labels' => ['BARANG MASUK', 'BARANG KELUAR'],
@@ -2292,56 +2311,54 @@ SQL);
         }
     }
 
-    private function fetchInventoryFlowRows(PDO $pdo, array $state): array
-    {
-        $where = ['YEAR(tanggal) = :year'];
-        $params = ['year' => $state['year']];
-        if ((int) ($state['month'] ?? 0) > 0) {
-            $where[] = 'MONTH(tanggal) = :month';
-            $params['month'] = (int) $state['month'];
-        }
-        if ((string) ($state['date'] ?? '') !== '') {
-            $where[] = 'tanggal = :date';
-            $params['date'] = (string) $state['date'];
-        }
-
-        $sql = 'SELECT UPPER(status) AS status_name, COALESCE(SUM(qty), 0) AS total FROM log_barang WHERE ' . implode(' AND ', $where) . ' GROUP BY UPPER(status)';
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    }
     private function fetchLogRows(PDO $pdo, array $filters = []): array
     {
         $state = $this->normalizeLogFilterState($filters);
         try {
-            $where = ['YEAR(l.tanggal) = :year'];
-            $params = ['year' => $state['year']];
+            $where = ['1=1'];
+            $params = [];
 
-            if ($state['month'] > 0) {
-                $where[] = 'MONTH(l.tanggal) = :month';
+            if ($state['year'] > 0) {
+                $where[] = 'YEAR(l.tanggal_masuk) = :year';
+                $params['year'] = $state['year'];
+            }
+
+            if ($state['month'] > 0 && $state['year'] > 0) {
+                $where[] = 'MONTH(l.tanggal_masuk) = :month';
                 $params['month'] = $state['month'];
             }
             if ($state['date'] !== '') {
-                $where[] = 'l.tanggal = :date';
+                $where[] = 'l.tanggal_masuk = :date';
                 $params['date'] = $state['date'];
             }
             if ($state['status'] !== '') {
-                $where[] = 'UPPER(l.status) = :status';
-                $params['status'] = $state['status'];
+                if ($state['status'] === 'MASUK') {
+                    $where[] = "(l.tanggal_keluar IS NULL OR l.tanggal_keluar = '0000-00-00')";
+                } elseif ($state['status'] === 'SELESAI') {
+                    $where[] = "(l.tanggal_keluar IS NOT NULL AND l.tanggal_keluar <> '0000-00-00')";
+                }
             }
             if ($state['division'] !== '') {
-                $where[] = 'l.divisi = :division';
+                $where[] = 'l.divisi_pengelola = :division';
                 $params['division'] = $state['division'];
             }
             if ($state['search'] !== '') {
-                $where[] = '(l.log_no LIKE :search OR l.nama_barang LIKE :search OR COALESCE(l.no_po, "") LIKE :search OR COALESCE(l.divisi, "") LIKE :search OR COALESCE(l.divisi_terkait, "") LIKE :search OR COALESCE(l.keterangan, "") LIKE :search OR COALESCE(u.nama_lengkap, "") LIKE :search OR COALESCE(u.username, "") LIKE :search)';
-                $params['search'] = '%' . $state['search'] . '%';
+                $where[] = '(l.log_no LIKE :search1 OR l.nama_barang LIKE :search2 OR COALESCE(l.no_po, "") LIKE :search3 OR COALESCE(l.divisi_pengelola, "") LIKE :search4 OR COALESCE(l.divisi_peminta, "") LIKE :search5 OR COALESCE(l.keterangan, "") LIKE :search6 OR COALESCE(u.nama_lengkap, "") LIKE :search7 OR COALESCE(u.username, "") LIKE :search8)';
+                $sVal = '%' . $state['search'] . '%';
+                $params['search1'] = $sVal;
+                $params['search2'] = $sVal;
+                $params['search3'] = $sVal;
+                $params['search4'] = $sVal;
+                $params['search5'] = $sVal;
+                $params['search6'] = $sVal;
+                $params['search7'] = $sVal;
+                $params['search8'] = $sVal;
             }
 
             $orderSql = $state['sort'] === 'oldest' ? 'ASC' : 'DESC';
-            $sql = 'SELECT l.id, l.log_no, l.tanggal, l.created_at, l.nama_barang, l.status, l.qty, l.satuan, l.harga, l.pic_id, l.no_po, l.surat_pemesanan_pdf, l.divisi, l.divisi_terkait, l.keterangan, u.nama_lengkap AS pic_nama, u.username AS pic_username FROM log_barang l LEFT JOIN users u ON u.id = l.pic_id WHERE '
+            $sql = 'SELECT l.id, l.log_no, l.tanggal_masuk, l.waktu_input_masuk, l.tanggal_keluar, l.waktu_input_keluar, l.created_at, l.nama_barang, l.qty, l.satuan, l.harga, l.pic_id, l.no_po, l.dokumen_po, l.divisi_pengelola, l.divisi_peminta, l.keterangan, u.nama_lengkap AS pic_nama, u.username AS pic_username FROM log_barang l LEFT JOIN users u ON u.id = l.pic_id WHERE '
                 . implode(' AND ', $where)
-                . ' ORDER BY l.tanggal ' . $orderSql . ', l.created_at ' . $orderSql . ', l.id ' . $orderSql . ' LIMIT 500';
+                . ' ORDER BY l.tanggal_masuk ' . $orderSql . ', l.created_at ' . $orderSql . ', l.id ' . $orderSql . ' LIMIT 500';
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             $rows = $stmt->fetchAll();
@@ -2352,17 +2369,20 @@ SQL);
             $result = [];
             $number = 1;
             foreach ($rows as $row) {
-                $status = strtoupper((string) ($row['status'] ?? 'MASUK'));
-                $pdf = trim((string) ($row['surat_pemesanan_pdf'] ?? ''));
+                $isSelesai = (!empty($row['tanggal_keluar']) && $row['tanggal_keluar'] !== '0000-00-00');
+                $status = $isSelesai ? 'SELESAI' : 'MASUK';
+                $pdf = trim((string) ($row['dokumen_po'] ?? ''));
                 $result[] = [
                     'id' => (int) ($row['id'] ?? 0),
                     'no' => $number++,
-                    'date' => $this->formatDateShort((string) ($row['tanggal'] ?? '')),
-                    'raw_date' => (string) ($row['tanggal'] ?? ''),
-                    'datetime' => trim((string) (($row['tanggal'] ?? '') . ' ' . ($row['created_at'] ?? ''))),
+                    'date' => $this->formatDateShort((string) ($row['tanggal_masuk'] ?? '')),
+                    'raw_date' => (string) ($row['tanggal_masuk'] ?? ''),
+                    'date_keluar' => $isSelesai ? $this->formatDateShort((string) $row['tanggal_keluar']) : '-',
+                    'raw_date_keluar' => $isSelesai ? (string) $row['tanggal_keluar'] : '',
+                    'datetime' => trim((string) (($row['tanggal_masuk'] ?? '') . ' ' . ($row['created_at'] ?? ''))),
                     'item' => (string) ($row['nama_barang'] ?? '-'),
                     'status' => $status,
-                    'status_class' => $status === 'KELUAR' ? 'out' : 'in',
+                    'status_class' => $isSelesai ? 'selesai' : 'in',
                     'qty' => (int) ($row['qty'] ?? 1),
                     'satuan' => (string) ($row['satuan'] ?? 'Unit'),
                     'harga' => (double) ($row['harga'] ?? 0.00),
@@ -2371,11 +2391,12 @@ SQL);
                     'no_po' => (string) ($row['no_po'] ?? '-'),
                     'pdf' => $pdf,
                     'pdf_name' => $pdf !== '' ? basename($pdf) : '',
-                    'division' => (string) ($row['divisi'] ?? '-'),
-                    'divisi_terkait' => (string) ($row['divisi_terkait'] ?? '-'),
+                    'division' => (string) ($row['divisi_pengelola'] ?? '-'),
+                    'divisi_terkait' => (string) ($row['divisi_peminta'] ?? '-'),
                     'log_no' => (string) ($row['log_no'] ?? '-'),
                     'keterangan' => (string) ($row['keterangan'] ?? ''),
-                    'created_time' => $this->formatCreatedTime((string) ($row['created_at'] ?? '')),
+                    'created_time' => $row['waktu_input_masuk'] ? $this->formatCreatedTime((string)($row['tanggal_masuk'] . ' ' . $row['waktu_input_masuk'])) : '-',
+                    'waktu_input_keluar' => $row['waktu_input_keluar'] ? $this->formatCreatedTime((string)($row['tanggal_keluar'] . ' ' . $row['waktu_input_keluar'])) : '-',
                 ];
             }
 
@@ -2390,7 +2411,7 @@ SQL);
         $state = $this->normalizeLogFilterState($filters);
         $years = [];
         try {
-            $stmt = $pdo->query('SELECT DISTINCT YEAR(tanggal) AS tahun FROM log_barang ORDER BY tahun DESC');
+            $stmt = $pdo->query('SELECT DISTINCT YEAR(tanggal_masuk) AS tahun FROM log_barang ORDER BY tahun DESC');
             foreach (($stmt ? $stmt->fetchAll() : []) as $row) {
                 $year = (int) ($row['tahun'] ?? 0);
                 if ($year > 0) {
@@ -2402,7 +2423,7 @@ SQL);
         if (!$years) {
             $years[] = (int) date('Y');
         }
-        if (!in_array($state['year'], $years, true)) {
+        if ($state['year'] !== 0 && !in_array($state['year'], $years, true)) {
             $state['year'] = $years[0];
         }
 
@@ -2419,7 +2440,7 @@ SQL);
             'statuses' => [
                 '' => 'Semua Status',
                 'MASUK' => 'Barang Masuk',
-                'KELUAR' => 'Barang Keluar',
+                'SELESAI' => 'Selesai',
             ],
             'sorts' => [
                 'newest' => 'Tanggal terbaru',
@@ -2431,8 +2452,8 @@ SQL);
     private function normalizeLogFilterState(array $filters): array
     {
         $now = new DateTimeImmutable('now', new DateTimeZone('Asia/Jakarta'));
-        $defaultYear = (int) $now->format('Y');
-        $defaultMonth = (int) $now->format('n');
+        $defaultYear = 0;  // 0 = semua tahun (tidak difilter)
+        $defaultMonth = 0; // 0 = semua bulan
 
         $hasLogMonth = isset($filters['log_month']) && trim((string)$filters['log_month']) !== '';
 
@@ -2487,7 +2508,7 @@ SQL);
         }
 
         $status = strtoupper(trim((string) ($filters['log_status'] ?? '')));
-        if (!in_array($status, ['', 'MASUK', 'KELUAR'], true)) {
+        if (!in_array($status, ['', 'MASUK', 'SELESAI'], true)) {
             $status = '';
         }
         $sort = trim((string) ($filters['log_sort'] ?? 'newest'));
@@ -2508,55 +2529,40 @@ SQL);
         ];
     }
 
-    public function getLogSummaryStats(PDO $pdo, int $year, int $month): array
+    public function getLogSummaryStats(PDO $pdo, array $filters): array
     {
         $stats = [
             'total_transaksi' => 0,
+            'masuk_count'     => 0,
+            'keluar_count'    => 0,
             'barang_masuk_qty' => 0,
             'barang_keluar_qty' => 0,
             'total_nilai_masuk' => 0.00,
         ];
         
         try {
-            // 1. Total Transaksi
-            if ($month > 0) {
-                $stmt = $pdo->prepare('SELECT COUNT(*) FROM log_barang WHERE YEAR(tanggal) = :year AND MONTH(tanggal) = :month');
-                $stmt->execute(['year' => $year, 'month' => $month]);
-            } else {
-                $stmt = $pdo->prepare('SELECT COUNT(*) FROM log_barang WHERE YEAR(tanggal) = :year');
-                $stmt->execute(['year' => $year]);
-            }
-            $stats['total_transaksi'] = (int) $stmt->fetchColumn();
-            
-            // 2. Barang Masuk Qty
-            if ($month > 0) {
-                $stmt = $pdo->prepare('SELECT SUM(qty) FROM log_barang WHERE YEAR(tanggal) = :year AND MONTH(tanggal) = :month AND UPPER(status) = "MASUK"');
-                $stmt->execute(['year' => $year, 'month' => $month]);
-            } else {
-                $stmt = $pdo->prepare('SELECT SUM(qty) FROM log_barang WHERE YEAR(tanggal) = :year AND UPPER(status) = "MASUK"');
-                $stmt->execute(['year' => $year]);
-            }
-            $stats['barang_masuk_qty'] = (int) $stmt->fetchColumn();
-            
-            // 3. Barang Keluar Qty
-            if ($month > 0) {
-                $stmt = $pdo->prepare('SELECT SUM(qty) FROM log_barang WHERE YEAR(tanggal) = :year AND MONTH(tanggal) = :month AND UPPER(status) = "KELUAR"');
-                $stmt->execute(['year' => $year, 'month' => $month]);
-            } else {
-                $stmt = $pdo->prepare('SELECT SUM(qty) FROM log_barang WHERE YEAR(tanggal) = :year AND UPPER(status) = "KELUAR"');
-                $stmt->execute(['year' => $year]);
-            }
-            $stats['barang_keluar_qty'] = (int) $stmt->fetchColumn();
-            
-            // 4. Total Nilai Masuk
-            if ($month > 0) {
-                $stmt = $pdo->prepare('SELECT SUM(qty * harga) FROM log_barang WHERE YEAR(tanggal) = :year AND MONTH(tanggal) = :month AND UPPER(status) = "MASUK"');
-                $stmt->execute(['year' => $year, 'month' => $month]);
-            } else {
-                $stmt = $pdo->prepare('SELECT SUM(qty * harga) FROM log_barang WHERE YEAR(tanggal) = :year AND UPPER(status) = "MASUK"');
-                $stmt->execute(['year' => $year]);
-            }
-            $stats['total_nilai_masuk'] = (double) $stmt->fetchColumn();
+            // 1. Count records berstatus MASUK (tanggal_keluar kosong)
+            $stmt = $pdo->query("SELECT COUNT(*) FROM log_barang WHERE (tanggal_keluar IS NULL OR tanggal_keluar = '0000-00-00')");
+            $stats['masuk_count'] = (int) ($stmt ? $stmt->fetchColumn() : 0);
+
+            // 2. Count records berstatus SELESAI/KELUAR (tanggal_keluar terisi)
+            $stmt = $pdo->query("SELECT COUNT(*) FROM log_barang WHERE tanggal_keluar IS NOT NULL AND tanggal_keluar <> '0000-00-00'");
+            $stats['keluar_count'] = (int) ($stmt ? $stmt->fetchColumn() : 0);
+
+            // 3. Total Transaksi = MASUK + SELESAI = semua record
+            $stats['total_transaksi'] = $stats['masuk_count'] + $stats['keluar_count'];
+
+            // 4. Barang Masuk Qty (Global — semua qty yang masuk)
+            $stmt = $pdo->query('SELECT SUM(qty) FROM log_barang');
+            $stats['barang_masuk_qty'] = (int) ($stmt ? $stmt->fetchColumn() : 0);
+
+            // 5. Barang Keluar Qty (Global — qty yang sudah diserahkan)
+            $stmt = $pdo->query("SELECT SUM(qty) FROM log_barang WHERE tanggal_keluar IS NOT NULL AND tanggal_keluar <> '0000-00-00'");
+            $stats['barang_keluar_qty'] = (int) ($stmt ? $stmt->fetchColumn() : 0);
+
+            // 6. Total Nilai Masuk (Global)
+            $stmt = $pdo->query('SELECT SUM(qty * harga) FROM log_barang');
+            $stats['total_nilai_masuk'] = (double) ($stmt ? $stmt->fetchColumn() : 0.00);
         } catch (Throwable $e) {
         }
         
@@ -2566,7 +2572,7 @@ SQL);
     public function fetchDistinctLogDivisions(PDO $pdo): array
     {
         try {
-            $stmt = $pdo->query('SELECT DISTINCT divisi FROM log_barang WHERE divisi IS NOT NULL AND TRIM(divisi) <> "" ORDER BY divisi ASC');
+            $stmt = $pdo->query('SELECT DISTINCT divisi_pengelola FROM log_barang WHERE divisi_pengelola IS NOT NULL AND TRIM(divisi_pengelola) <> "" ORDER BY divisi_pengelola ASC');
             return $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
         } catch (Throwable $e) {
             return [];
@@ -2576,7 +2582,7 @@ SQL);
     public function fetchDistinctLogMonths(PDO $pdo): array
     {
         try {
-            $stmt = $pdo->query('SELECT MIN(tanggal) as min_date, MAX(tanggal) as max_date FROM log_barang');
+            $stmt = $pdo->query('SELECT MIN(tanggal_masuk) as min_date, MAX(tanggal_masuk) as max_date FROM log_barang');
             $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
             
             $minDateStr = $row['min_date'] ?? '';

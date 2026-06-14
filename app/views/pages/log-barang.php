@@ -31,16 +31,16 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
     .summary-card {
         display: flex;
         align-items: center;
-        background: #fff;
-        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.92);
+        border-radius: 28px;
         padding: 18px 20px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
-        border: 1px solid #eef2f6;
+        box-shadow: 0 16px 38px rgba(13, 51, 108, 0.12);
+        border: 1px solid rgba(42, 102, 165, 0.10);
         transition: transform 0.2s, box-shadow 0.2s;
     }
     .summary-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+        box-shadow: 0 20px 48px rgba(13, 51, 108, 0.18);
     }
     .summary-card__icon {
         display: flex;
@@ -85,6 +85,19 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
         font-size: 18px;
         font-weight: 700;
         color: #202124;
+    }
+
+    /* Override table header colors to match Routine Monitoring */
+    .data-table--log th,
+    .data-table--log-compact th {
+        background-color: #2d69b2 !important;
+    }
+
+    /* Computed selesai badge color styling */
+    .badge--selesai {
+        background: #e8f0fe !important;
+        color: #1a73e8 !important;
+        border: 1px solid #d2e3fc !important;
     }
 
     /* Redesigned Filter & Actions Bar */
@@ -133,7 +146,7 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
         align-items: center;
         justify-content: center;
         gap: 6px;
-        background-color: #1a73e8;
+        background-color: #244A84;
         color: #fff;
         border: none;
         padding: 8px 16px;
@@ -144,7 +157,61 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
         transition: background-color 0.2s;
     }
     .btn-add-log:hover {
-        background-color: #1557b0;
+        background-color: #1b3864;
+    }
+
+    /* Custom Responsive Grid Layout for Log Barang Filters (unifying with Routine Monitoring) */
+    .log-filter-card--custom {
+        grid-template-columns: minmax(130px, 1fr) minmax(150px, 1.2fr) minmax(130px, 1fr) minmax(100px, 0.8fr) minmax(200px, 1.8fr) !important;
+        align-items: end !important;
+        gap: 12px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        margin-bottom: 24px !important;
+    }
+    
+    @media (max-width: 1350px) {
+        .log-filter-card--custom {
+            grid-template-columns: repeat(3, 1fr) !important;
+        }
+        .log-filter-card--custom .routine-filter-search {
+            grid-column: span 2 !important;
+        }
+    }
+    
+    @media (max-width: 860px) {
+        .log-filter-card--custom {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
+        .log-filter-card--custom label,
+        .log-filter-card--custom .routine-filter-search {
+            grid-column: span 1 !important;
+            width: 100% !important;
+        }
+        .log-filter-card--custom .routine-filter-search {
+            grid-column: 1 / -1 !important;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .log-filter-card--custom {
+            grid-template-columns: 1fr !important;
+        }
+        .log-filter-card--custom label,
+        .log-filter-card--custom .routine-filter-search {
+            grid-column: 1 / -1 !important;
+        }
+    }
+
+    /* Button secondary style override for Reset button */
+    .btn--secondary {
+        background: #fff !important;
+        color: #334155 !important;
+        border: 1.5px solid #cbd5e1 !important;
+    }
+    .btn--secondary:hover {
+        background: #f8fafc !important;
+        border-color: #94a3b8 !important;
     }
 
     /* Unified Export Dropdown */
@@ -157,18 +224,19 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
         align-items: center;
         justify-content: center;
         gap: 6px;
-        background-color: #f1f3f4;
-        color: #3c4043;
-        border: 1px solid #dadce0;
+        background-color: #15803d;
+        color: #ffffff;
+        border: none;
         padding: 8px 16px;
         border-radius: 8px;
         font-size: 13px;
         font-weight: 600;
         cursor: pointer;
-        transition: background-color 0.2s, border-color 0.2s;
+        transition: background-color 0.2s, transform 0.2s;
     }
     .btn-export-trigger:hover {
-        background-color: #e8eaed;
+        background-color: #166534;
+        color: #ffffff;
     }
     .export-dropdown-menu {
         position: absolute;
@@ -341,7 +409,7 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
     <div class="log-summary-cards">
         <div class="summary-card">
             <div class="summary-card__icon summary-card__icon--blue">
-                <i class="ti ti-box"></i>
+                <i class="fa-solid fa-box"></i>
             </div>
             <div class="summary-card__info">
                 <span class="summary-card__label">Total Transaksi</span>
@@ -351,102 +419,98 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
         
         <div class="summary-card">
             <div class="summary-card__icon summary-card__icon--green">
-                <i class="ti ti-package-import"></i>
+                <i class="fa-solid fa-circle-arrow-down"></i>
             </div>
             <div class="summary-card__info">
-                <span class="summary-card__label">Barang Masuk (<?= $isAllMonths ? 'Semua Bulan' : 'Bulan ini'; ?>)</span>
-                <span class="summary-card__value"><?= e($summary['barang_masuk_qty']); ?></span>
+                <span class="summary-card__label">Total Barang Masuk</span>
+                <span class="summary-card__value"><?= e($summary['masuk_count']); ?></span>
             </div>
         </div>
         
         <div class="summary-card">
             <div class="summary-card__icon summary-card__icon--red">
-                <i class="ti ti-package-export"></i>
+                <i class="fa-solid fa-circle-arrow-up"></i>
             </div>
             <div class="summary-card__info">
-                <span class="summary-card__label">Barang Keluar (<?= $isAllMonths ? 'Semua Bulan' : 'Bulan ini'; ?>)</span>
-                <span class="summary-card__value"><?= e($summary['barang_keluar_qty']); ?></span>
+                <span class="summary-card__label">Total Barang Keluar</span>
+                <span class="summary-card__value"><?= e($summary['keluar_count']); ?></span>
             </div>
         </div>
         
         <div class="summary-card">
             <div class="summary-card__icon summary-card__icon--orange">
-                <i class="ti ti-currency-dollar"></i>
+                <i class="fa-solid fa-coins"></i>
             </div>
             <div class="summary-card__info">
-                <span class="summary-card__label">Total Nilai Masuk (<?= $isAllMonths ? 'Semua Bulan' : 'Bulan ini'; ?>)</span>
+                <span class="summary-card__label">Total Nilai Masuk</span>
                 <span class="summary-card__value">Rp <?= number_format($summary['total_nilai_masuk'], 0, ',', '.'); ?></span>
             </div>
         </div>
     </div>
 
-    <!-- Bagian 2: Baris Filter & Aksi -->
-    <form class="log-filter-form" method="get" action="index.php">
+    <!-- Bagian 2: Baris Filter -->
+    <form class="routine-filter-card log-filter-card--custom" method="get" action="index.php">
         <input type="hidden" name="page" value="log-barang">
         
-        <div class="log-controls-row">
-            <div class="log-filters-group">
-                <!-- Dropdown Status -->
-                <select name="log_status" class="log-filter-select" onchange="this.form.submit()">
-                    <option value="">Semua Status</option>
-                    <option value="MASUK" <?= ($selected['status'] ?? '') === 'MASUK' ? 'selected' : ''; ?>>Barang Masuk</option>
-                    <option value="KELUAR" <?= ($selected['status'] ?? '') === 'KELUAR' ? 'selected' : ''; ?>>Barang Keluar</option>
-                </select>
+        <label>
+            <span>STATUS</span>
+            <select name="log_status">
+                <option value="">Semua Status</option>
+                <option value="MASUK" <?= ($selected['status'] ?? '') === 'MASUK' ? 'selected' : ''; ?>>MASUK (Belum Diserahkan)</option>
+                <option value="SELESAI" <?= ($selected['status'] ?? '') === 'SELESAI' ? 'selected' : ''; ?>>SELESAI (Sudah Diserahkan)</option>
+            </select>
+        </label>
 
-                <!-- Dropdown Divisi -->
-                <select name="log_division" class="log-filter-select" onchange="this.form.submit()">
-                    <option value="">Semua Divisi</option>
-                    <?php foreach (($data['log_distinct_divisions'] ?? []) as $div): ?>
-                        <option value="<?= e($div); ?>" <?= ($selected['division'] ?? '') === $div ? 'selected' : ''; ?>><?= e($div); ?></option>
-                    <?php endforeach; ?>
-                </select>
+        <label>
+            <span>DIVISI</span>
+            <select name="log_division">
+                <option value="">Semua Divisi</option>
+                <?php foreach (($data['log_distinct_divisions'] ?? []) as $div): ?>
+                    <option value="<?= e($div); ?>" <?= ($selected['division'] ?? '') === $div ? 'selected' : ''; ?>><?= e($div); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
 
-                <!-- Dropdown Bulan -->
-                <select name="log_month" class="log-filter-select" onchange="this.form.submit()">
-                    <option value="all" <?= ($selected['month'] ?? 0) === 0 ? 'selected' : ''; ?>>Semua Bulan</option>
-                    <?php
-                    $monthsList = [
-                        1 => 'Januari',
-                        2 => 'Februari',
-                        3 => 'Maret',
-                        4 => 'April',
-                        5 => 'Mei',
-                        6 => 'Juni',
-                        7 => 'Juli',
-                        8 => 'Agustus',
-                        9 => 'September',
-                        10 => 'Oktober',
-                        11 => 'November',
-                        12 => 'Desember'
-                    ];
-                    foreach ($monthsList as $num => $name):
-                    ?>
-                        <option value="<?= $num; ?>" <?= ($selected['month'] ?? 0) === $num ? 'selected' : ''; ?>><?= $name; ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            
-            <div class="log-actions-group">
-                <button type="button" class="btn-add-log js-open-log-modal">
-                    <i class="fa-solid fa-plus"></i> Tambah
-                </button>
-                
-                <!-- Dropdown Export -->
-                <div class="export-dropdown">
-                    <button type="button" class="btn-export-trigger">
-                        <i class="fa-solid fa-file-export"></i> Export <i class="fa-solid fa-chevron-down" style="font-size:10px;"></i>
-                    </button>
-                    <div class="export-dropdown-menu">
-                        <a href="<?= e($exportPdfUrl); ?>" class="export-dropdown-item">
-                            <i class="fa-regular fa-file-pdf" style="color:#d32f2f;"></i> Export PDF
-                        </a>
-                        <a href="<?= e($exportXlsxUrl); ?>" class="export-dropdown-item">
-                            <i class="fa-regular fa-file-excel" style="color:#2e7d32;"></i> Export Excel
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <label>
+            <span>BULAN</span>
+            <select name="log_month">
+                <option value="all" <?= ($selected['month'] ?? 0) === 0 ? 'selected' : ''; ?>>Semua Bulan</option>
+                <?php
+                $monthsList = [
+                    1 => 'Januari',
+                    2 => 'Februari',
+                    3 => 'Maret',
+                    4 => 'April',
+                    5 => 'Mei',
+                    6 => 'Juni',
+                    7 => 'Juli',
+                    8 => 'Agustus',
+                    9 => 'September',
+                    10 => 'Oktober',
+                    11 => 'November',
+                    12 => 'Desember'
+                ];
+                foreach ($monthsList as $num => $name):
+                ?>
+                    <option value="<?= $num; ?>" <?= ($selected['month'] ?? 0) === $num ? 'selected' : ''; ?>><?= $name; ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+
+        <label>
+            <span>TAHUN</span>
+            <select name="log_year">
+                <option value="0" <?= (int)($selected['year'] ?? 0) === 0 ? 'selected' : ''; ?>>Semua Tahun</option>
+                <?php foreach (($logFilters['years'] ?? [date('Y')]) as $yr): ?>
+                    <option value="<?= $yr; ?>" <?= (int)($selected['year'] ?? 0) === (int)$yr ? 'selected' : ''; ?>><?= $yr; ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+
+        <label class="routine-filter-search">
+            <span>SEARCH</span>
+            <input type="text" id="logLocalSearch" name="log_search" placeholder="Cari data log barang..." value="<?= e((string) ($selected['search'] ?? '')); ?>">
+        </label>
     </form>
 
     <!-- Bagian 3: Tabel Data (Style DataTables) -->
@@ -460,9 +524,26 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
             </select>
             data
         </div>
-        <div class="datatable-filter-wrap">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" id="logLocalSearch" placeholder="Cari data log barang..." value="<?= e((string) ($selected['search'] ?? '')); ?>">
+        
+        <div class="log-actions-group">
+            <button type="button" class="btn-add-log js-open-log-modal">
+                <i class="fa-solid fa-plus"></i> Tambah
+            </button>
+            
+            <!-- Dropdown Export -->
+            <div class="export-dropdown">
+                <button type="button" class="btn-export-trigger">
+                    <i class="fa-solid fa-file-export"></i> Export <i class="fa-solid fa-chevron-down" style="font-size:10px;"></i>
+                </button>
+                <div class="export-dropdown-menu">
+                    <a href="<?= e($exportPdfUrl); ?>" class="export-dropdown-item">
+                        <i class="fa-regular fa-file-pdf" style="color:#d32f2f;"></i> Export PDF
+                    </a>
+                    <a href="<?= e($exportXlsxUrl); ?>" class="export-dropdown-item">
+                        <i class="fa-regular fa-file-excel" style="color:#2e7d32;"></i> Export Excel
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -471,31 +552,31 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
             <table class="data-table data-table--log data-table--log-compact">
                 <colgroup>
                     <col style="width: 4%;">
-                    <col style="width: 10%;">
-                    <col style="width: 8%;">
-                    <col style="width: 18%;">
+                    <col style="width: 9%;">
+                    <col style="width: 9%;">
+                    <col style="width: 15%;">
+                    <col style="width: 4%;">
                     <col style="width: 5%;">
-                    <col style="width: 6%;">
+                    <col style="width: 9%;">
+                    <col style="width: 9%;">
+                    <col style="width: 9%;">
                     <col style="width: 10%;">
-                    <col style="width: 10%;">
-                    <col style="width: 10%;">
-                    <col style="width: 11%;">
-                    <col style="width: 10%;">
-                    <col style="width: 8%;">
-                    <col style="width: 8%;">
+                    <col style="width: 9%;">
+                    <col style="width: 9%;">
+                    <col style="width: 9%;">
                 </colgroup>
                 <thead>
                     <tr>
                         <th>No.</th>
-                        <th>Tanggal</th>
-                        <th>Waktu Input</th>
+                        <th>Tanggal Masuk</th>
+                        <th>Tanggal Keluar</th>
                         <th>Nama Barang</th>
                         <th>Qty</th>
                         <th>Satuan</th>
                         <th>Harga</th>
-                        <th>Divisi</th>
+                        <th>Divisi Pengelola</th>
                         <th>No. PO</th>
-                        <th>Divisi Terkait</th>
+                        <th>Divisi Peminta</th>
                         <th>PIC</th>
                         <th>Status</th>
                         <th>Aksi</th>
@@ -510,7 +591,9 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
                         ?>
                         <tr data-log-row data-search-text="<?= e(strtolower(implode(' ', [
                                 (string) ($row['date'] ?? ''),
+                                (string) ($row['date_keluar'] ?? ''),
                                 (string) ($row['created_time'] ?? ''),
+                                (string) ($row['waktu_input_keluar'] ?? ''),
                                 (string) ($row['item'] ?? ''),
                                 (string) ($row['qty'] ?? ''),
                                 (string) ($row['satuan'] ?? ''),
@@ -523,8 +606,16 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
                                 (string) ($row['keterangan'] ?? ''),
                             ]))); ?>">
                             <td><?= e((string) $row['no']); ?></td>
-                            <td><span style="font-weight: 500; color: #202124;"><?= e($row['date']); ?></span></td>
-                            <td><span style="font-size: 13px; color: #5f6368;"><?= e($row['created_time'] ?: '-'); ?></span></td>
+                            <td>
+                                <span style="font-weight: 500; color: #202124;"><?= e($row['date']); ?></span><br>
+                                <span style="font-size: 11px; color: #70757a;"><?= e($row['created_time'] ?: '-'); ?></span>
+                            </td>
+                            <td>
+                                <span style="font-weight: 500; color: #202124;"><?= e($row['date_keluar']); ?></span>
+                                <?php if ($row['status'] === 'SELESAI' && $row['waktu_input_keluar'] !== '-'): ?>
+                                    <br><span style="font-size: 11px; color: #70757a;"><?= e($row['waktu_input_keluar']); ?></span>
+                                <?php endif; ?>
+                            </td>
                             <td><div style="font-weight: 600; color: #1a73e8;"><?= e($row['item']); ?></div></td>
                             <td><?= e((string) $row['qty']); ?></td>
                             <td><?= e((string) ($row['satuan'] ?: '-')); ?></td>
@@ -536,34 +627,24 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
                                 <div style="display: flex; align-items: center; gap: 6px;">
                                     <span><?= e($row['no_po'] ?: '-'); ?></span>
                                     <?php if (!empty($row['pdf'])): ?>
-                                        <a class="table-link" target="_blank" href="<?= e('index.php?' . http_build_query($baseParams + ['action' => 'download_po', 'file' => $row['pdf']])); ?>" title="Download PDF PO" style="color: #d32f2f; font-size: 16px; display: inline-flex; align-items: center;"><i class="ti ti-file-type-pdf"></i></a>
+                                        <a class="table-link" target="_blank" href="<?= e('index.php?' . http_build_query($baseParams + ['action' => 'download_po', 'file' => $row['pdf']])); ?>" title="Download PDF PO" style="color: #d32f2f; font-size: 16px; display: inline-flex; align-items: center;"><i class="fa-regular fa-file-pdf"></i></a>
                                     <?php endif; ?>
                                 </div>
                             </td>
+                            <td><span style="font-weight: 500; color: #202124;"><?= e($row['divisi_terkait'] ?: '-'); ?></span></td>
                             <td>
-                                <div style="font-size: 11px; color: #70757a; font-weight: 500; text-transform: uppercase; margin-bottom: 2px;">
-                                    <?= $row['status'] === 'KELUAR' ? 'Ke' : 'Dari'; ?>
-                                </div>
-                                <div style="font-weight: 500; color: #202124;"><?= e($row['divisi_terkait'] ?: '-'); ?></div>
-                            </td>
-                            <td>
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <div style="width: 26px; height: 26px; border-radius: 50%; background-color: #e8f0fe; color: #1a73e8; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 11px; border: 1px solid #d2e3fc; flex-shrink: 0;">
-                                        <?= e($initial); ?>
-                                    </div>
-                                    <span style="font-size: 13px; font-weight: 500; color: #3c4043;"><?= e($picName); ?></span>
-                                </div>
+                                <span style="font-size: 13px; font-weight: 500; color: #3c4043;"><?= e($picName); ?></span>
                             </td>
                             <td><span class="badge badge--<?= e((string) $row['status_class']); ?>"><?= e((string) $row['status']); ?></span></td>
                             <td>
                                 <?php if (AuthController::role() !== 'user'): ?>
-                                <div class="table-actions" style="display: flex; gap: 8px; align-items: center; flex-direction: row;">
+                                <div class="table-actions" style="display: flex; gap: 8px; align-items: center; flex-direction: row; justify-content: center; padding: 0 6px;">
                                     <button type="button" class="btn-action btn-action--edit js-edit-log-btn"
                                             style="border: none; background: #e8f0fe; color: #1a73e8; width: 32px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s;"
                                             data-id="<?= e((string) $row['id']); ?>"
-                                            data-tanggal="<?= e((string) ($row['raw_date'] ?? '')); ?>"
+                                            data-tanggal-masuk="<?= e((string) ($row['raw_date'] ?? '')); ?>"
+                                            data-tanggal-keluar="<?= e((string) ($row['raw_date_keluar'] ?? '')); ?>"
                                             data-nama="<?= e((string) $row['item']); ?>"
-                                            data-status="<?= e((string) $row['status']); ?>"
                                             data-qty="<?= e((string) $row['qty']); ?>"
                                             data-satuan="<?= e((string) ($row['satuan'] ?? 'Unit')); ?>"
                                             data-harga="<?= e((string) ($row['harga'] ?? '')); ?>"
@@ -627,20 +708,14 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
             <input type="hidden" name="action" value="save_log_barang" id="logFormAction">
             <input type="hidden" name="id" value="" id="logId">
             <div class="log-modal__grid">
-                <label><span>Tanggal <span style="color:red;">*</span></span><input type="date" name="tanggal" id="logTanggal" required></label>
+                <label><span>Tanggal Masuk <span style="color:red;">*</span></span><input type="date" name="tanggal_masuk" id="logTanggalMasuk" required></label>
                 
-                <label><span>Status <span style="color:red;">*</span></span>
-                    <select name="status" id="logStatus" required>
-                        <option value="MASUK">Barang Masuk</option>
-                        <option value="KELUAR">Barang Keluar</option>
-                    </select>
-                </label>
+                <label id="logTanggalKeluarField"><span>Tanggal Keluar</span><input type="date" name="tanggal_keluar" id="logTanggalKeluar"></label>
                 
                 <label><span>Nama Barang <span style="color:red;">*</span></span><input type="text" name="nama_barang" id="logNamaBarang" placeholder="Masukkan nama barang" required></label>
                 
                 <label><span>Qty <span style="color:red;">*</span></span><input type="number" min="1" name="qty" id="logQty" value="1" required></label>
                 
-                <!-- 3 FIELD BARU -->
                 <label><span>Satuan <span style="color:red;">*</span></span>
                     <input type="text" name="satuan" id="logSatuan" placeholder="Contoh: Unit, Pcs, Box, Rim" required>
                 </label>
@@ -667,7 +742,7 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
                     <small id="logPdfHint" style="color: #70757a; font-size:11px; margin-top:2px;">Upload PDF jika ada.</small>
                 </label>
 
-                <label><span>Divisi</span>
+                <label><span>Divisi Pengelola</span>
                     <select name="divisi" id="logDivisi">
                         <option value="">-- Pilih Divisi --</option>
                         <?php foreach (($data['log_division_options'] ?? []) as $opt): ?>
@@ -678,7 +753,7 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
                     </select>
                 </label>
 
-                <label><span id="logDivisiTerkaitLabel">Dari Divisi</span>
+                <label><span>Divisi Peminta</span>
                     <select name="divisi_terkait" id="logDivisiTerkait">
                         <option value="">-- Pilih Divisi Terkait --</option>
                         <?php foreach (($data['log_division_options'] ?? []) as $opt): ?>
@@ -694,6 +769,33 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
             <div class="log-modal__actions">
                 <button type="button" class="btn btn--ghost js-close-log-modal">Batal</button>
                 <button type="submit" class="btn btn--primary log-modal__save-btn">Simpan</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Popup dialog for "Serahkan Barang" -->
+<div class="log-modal" id="deliverBarangModal" hidden aria-hidden="true">
+    <div class="log-modal__dialog">
+        <div class="log-modal__header">
+            <h3>Serahkan Barang</h3>
+            <button type="button" class="icon-round js-close-deliver-modal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form method="post" action="index.php?page=log-barang" class="log-modal__form">
+            <input type="hidden" name="action" value="complete_transfer">
+            <input type="hidden" name="id" id="deliverLogId">
+            <div class="log-modal__grid" style="display: flex; flex-direction: column; gap: 16px;">
+                <p style="font-size: 14px; color: #3c4043; margin: 0;">
+                    Konfirmasi penyerahan barang <strong id="deliverItemName" style="color: #1a73e8;"></strong> ke Divisi Peminta.
+                </p>
+                <label style="width: 100%;">
+                    <span>Tanggal Keluar <span style="color:red;">*</span></span>
+                    <input type="date" name="tanggal_keluar" id="deliverTanggalKeluar" required>
+                </label>
+            </div>
+            <div class="log-modal__actions" style="margin-top: 24px;">
+                <button type="button" class="btn btn--ghost js-close-deliver-modal">Batal</button>
+                <button type="submit" class="btn btn--primary">Konfirmasi Penyerahan</button>
             </div>
         </form>
     </div>
@@ -829,11 +931,42 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (searchInput) {
         searchInput.addEventListener('input', filterTable);
+        
+        // Auto-submit search query after debounce
+        var debounceTimer;
+        searchInput.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(function() {
+                var form = searchInput.closest('form');
+                if (form) {
+                    form.submit();
+                }
+            }, 400); // 400ms debounce
+        });
+        
+        // Preserve focus and position cursor at the end on page load
+        if (searchInput.value !== '') {
+            searchInput.focus();
+            var val = searchInput.value;
+            searchInput.value = '';
+            searchInput.value = val;
+        }
     }
     if (pageSizeSelect) {
         pageSizeSelect.addEventListener('change', function() {
             currentPage = 1;
             renderTable();
+        });
+    }
+    
+    // Auto-submit filter form on select change
+    var filterForm = document.querySelector('.log-filter-card--custom');
+    if (filterForm) {
+        var selects = filterForm.querySelectorAll('select');
+        selects.forEach(function(select) {
+            select.addEventListener('change', function() {
+                filterForm.submit();
+            });
         });
     }
     

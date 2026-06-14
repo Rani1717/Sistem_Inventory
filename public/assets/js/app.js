@@ -742,13 +742,23 @@
         var flowBarPercentage = isSmallFlowScreen ? 0.56 : (isTabletFlowScreen ? 0.62 : 0.68);
         var flowCategoryPercentage = isSmallFlowScreen ? 0.58 : (isTabletFlowScreen ? 0.66 : 0.72);
 
+        const colors = flowRows.map(function(row) {
+            const label = String(row.label || '').toUpperCase();
+            if (label === 'BARANG MASUK') {
+                return '#9184E8'; // style sekarang
+            } else if (label === 'BARANG KELUAR') {
+                return '#F58B82'; // merah/oranye kontras
+            }
+            return '#CBD5E1';
+        });
+
         new Chart(target, {
             type: 'bar',
             data: {
                 labels: flowLabels,
                 datasets: [{
                     data: flowData,
-                    backgroundColor: '#9184E8',
+                    backgroundColor: colors,
                     borderWidth: 0,
                     borderSkipped: 'bottom',
                     borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
@@ -758,12 +768,34 @@
                     order: 2
                 }]
             },
+            plugins: [{
+                id: 'barLabels',
+                afterDatasetsDraw: function(chart) {
+                    const ctx = chart.ctx;
+                    ctx.save();
+                    ctx.font = '700 12px Montserrat, sans-serif';
+                    ctx.fillStyle = '#1e293b';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+
+                    chart.data.datasets.forEach(function(dataset, datasetIndex) {
+                        const meta = chart.getDatasetMeta(datasetIndex);
+                        meta.data.forEach(function(bar, index) {
+                            const value = dataset.data[index];
+                            if (value !== null && typeof value !== 'undefined') {
+                                ctx.fillText(String(value), bar.x, bar.y - 6);
+                            }
+                        });
+                    });
+                    ctx.restore();
+                }
+            }],
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 layout: {
                     padding: {
-                        top: isSmallFlowScreen ? 4 : 8,
+                        top: isSmallFlowScreen ? 16 : 22,
                         right: isSmallFlowScreen ? 2 : 6,
                         bottom: isSmallFlowScreen ? 0 : 4,
                         left: isSmallFlowScreen ? 0 : 4
@@ -1478,9 +1510,10 @@
     var modalTitle = document.getElementById('logModalTitle');
     var formAction = document.getElementById('logFormAction');
     var idInput = document.getElementById('logId');
-    var tanggalInput = document.getElementById('logTanggal');
+    var tanggalMasukInput = document.getElementById('logTanggalMasuk');
+    var tanggalKeluarField = document.getElementById('logTanggalKeluarField');
+    var tanggalKeluarInput = document.getElementById('logTanggalKeluar');
     var namaInput = document.getElementById('logNamaBarang');
-    var statusInput = document.getElementById('logStatus');
     var qtyInput = document.getElementById('logQty');
     var satuanInput = document.getElementById('logSatuan');
     var hargaInput = document.getElementById('logHarga');
@@ -1488,35 +1521,9 @@
     var noPoInput = document.getElementById('logNoPo');
     var divisiInput = document.getElementById('logDivisi');
     var divisiTerkaitInput = document.getElementById('logDivisiTerkait');
-    var divisiTerkaitLabel = document.getElementById('logDivisiTerkaitLabel');
     var keteranganInput = document.getElementById('logKeterangan');
     var pdfInput = document.getElementById('logPdf');
     var pdfHint = document.getElementById('logPdfHint');
-
-    function toggleHargaRequired() {
-        if (statusInput && hargaInput) {
-            if (statusInput.value === 'KELUAR') {
-                hargaInput.required = false;
-                var reqStar = hargaInput.parentNode.querySelector('.req-star');
-                if (reqStar) reqStar.hidden = true;
-            } else {
-                hargaInput.required = true;
-                var reqStar = hargaInput.parentNode.querySelector('.req-star');
-                if (reqStar) reqStar.hidden = false;
-            }
-        }
-        if (statusInput && divisiTerkaitLabel) {
-            if (statusInput.value === 'KELUAR') {
-                divisiTerkaitLabel.textContent = 'Ke Divisi';
-            } else {
-                divisiTerkaitLabel.textContent = 'Dari Divisi';
-            }
-        }
-    }
-
-    if (statusInput) {
-        statusInput.addEventListener('change', toggleHargaRequired);
-    }
 
     function openModal() {
         if (!modal) return;
@@ -1524,7 +1531,6 @@
         modal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('modal-open');
         document.body.classList.add('has-modal-open');
-        toggleHargaRequired();
     }
     function closeModal() {
         if (modal) {
@@ -1540,9 +1546,10 @@
         formAction.value = 'save_log_barang';
         if (modalTitle) modalTitle.textContent = 'Tambah Log Barang';
         if (idInput) idInput.value = '';
-        if (tanggalInput) tanggalInput.value = new Date().toISOString().slice(0, 10);
+        if (tanggalMasukInput) tanggalMasukInput.value = new Date().toISOString().slice(0, 10);
+        if (tanggalKeluarField) tanggalKeluarField.hidden = true;
+        if (tanggalKeluarInput) tanggalKeluarInput.value = '';
         if (namaInput) namaInput.value = '';
-        if (statusInput) statusInput.value = 'MASUK';
         if (qtyInput) qtyInput.value = '1';
         if (satuanInput) satuanInput.value = '';
         if (hargaInput) hargaInput.value = '';
@@ -1553,7 +1560,6 @@
         if (keteranganInput) keteranganInput.value = '';
         if (pdfInput) pdfInput.value = '';
         if (pdfHint) pdfHint.textContent = 'Upload PDF jika ada.';
-        toggleHargaRequired();
     }
 
     if (modal) {
@@ -1590,9 +1596,10 @@
             formAction.value = 'edit_log_barang';
             if (modalTitle) modalTitle.textContent = 'Edit Log Barang';
             if (idInput) idInput.value = btn.getAttribute('data-id') || '';
-            if (tanggalInput) tanggalInput.value = btn.getAttribute('data-tanggal') || '';
+            if (tanggalMasukInput) tanggalMasukInput.value = btn.getAttribute('data-tanggal-masuk') || '';
+            if (tanggalKeluarField) tanggalKeluarField.hidden = false;
+            if (tanggalKeluarInput) tanggalKeluarInput.value = btn.getAttribute('data-tanggal-keluar') || '';
             if (namaInput) namaInput.value = btn.getAttribute('data-nama') || '';
-            if (statusInput) statusInput.value = btn.getAttribute('data-status') || 'MASUK';
             if (qtyInput) qtyInput.value = btn.getAttribute('data-qty') || '1';
             if (satuanInput) satuanInput.value = btn.getAttribute('data-satuan') || '';
             if (hargaInput) {
@@ -1613,9 +1620,58 @@
         });
     });
 
+    // Deliver Modal Setup
+    var deliverModal = document.getElementById('deliverBarangModal');
+    var closeDeliverBtns = document.querySelectorAll('.js-close-deliver-modal');
+    var deliverLogId = document.getElementById('deliverLogId');
+    var deliverItemName = document.getElementById('deliverItemName');
+    var deliverTanggalKeluar = document.getElementById('deliverTanggalKeluar');
+
+    function openDeliverModal(id, name) {
+        if (!deliverModal) return;
+        if (deliverLogId) deliverLogId.value = id;
+        if (deliverItemName) deliverItemName.textContent = name;
+        if (deliverTanggalKeluar) deliverTanggalKeluar.value = new Date().toISOString().slice(0, 10);
+        deliverModal.hidden = false;
+        deliverModal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('modal-open');
+        document.body.classList.add('has-modal-open');
+    }
+
+    function closeDeliverModal() {
+        if (deliverModal) {
+            deliverModal.hidden = true;
+            deliverModal.setAttribute('aria-hidden', 'true');
+        }
+        document.body.classList.remove('modal-open');
+        document.body.classList.remove('has-modal-open');
+    }
+
+    document.querySelectorAll('.js-deliver-log-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id') || '';
+            var name = btn.getAttribute('data-nama') || '';
+            openDeliverModal(id, name);
+        });
+    });
+
+    closeDeliverBtns.forEach(function (btn) {
+        btn.addEventListener('click', function (event) {
+            event.preventDefault();
+            closeDeliverModal();
+        });
+    });
+
+    if (deliverModal) {
+        deliverModal.addEventListener('click', function (event) {
+            if (event.target === deliverModal) closeDeliverModal();
+        });
+    }
+
     document.addEventListener('keydown', function (event) {
-        if (event.key === 'Escape' && modal && !modal.hidden) {
-            closeModal();
+        if (event.key === 'Escape') {
+            if (modal && !modal.hidden) closeModal();
+            if (deliverModal && !deliverModal.hidden) closeDeliverModal();
         }
     });
 
