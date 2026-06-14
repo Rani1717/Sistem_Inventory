@@ -4294,7 +4294,7 @@ SQL);
             [$title],
             ['Diexport: ' . date('d-m-Y H:i:s')],
             [],
-            ['No', 'Tanggal', 'Waktu Input', 'Nama Barang', 'Qty', 'Satuan', 'Harga', 'Status', 'Divisi', 'Divisi Terkait', 'No. PO', 'PIC', 'Log No', 'Keterangan'],
+            ['No', 'Tanggal', 'Waktu Input', 'Nama Barang', 'Qty', 'Satuan', 'Harga', 'Status', 'Divisi', 'Divisi Terkait', 'No. PO', 'Dokumen', 'PIC', 'Log No', 'Keterangan'],
         ];
 
         $number = 1;
@@ -4314,15 +4314,14 @@ SQL);
 
             $noPo = trim((string) ($row['no_po'] ?? ''));
             if ($noPo === '' || $noPo === '-') {
-                $poStr = '-';
-            } else {
-                $pdfPath = trim((string) ($row['pdf'] ?? ''));
-                if ($pdfPath !== '') {
-                    $poUrl = 'index.php?page=log-barang&action=download_po&file=' . rawurlencode($pdfPath);
-                    $poStr = '=HYPERLINK("' . $poUrl . '", "' . $noPo . ' (ada lampiran)")';
-                } else {
-                    $poStr = $noPo;
-                }
+                $noPo = '-';
+            }
+
+            $docStr = '-';
+            $pdfPath = trim((string) ($row['pdf'] ?? ''));
+            if ($pdfPath !== '') {
+                $poUrl = 'index.php?page=log-barang&action=download_po&file=' . rawurlencode($pdfPath);
+                $docStr = '=HYPERLINK("' . $poUrl . '", "Lihat Dokumen")';
             }
 
             $keteranganStr = trim((string) ($row['keterangan'] ?? ''));
@@ -4351,7 +4350,8 @@ SQL);
                 (string) ($row['status'] ?? '-'),
                 $divisionStr,
                 $divTerkaitStr,
-                $poStr,
+                $noPo,
+                $docStr,
                 $picStr,
                 (string) ($row['log_no'] ?? '-'),
                 $keteranganStr,
@@ -4359,8 +4359,8 @@ SQL);
         }
 
         $colWidths = [];
-        $minWidths = [6, 14, 14, 25, 8, 10, 16, 12, 18, 18, 16, 18, 20, 25];
-        for ($i = 0; $i < 14; $i++) {
+        $minWidths = [6, 14, 14, 25, 8, 10, 16, 12, 18, 18, 16, 16, 18, 20, 25];
+        for ($i = 0; $i < 15; $i++) {
             $colWidths[$i] = $minWidths[$i];
         }
 
@@ -4400,7 +4400,7 @@ SQL);
                     $style = ' s="1"';
                     $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
                 } else {
-                    if ($cIndex === 0 || $cIndex === 1 || $cIndex === 2 || $cIndex === 12) {
+                    if ($cIndex === 0 || $cIndex === 1 || $cIndex === 2 || $cIndex === 13) {
                         $style = ' s="8"';
                     } elseif ($cIndex === 4) {
                         $style = ' s="4"';
@@ -4449,7 +4449,7 @@ SQL);
 
         $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            . '<dimension ref="A1:N' . max(4, count($sheetRows)) . '"/>'
+            . '<dimension ref="A1:O' . max(4, count($sheetRows)) . '"/>'
             . '<sheetViews>'
             . '<sheetView workbookViewId="0">'
             . '<pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>'
@@ -4459,8 +4459,8 @@ SQL);
             . '<cols>' . $cols . '</cols>'
             . '<sheetData>' . implode('', $xmlRows) . '</sheetData>'
             . '<mergeCells count="2">'
-            . '<mergeCell ref="A1:N1"/>'
-            . '<mergeCell ref="A2:N2"/>'
+            . '<mergeCell ref="A1:O1"/>'
+            . '<mergeCell ref="A2:O2"/>'
             . '</mergeCells>'
             . '</worksheet>';
 
@@ -4499,8 +4499,8 @@ SQL);
         <xf numFmtId="0" fontId="2" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
         <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
         <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
         <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
     </cellXfs>
     <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
@@ -4530,36 +4530,38 @@ SQL);
     {
         $columns = [
             ['title' => 'No', 'key' => 'no', 'width' => 20, 'align' => 'C'],
-            ['title' => 'Tanggal', 'key' => 'date', 'width' => 45, 'align' => 'C'],
-            ['title' => 'Waktu Input', 'key' => 'time', 'width' => 45, 'align' => 'C'],
-            ['title' => 'Nama Barang', 'key' => 'item', 'width' => 90, 'align' => 'L'],
+            ['title' => 'Tanggal', 'key' => 'date', 'width' => 42, 'align' => 'C'],
+            ['title' => 'Waktu Input', 'key' => 'time', 'width' => 42, 'align' => 'C'],
+            ['title' => 'Nama Barang', 'key' => 'item', 'width' => 85, 'align' => 'L'],
             ['title' => 'Qty', 'key' => 'qty', 'width' => 20, 'align' => 'C'],
-            ['title' => 'Satuan', 'key' => 'satuan', 'width' => 35, 'align' => 'L'],
-            ['title' => 'Harga', 'key' => 'harga', 'width' => 65, 'align' => 'R'],
-            ['title' => 'Status', 'key' => 'status', 'width' => 45, 'align' => 'C'],
-            ['title' => 'Divisi', 'key' => 'division', 'width' => 60, 'align' => 'L'],
-            ['title' => 'Divisi Terkait', 'key' => 'divisi_terkait', 'width' => 60, 'align' => 'L'],
-            ['title' => 'No. PO', 'key' => 'no_po', 'width' => 65, 'align' => 'L'],
-            ['title' => 'PIC', 'key' => 'pic', 'width' => 70, 'align' => 'L'],
-            ['title' => 'Log No', 'key' => 'log_no', 'width' => 75, 'align' => 'C'],
-            ['title' => 'Keterangan', 'key' => 'keterangan', 'width' => 107, 'align' => 'L'],
+            ['title' => 'Satuan', 'key' => 'satuan', 'width' => 32, 'align' => 'L'],
+            ['title' => 'Harga', 'key' => 'harga', 'width' => 60, 'align' => 'R'],
+            ['title' => 'Status', 'key' => 'status', 'width' => 38, 'align' => 'C'],
+            ['title' => 'Divisi', 'key' => 'division', 'width' => 55, 'align' => 'L'],
+            ['title' => 'Divisi Terkait', 'key' => 'divisi_terkait', 'width' => 55, 'align' => 'L'],
+            ['title' => 'No. PO', 'key' => 'no_po', 'width' => 55, 'align' => 'L'],
+            ['title' => 'Dokumen', 'key' => 'doc', 'width' => 38, 'align' => 'C'],
+            ['title' => 'PIC', 'key' => 'pic', 'width' => 62, 'align' => 'L'],
+            ['title' => 'Log No', 'key' => 'log_no', 'width' => 68, 'align' => 'C'],
+            ['title' => 'Keterangan', 'key' => 'keterangan', 'width' => 104, 'align' => 'L'],
         ];
 
         $charMap = [
             'no' => 4,
             'date' => 10,
             'time' => 8,
-            'item' => 20,
+            'item' => 18,
             'qty' => 4,
-            'satuan' => 8,
-            'harga' => 14,
+            'satuan' => 7,
+            'harga' => 12,
             'status' => 8,
-            'division' => 12,
-            'divisi_terkait' => 12,
-            'no_po' => 12,
-            'pic' => 14,
-            'log_no' => 16,
-            'keterangan' => 22,
+            'division' => 11,
+            'divisi_terkait' => 11,
+            'no_po' => 11,
+            'doc' => 8,
+            'pic' => 12,
+            'log_no' => 14,
+            'keterangan' => 20,
         ];
 
         $normalizeText = function (string $text): string {
@@ -4650,21 +4652,20 @@ SQL);
 
         $pageWidth = 842;
         $pageHeight = 595;
-        $margin = 20;
-        $top = $pageHeight - 20;
-        $bottomMargin = 30;
+        $margin = 33;
+        $top = $pageHeight - $margin;
+        $bottomMargin = 40;
         $tableX = $margin;
-        $lineHeight = 10;
-        $cellPaddingX = 4;
-        $cellPaddingY = 4;
+        $lineHeight = 9;
+        $cellPaddingX = 3;
+        $cellPaddingY = 3;
         $rowGap = 2;
 
-        $headerColor = '1.0 0.85 0.40';
-        $headerStroke = '0 0 0';
-        $headerTextColor = '0 0 0';
-        $textColor = '0.15 0.18 0.22';
-        $border = '0 0 0';
-        $altFill = '0.96 0.96 0.96';
+        $blue = '0.18 0.41 0.67';
+        $lightBlue = '0.90 0.95 0.99';
+        $textColor = '0.12 0.18 0.25';
+        $borderColor = '0.75 0.81 0.89';
+        $altFill = '0.96 0.97 0.99';
 
         $objects = [];
         $objects[1] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
@@ -4674,7 +4675,7 @@ SQL);
         $current = [];
         $y = $top;
 
-        $addText = function (float $x, float $yPos, string $text, int $fontId = 1, float $fontSize = 7.5, string $color = '0 0 0') use (&$current, $escape) {
+        $addText = function (float $x, float $yPos, string $text, int $fontId = 1, float $fontSize = 7.0, string $color = '0 0 0') use (&$current, $escape) {
             $current[] = 'BT';
             $current[] = sprintf('/F%d %.1f Tf', $fontId, $fontSize);
             $current[] = $color . ' rg';
@@ -4683,42 +4684,49 @@ SQL);
             $current[] = 'ET';
         };
 
-        $addRect = function (float $x, float $yPos, float $w, float $h, ?string $fill = null, string $stroke = '0 0 0', float $lineWidth = 0.5) use (&$current) {
+        $addRect = function (float $x, float $yPos, float $w, float $h, ?string $fill = null, ?string $stroke = null, float $lineWidth = 0.5) use (&$current) {
             $current[] = sprintf('%.2f w', $lineWidth);
             if ($fill !== null) {
                 $current[] = $fill . ' rg';
             }
-            $current[] = $stroke . ' RG';
-            $current[] = sprintf('%.2f %.2f %.2f %.2f re %s', $x, $yPos, $w, $h, $fill !== null ? 'B' : 'S');
+            if ($stroke !== null) {
+                $current[] = $stroke . ' RG';
+            }
+            $current[] = sprintf('%.2f %.2f %.2f %.2f re %s', $x, $yPos, $w, $h, ($fill !== null && $stroke !== null) ? 'B' : ($fill !== null ? 'f' : 'S'));
         };
 
-        $startPage = function () use (&$current, &$y, $top, $title, $margin, $addText, $textColor, $periodeText) {
+        $startPage = function () use (&$current, &$y, $top, $title, $margin, $pageWidth, $addRect, $addText, $blue, $lightBlue, $textColor, $borderColor, $periodeText) {
             $current = [];
             $y = $top;
-            $addText($margin, $y - 2, $title, 2, 12, '0 0 0');
-            $addText($margin, $y - 14, $periodeText, 1, 8, $textColor);
-            $addText($margin, $y - 24, 'Diexport: ' . date('d-m-Y H:i:s'), 1, 7, $textColor);
-            $y -= 38;
+            
+            // Render Header Banner
+            $addRect($margin, $y - 44, $pageWidth - ($margin * 2), 44, $blue, null, 0);
+            $addText($margin + 12, $y - 18, strtoupper($title), 2, 14, '1 1 1');
+            $addText($margin + 12, $y - 32, 'Sistem Inventory & Monitoring', 1, 8.5, '1 1 1');
+            $y -= 60;
+
+            // Render Info Bar
+            $infoText = 'Diexport: ' . date('d-m-Y H:i:s') . '   |   ' . $periodeText;
+            $addRect($margin, $y - 18, $pageWidth - ($margin * 2), 18, $lightBlue, $borderColor, 0.8);
+            $addText($margin + 10, $y - 12, $infoText, 1, 8, $textColor);
+            $y -= 28;
         };
 
-        $drawHeader = function () use (&$y, $columns, $tableX, $wrappedHeaders, $maxHeaderLines, $addRect, $addText, $headerColor, $headerStroke, $headerTextColor) {
+        $drawHeader = function () use (&$y, $columns, $tableX, $wrappedHeaders, $maxHeaderLines, $addRect, $addText, $blue, $borderColor) {
             $headerHeight = max(18, ($maxHeaderLines * 9) + 6);
             $rowY = $y - $headerHeight;
             $x = $tableX;
             foreach ($columns as $column) {
                 $key = $column['key'];
-                $addRect($x, $rowY, $column['width'], $headerHeight, $headerColor, $headerStroke, 0.6);
+                $addRect($x, $rowY, $column['width'], $headerHeight, $blue, $borderColor, 0.7);
                 
                 $lines = $wrappedHeaders[$key];
                 $lineCount = count($lines);
                 $lineY = $rowY + ($headerHeight / 2) + (($lineCount - 1) * 4.5) - 3;
                 foreach ($lines as $line) {
-                    $lineWidth = strlen($line) * 3.8;
-                    $textX = $x + 4;
-                    if (($column['align'] ?? 'L') === 'C') {
-                        $textX = $x + ($column['width'] / 2) - ($lineWidth / 2);
-                    }
-                    $addText($textX, $lineY, $line, 2, 7.5, $headerTextColor);
+                    $lineWidth = strlen($line) * 3.5;
+                    $textX = $x + ($column['width'] / 2) - ($lineWidth / 2);
+                    $addText($textX, $lineY, $line, 2, 7.0, '1 1 1');
                     $lineY -= 9;
                 }
                 $x += $column['width'];
@@ -4726,9 +4734,8 @@ SQL);
             $y = $rowY - 2;
         };
 
-        $finishPage = function () use (&$streams, &$current, $margin, $bottomMargin, $addText, $textColor) {
+        $finishPage = function () use (&$streams, &$current) {
             if (!empty($current)) {
-                $addText($margin, $bottomMargin - 12, '* = ada lampiran PO', 1, 7, $textColor);
                 $streams[] = implode("\n", $current);
             }
             $current = [];
@@ -4746,12 +4753,13 @@ SQL);
             if ($noPoVal === '' || $noPoVal === '-') {
                 $noPoStr = '-';
             } else {
-                $pdfPath = trim((string) ($row['pdf'] ?? ''));
-                if ($pdfPath !== '') {
-                    $noPoStr = $noPoVal . '*';
-                } else {
-                    $noPoStr = $noPoVal;
-                }
+                $noPoStr = $noPoVal;
+            }
+
+            $docStr = '-';
+            $pdfPath = trim((string) ($row['pdf'] ?? ''));
+            if ($pdfPath !== '') {
+                $docStr = 'Ada';
             }
 
             $divisionStr = trim((string) ($row['division'] ?? ''));
@@ -4780,6 +4788,7 @@ SQL);
                 'division' => $divisionStr,
                 'divisi_terkait' => $divTerkaitStr,
                 'no_po' => $noPoStr,
+                'doc' => $docStr,
                 'pic' => $picStr,
                 'log_no' => (string) ($row['log_no'] ?? '-'),
                 'keterangan' => $keteranganStr,
@@ -4822,18 +4831,18 @@ SQL);
                     }
                 }
 
-                $addRect($x, $rowY, $column['width'], $rowHeight, $cellFill, $border, 0.5);
+                $addRect($x, $rowY, $column['width'], $rowHeight, $cellFill, $borderColor, 0.5);
                 
                 $lineY = $rowY + $rowHeight - 10;
                 foreach ($wrapped[$key] as $line) {
-                    $lineWidth = strlen($line) * 3.8;
+                    $lineWidth = strlen($line) * 3.5;
                     $textX = $x + $cellPaddingX;
                     if (($column['align'] ?? 'L') === 'C') {
                         $textX = $x + max(2, ($column['width'] - $lineWidth) / 2);
                     } elseif (($column['align'] ?? 'L') === 'R') {
                         $textX = $x + $column['width'] - $lineWidth - $cellPaddingX;
                     }
-                    $addText($textX, $lineY, $line, $fontId, 7.5, $fontColor);
+                    $addText($textX, $lineY, $line, $fontId, 7.0, $fontColor);
                     $lineY -= $lineHeight;
                 }
                 $x += $column['width'];
@@ -4842,13 +4851,14 @@ SQL);
         }
 
         $totalText = 'Total Transaksi: ' . count($rows) . ' data';
-        if (($y - 15) < $bottomMargin) {
+        if (($y - 24) < $bottomMargin) {
             $finishPage();
             $startPage();
             $drawHeader();
         }
-        $addText($tableX, $y - 12, $totalText, 2, 8.5, $textColor);
-        $y -= 15;
+        $addRect($margin, $y - 18, $pageWidth - ($margin * 2), 18, $lightBlue, $borderColor, 0.8);
+        $addText($margin + 10, $y - 12, $totalText, 2, 8, $textColor);
+        $y -= 28;
 
         $finishPage();
         if (empty($streams)) {
