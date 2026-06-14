@@ -557,7 +557,7 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
                             <td><span class="badge badge--<?= e((string) $row['status_class']); ?>"><?= e((string) $row['status']); ?></span></td>
                             <td>
                                 <?php if (AuthController::role() !== 'user'): ?>
-                                <div class="table-actions" style="display: flex; gap: 8px; align-items: center;">
+                                <div class="table-actions" style="display: flex; gap: 8px; align-items: center; flex-direction: row;">
                                     <button type="button" class="btn-action btn-action--edit js-edit-log-btn"
                                             style="border: none; background: #e8f0fe; color: #1a73e8; width: 32px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s;"
                                             data-id="<?= e((string) $row['id']); ?>"
