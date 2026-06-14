@@ -454,10 +454,10 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
         
         <label>
             <span>STATUS</span>
-            <select name="log_status">
+            <select name="log_status" style="min-width: 200px;">
                 <option value="">Semua Status</option>
-                <option value="MASUK" <?= ($selected['status'] ?? '') === 'MASUK' ? 'selected' : ''; ?>>MASUK (Belum Diserahkan)</option>
-                <option value="SELESAI" <?= ($selected['status'] ?? '') === 'SELESAI' ? 'selected' : ''; ?>>SELESAI (Sudah Diserahkan)</option>
+                <option value="MASUK" <?= ($selected['status'] ?? '') === 'MASUK' ? 'selected' : ''; ?>>Masuk (Barang Masuk)</option>
+                <option value="SELESAI" <?= ($selected['status'] ?? '') === 'SELESAI' ? 'selected' : ''; ?>>Selesai (Barang Keluar)</option>
             </select>
         </label>
 
