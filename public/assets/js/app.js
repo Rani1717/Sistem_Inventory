@@ -1482,11 +1482,41 @@
     var namaInput = document.getElementById('logNamaBarang');
     var statusInput = document.getElementById('logStatus');
     var qtyInput = document.getElementById('logQty');
+    var satuanInput = document.getElementById('logSatuan');
+    var hargaInput = document.getElementById('logHarga');
+    var picInput = document.getElementById('logPic');
     var noPoInput = document.getElementById('logNoPo');
     var divisiInput = document.getElementById('logDivisi');
+    var divisiTerkaitInput = document.getElementById('logDivisiTerkait');
+    var divisiTerkaitLabel = document.getElementById('logDivisiTerkaitLabel');
     var keteranganInput = document.getElementById('logKeterangan');
     var pdfInput = document.getElementById('logPdf');
     var pdfHint = document.getElementById('logPdfHint');
+
+    function toggleHargaRequired() {
+        if (statusInput && hargaInput) {
+            if (statusInput.value === 'KELUAR') {
+                hargaInput.required = false;
+                var reqStar = hargaInput.parentNode.querySelector('.req-star');
+                if (reqStar) reqStar.hidden = true;
+            } else {
+                hargaInput.required = true;
+                var reqStar = hargaInput.parentNode.querySelector('.req-star');
+                if (reqStar) reqStar.hidden = false;
+            }
+        }
+        if (statusInput && divisiTerkaitLabel) {
+            if (statusInput.value === 'KELUAR') {
+                divisiTerkaitLabel.textContent = 'Ke Divisi';
+            } else {
+                divisiTerkaitLabel.textContent = 'Dari Divisi';
+            }
+        }
+    }
+
+    if (statusInput) {
+        statusInput.addEventListener('change', toggleHargaRequired);
+    }
 
     function openModal() {
         if (!modal) return;
@@ -1494,6 +1524,7 @@
         modal.setAttribute('aria-hidden', 'false');
         document.body.classList.add('modal-open');
         document.body.classList.add('has-modal-open');
+        toggleHargaRequired();
     }
     function closeModal() {
         if (modal) {
@@ -1513,11 +1544,16 @@
         if (namaInput) namaInput.value = '';
         if (statusInput) statusInput.value = 'MASUK';
         if (qtyInput) qtyInput.value = '1';
+        if (satuanInput) satuanInput.value = '';
+        if (hargaInput) hargaInput.value = '';
+        if (picInput) picInput.value = picInput.getAttribute('data-default-user-id') || '';
         if (noPoInput) noPoInput.value = '';
         if (divisiInput) divisiInput.value = '';
+        if (divisiTerkaitInput) divisiTerkaitInput.value = '';
         if (keteranganInput) keteranganInput.value = '';
         if (pdfInput) pdfInput.value = '';
         if (pdfHint) pdfHint.textContent = 'Upload PDF jika ada.';
+        toggleHargaRequired();
     }
 
     if (modal) {
@@ -1558,8 +1594,15 @@
             if (namaInput) namaInput.value = btn.getAttribute('data-nama') || '';
             if (statusInput) statusInput.value = btn.getAttribute('data-status') || 'MASUK';
             if (qtyInput) qtyInput.value = btn.getAttribute('data-qty') || '1';
+            if (satuanInput) satuanInput.value = btn.getAttribute('data-satuan') || '';
+            if (hargaInput) {
+                var rawHarga = btn.getAttribute('data-harga') || '';
+                hargaInput.value = (rawHarga !== '' && parseFloat(rawHarga) > 0) ? parseFloat(rawHarga) : '';
+            }
+            if (picInput) picInput.value = btn.getAttribute('data-pic') || '';
             if (noPoInput) noPoInput.value = btn.getAttribute('data-no-po') || '';
             if (divisiInput) divisiInput.value = btn.getAttribute('data-divisi') || '';
+            if (divisiTerkaitInput) divisiTerkaitInput.value = btn.getAttribute('data-divisi-terkait') || '';
             if (keteranganInput) keteranganInput.value = btn.getAttribute('data-keterangan') || '';
             if (pdfInput) pdfInput.value = '';
             if (pdfHint) {

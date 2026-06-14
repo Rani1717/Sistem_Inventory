@@ -163,6 +163,7 @@ class PageController
         }
         if ($page === 'log-barang') {
             $data['log_division_options'] = $this->fetchInventoryDivisionOptions();
+            $data['users_options'] = (new AuthModel())->fetchUsersForAdmin('', 'active');
         }
         if ($page === 'routine-monitoring') {
             $data['routine_monitoring'] = $this->buildRoutineMonitoringData($filters);
@@ -228,7 +229,7 @@ class PageController
 
     private function resolveFilters(): array
     {
-        $keys = ['division_code', 'division_id', 'user', 'email', 'display_division', 'user_page', 'focus_item', 'log_year', 'log_month', 'log_date', 'log_status', 'log_sort', 'log_search', 'complaint_status', 'complaint_division', 'complaint_search', 'complaint_date_from', 'complaint_date_to', 'report_date_from', 'report_date_to', 'report_division', 'report_month', 'report_year', 'report_user_role', 'report_user_division', 'report_all', 'report_category', 'routine_period', 'routine_date', 'routine_week', 'routine_month', 'routine_year'];
+        $keys = ['division_code', 'division_id', 'user', 'email', 'display_division', 'user_page', 'focus_item', 'log_year', 'log_month', 'log_date', 'log_month_year', 'log_status', 'log_sort', 'log_search', 'complaint_status', 'complaint_division', 'complaint_search', 'complaint_date_from', 'complaint_date_to', 'report_date_from', 'report_date_to', 'report_division', 'report_month', 'report_year', 'report_user_role', 'report_user_division', 'report_all', 'report_category', 'routine_period', 'routine_date', 'routine_week', 'routine_month', 'routine_year'];
         $persisted = $_SESSION['spmt_context'] ?? [];
 
         if (isset($_GET['reset_context']) && $_GET['reset_context'] === '1') {
@@ -297,7 +298,14 @@ class PageController
         }
 
         if ($page === 'log-barang') {
-            $logPeriodKeys = ['log_year', 'log_month', 'log_date'];
+            if (isset($_GET['log_month_year'])) {
+                unset($persisted['log_year'], $persisted['log_month']);
+            }
+            if (isset($_GET['log_year']) || isset($_GET['log_month'])) {
+                unset($persisted['log_month_year']);
+            }
+            
+            $logPeriodKeys = ['log_year', 'log_month', 'log_date', 'log_month_year'];
             $hasLogPeriodQuery = false;
             foreach ($logPeriodKeys as $logPeriodKey) {
                 if (array_key_exists($logPeriodKey, $_GET)) {
@@ -3927,21 +3935,71 @@ SQL);
             $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER surat_pemesanan_pdf');
         } catch (Throwable $e) {
         }
+        try {
+            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS satuan VARCHAR(20) NULL AFTER qty');
+        } catch (Throwable $e) {
+        }
+        try {
+            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS harga DECIMAL(15, 2) NULL DEFAULT 0.00 AFTER satuan');
+        } catch (Throwable $e) {
+        }
+        try {
+            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS pic_id BIGINT(20) NULL DEFAULT NULL AFTER harga');
+            $pdo->exec('ALTER TABLE log_barang MODIFY COLUMN pic_id BIGINT(20) NULL DEFAULT NULL');
+        } catch (Throwable $e) {
+        }
+        try {
+            $pdo->exec('ALTER TABLE log_barang ADD COLUMN IF NOT EXISTS divisi_terkait VARCHAR(255) NULL AFTER divisi');
+        } catch (Throwable $e) {
+        }
+        try {
+            $pdo->exec('ALTER TABLE log_barang ADD CONSTRAINT fk_log_barang_pic FOREIGN KEY (pic_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE');
+        } catch (Throwable $e) {
+        }
     }
 
     private function insertLogBarang(PDO $pdo, array $payload, array $files): void
     {
-        $stmt = $pdo->prepare('INSERT INTO log_barang (log_no, tanggal, nama_barang, status, divisi, inventory_database, sumber_tabel, id_inventaris, qty, no_po, surat_pemesanan_pdf, dibuat_oleh_user_id, keterangan, created_at) VALUES (:log_no, :tanggal, :nama_barang, :status, :divisi, NULL, NULL, NULL, :qty, :no_po, :pdf, :user_id, :keterangan, NOW())');
+        $status = $this->normalizeLogStatus((string) ($payload['status'] ?? 'MASUK'));
+        $satuan = trim((string) ($payload['satuan'] ?? ''));
+        if ($satuan === '') {
+            throw new RuntimeException('Satuan wajib diisi.');
+        }
+        $currUserId = (int) ($_SESSION['auth']['id'] ?? $_SESSION['auth']['user_id'] ?? 1);
+        $picId = (int) ($payload['pic_id'] ?? $currUserId);
+        if ($picId <= 0) {
+            throw new RuntimeException('PIC wajib dipilih.');
+        }
+        $harga = 0.00;
+        if ($status === 'MASUK') {
+            $hargaInput = trim((string) ($payload['harga'] ?? ''));
+            if ($hargaInput === '') {
+                throw new RuntimeException('Harga wajib diisi untuk barang masuk.');
+            }
+            $harga = (double) $hargaInput;
+            if ($harga < 0) {
+                throw new RuntimeException('Harga tidak boleh negatif.');
+            }
+        } else {
+            $hargaInput = trim((string) ($payload['harga'] ?? ''));
+            $harga = $hargaInput !== '' ? (double) $hargaInput : 0.00;
+        }
+
+        $stmt = $pdo->prepare('INSERT INTO log_barang (log_no, tanggal, nama_barang, status, divisi, divisi_terkait, inventory_database, sumber_tabel, id_inventaris, qty, satuan, harga, pic_id, no_po, surat_pemesanan_pdf, dibuat_oleh_user_id, keterangan, created_at) VALUES (:log_no, :tanggal, :nama_barang, :status, :divisi, :divisi_terkait, NULL, NULL, NULL, :qty, :satuan, :harga, :pic_id, :no_po, :pdf, :user_id, :keterangan, NOW())');
         $stmt->execute([
             'log_no' => $this->generateLogNo($pdo),
             'tanggal' => $this->requiredDate((string) ($payload['tanggal'] ?? '')),
             'nama_barang' => $this->requiredText((string) ($payload['nama_barang'] ?? ''), 'Nama barang wajib diisi.'),
-            'status' => $this->normalizeLogStatus((string) ($payload['status'] ?? 'MASUK')),
+            'status' => $status,
             'divisi' => $this->clean((string) ($payload['divisi'] ?? '')),
+            'divisi_terkait' => $this->clean((string) ($payload['divisi_terkait'] ?? '')),
             'qty' => max(1, (int) ($payload['qty'] ?? 1)),
+            'satuan' => $satuan,
+            'harga' => $harga,
+            'pic_id' => $picId,
             'no_po' => $this->clean((string) ($payload['no_po'] ?? '')),
             'pdf' => $this->handleLogPdfUpload($files, 'surat_pemesanan_pdf'),
-            'user_id' => (int) ($_SESSION['auth']['user_id'] ?? 1) ?: null,
+            'user_id' => $currUserId ?: null,
             'keterangan' => $this->clean((string) ($payload['keterangan'] ?? '')),
         ]);
     }
@@ -3970,14 +4028,44 @@ SQL);
             }
             $pdfPath = $newPdfPath;
         }
-        $update = $pdo->prepare('UPDATE log_barang SET tanggal = :tanggal, nama_barang = :nama_barang, status = :status, divisi = :divisi, qty = :qty, no_po = :no_po, surat_pemesanan_pdf = :pdf, keterangan = :keterangan WHERE id = :id');
+
+        $status = $this->normalizeLogStatus((string) ($payload['status'] ?? 'MASUK'));
+        $satuan = trim((string) ($payload['satuan'] ?? ''));
+        if ($satuan === '') {
+            throw new RuntimeException('Satuan wajib diisi.');
+        }
+        $currUserId = (int) ($_SESSION['auth']['id'] ?? $_SESSION['auth']['user_id'] ?? 1);
+        $picId = (int) ($payload['pic_id'] ?? $currUserId);
+        if ($picId <= 0) {
+            throw new RuntimeException('PIC wajib dipilih.');
+        }
+        $harga = 0.00;
+        if ($status === 'MASUK') {
+            $hargaInput = trim((string) ($payload['harga'] ?? ''));
+            if ($hargaInput === '') {
+                throw new RuntimeException('Harga wajib diisi untuk barang masuk.');
+            }
+            $harga = (double) $hargaInput;
+            if ($harga < 0) {
+                throw new RuntimeException('Harga tidak boleh negatif.');
+            }
+        } else {
+            $hargaInput = trim((string) ($payload['harga'] ?? ''));
+            $harga = $hargaInput !== '' ? (double) $hargaInput : 0.00;
+        }
+
+        $update = $pdo->prepare('UPDATE log_barang SET tanggal = :tanggal, nama_barang = :nama_barang, status = :status, divisi = :divisi, divisi_terkait = :divisi_terkait, qty = :qty, satuan = :satuan, harga = :harga, pic_id = :pic_id, no_po = :no_po, surat_pemesanan_pdf = :pdf, keterangan = :keterangan WHERE id = :id');
         $update->execute([
             'id' => $id,
             'tanggal' => $this->requiredDate((string) ($payload['tanggal'] ?? '')),
             'nama_barang' => $this->requiredText((string) ($payload['nama_barang'] ?? ''), 'Nama barang wajib diisi.'),
-            'status' => $this->normalizeLogStatus((string) ($payload['status'] ?? 'MASUK')),
+            'status' => $status,
             'divisi' => $this->clean((string) ($payload['divisi'] ?? '')),
+            'divisi_terkait' => $this->clean((string) ($payload['divisi_terkait'] ?? '')),
             'qty' => max(1, (int) ($payload['qty'] ?? 1)),
+            'satuan' => $satuan,
+            'harga' => $harga,
+            'pic_id' => $picId,
             'no_po' => $this->clean((string) ($payload['no_po'] ?? '')),
             'pdf' => $pdfPath !== '' ? $pdfPath : null,
             'keterangan' => $this->clean((string) ($payload['keterangan'] ?? '')),
@@ -4139,7 +4227,7 @@ SQL);
             exit;
         }
 
-        $pdf = $this->buildLogBarangPdf($title, $rows);
+        $pdf = $this->buildLogBarangPdf($title, $rows, $filters);
         header('Content-Type: application/pdf');
         header('Content-Disposition: attachment; filename="' . $base . '.pdf"');
         header('Content-Length: ' . strlen($pdf));
@@ -4204,87 +4292,278 @@ SQL);
     {
         $sheetRows = [
             [$title],
-            ['Diexport', date('d-m-Y H:i:s')],
+            ['Diexport: ' . date('d-m-Y H:i:s')],
             [],
-            ['No', 'Tanggal', 'Nama Barang', 'Qty', 'No. PO', 'Status', 'Divisi', 'Log No', 'Keterangan'],
+            ['No', 'Tanggal', 'Waktu Input', 'Nama Barang', 'Qty', 'Satuan', 'Harga', 'Status', 'Divisi', 'Divisi Terkait', 'No. PO', 'PIC', 'Log No', 'Keterangan'],
         ];
+
+        $number = 1;
         foreach ($rows as $row) {
+            $priceVal = (double) ($row['harga'] ?? 0);
+            $priceStr = $priceVal > 0 ? 'Rp ' . number_format($priceVal, 0, ',', '.') : '-';
+
+            $divisionStr = trim((string) ($row['division'] ?? ''));
+            if ($divisionStr === '' || $divisionStr === '-') {
+                $divisionStr = '-';
+            }
+
+            $divTerkaitStr = trim((string) ($row['divisi_terkait'] ?? ''));
+            if ($divTerkaitStr === '' || $divTerkaitStr === '-') {
+                $divTerkaitStr = '-';
+            }
+
+            $noPo = trim((string) ($row['no_po'] ?? ''));
+            if ($noPo === '' || $noPo === '-') {
+                $poStr = '-';
+            } else {
+                $pdfPath = trim((string) ($row['pdf'] ?? ''));
+                if ($pdfPath !== '') {
+                    $poUrl = 'index.php?page=log-barang&action=download_po&file=' . rawurlencode($pdfPath);
+                    $poStr = '=HYPERLINK("' . $poUrl . '", "' . $noPo . ' (ada lampiran)")';
+                } else {
+                    $poStr = $noPo;
+                }
+            }
+
+            $keteranganStr = trim((string) ($row['keterangan'] ?? ''));
+            if ($keteranganStr === '' || $keteranganStr === '-') {
+                $keteranganStr = '-';
+            }
+
+            $satuanStr = trim((string) ($row['satuan'] ?? ''));
+            if ($satuanStr === '' || $satuanStr === '-') {
+                $satuanStr = '-';
+            }
+
+            $picStr = trim((string) ($row['pic_nama'] ?? ''));
+            if ($picStr === '' || $picStr === '-') {
+                $picStr = '-';
+            }
+
             $sheetRows[] = [
-                (string) ($row['no'] ?? ''),
+                (string) $number++,
                 (string) ($row['date'] ?? '-'),
+                (string) ($row['created_time'] ?? '-'),
                 (string) ($row['item'] ?? '-'),
-                (string) ($row['qty'] ?? '1'),
-                (string) ($row['no_po'] ?? '-'),
+                (string) ($row['qty'] ?? '0'),
+                $satuanStr,
+                $priceStr,
                 (string) ($row['status'] ?? '-'),
-                (string) ($row['division'] ?? '-'),
+                $divisionStr,
+                $divTerkaitStr,
+                $poStr,
+                $picStr,
                 (string) ($row['log_no'] ?? '-'),
-                (string) ($row['keterangan'] ?? '-'),
+                $keteranganStr,
             ];
         }
-        return $this->buildSimpleSheetXlsx('LogBarang', $sheetRows, [8, 14, 30, 8, 16, 14, 20, 22, 34]);
-    }
 
-    private function buildSimpleSheetXlsx(string $sheetName, array $rows, array $widths): string
-    {
+        $colWidths = [];
+        $minWidths = [6, 14, 14, 25, 8, 10, 16, 12, 18, 18, 16, 18, 20, 25];
+        for ($i = 0; $i < 14; $i++) {
+            $colWidths[$i] = $minWidths[$i];
+        }
+
+        foreach ($sheetRows as $rIndex => $row) {
+            if ($rIndex < 3) continue;
+            foreach (array_values($row) as $cIndex => $val) {
+                if (str_starts_with((string)$val, '=HYPERLINK')) {
+                    if (preg_match('/",\s*"([^"]+)"/', (string)$val, $matches)) {
+                        $len = strlen($matches[1]);
+                    } else {
+                        $len = strlen((string)$val);
+                    }
+                } else {
+                    $len = strlen((string)$val);
+                }
+                if ($len > $colWidths[$cIndex]) {
+                    $colWidths[$cIndex] = min(50, $len + 4);
+                }
+            }
+        }
+
         $xmlRows = [];
-        foreach ($rows as $rIndex => $row) {
+        foreach ($sheetRows as $rIndex => $row) {
             $cells = [];
             foreach (array_values($row) as $cIndex => $value) {
-                if ($value === null || $value === '') continue;
-                $style = ($rIndex === 0 || $rIndex === 3) ? ' s="1"' : '';
                 $ref = $this->excelColumnName($cIndex + 1) . ($rIndex + 1);
-                $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
+
+                if ($rIndex === 0) {
+                    $style = ' s="6"';
+                    $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
+                } elseif ($rIndex === 1) {
+                    $style = ' s="7"';
+                    $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
+                } elseif ($rIndex === 2) {
+                    continue;
+                } elseif ($rIndex === 3) {
+                    $style = ' s="1"';
+                    $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
+                } else {
+                    if ($cIndex === 0 || $cIndex === 1 || $cIndex === 2 || $cIndex === 12) {
+                        $style = ' s="8"';
+                    } elseif ($cIndex === 4) {
+                        $style = ' s="4"';
+                    } elseif ($cIndex === 6) {
+                        $style = ' s="5"';
+                    } elseif ($cIndex === 7) {
+                        $statusVal = strtoupper(trim((string) $value));
+                        if ($statusVal === 'MASUK') {
+                            $style = ' s="2"';
+                        } elseif ($statusVal === 'KELUAR') {
+                            $style = ' s="3"';
+                        } else {
+                            $style = ' s="0"';
+                        }
+                    } else {
+                        $style = ' s="0"';
+                    }
+
+                    if ($value === null || $value === '') {
+                        continue;
+                    }
+
+                    if (str_starts_with((string)$value, '=HYPERLINK')) {
+                        $formula = substr((string)$value, 1);
+                        $label = $value;
+                        if (preg_match('/",\s*"([^"]+)"/', $formula, $matches)) {
+                            $label = $matches[1];
+                        }
+                        $cells[] = '<c r="' . $ref . '" t="str"' . $style . '><f>' . $this->xml($formula) . '</f><v>' . $this->xml($label) . '</v></c>';
+                    } else {
+                        $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
+                    }
+                }
             }
-            $xmlRows[] = '<row r="' . ($rIndex + 1) . '">' . implode('', $cells) . '</row>';
+            if ($rIndex === 2) {
+                $xmlRows[] = '<row r="' . ($rIndex + 1) . '"/>';
+            } else {
+                $xmlRows[] = '<row r="' . ($rIndex + 1) . '">' . implode('', $cells) . '</row>';
+            }
         }
+
         $cols = '';
-        for ($i=0; $i<count($widths); $i++) {
-            $cols .= '<col min="' . ($i+1) . '" max="' . ($i+1) . '" width="' . $widths[$i] . '" customWidth="1"/>';
+        for ($i = 0; $i < count($colWidths); $i++) {
+            $cols .= '<col min="' . ($i + 1) . '" max="' . ($i + 1) . '" width="' . $colWidths[$i] . '" customWidth="1"/>';
         }
+
         $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-'
-            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            . '<dimension ref="A1:' . $this->excelColumnName(max(1, count($widths))) . max(1, count($rows)) . '"/>'
-            . '<sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="18"/>'
-            . '<cols>' . $cols . '</cols><sheetData>' . implode('', $xmlRows) . '</sheetData></worksheet>';
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            . '<dimension ref="A1:N' . max(4, count($sheetRows)) . '"/>'
+            . '<sheetViews>'
+            . '<sheetView workbookViewId="0">'
+            . '<pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>'
+            . '</sheetView>'
+            . '</sheetViews>'
+            . '<sheetFormatPr defaultRowHeight="18"/>'
+            . '<cols>' . $cols . '</cols>'
+            . '<sheetData>' . implode('', $xmlRows) . '</sheetData>'
+            . '<mergeCells count="2">'
+            . '<mergeCell ref="A1:N1"/>'
+            . '<mergeCell ref="A2:N2"/>'
+            . '</mergeCells>'
+            . '</worksheet>';
+
+        $stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+    <fonts count="4">
+        <font><sz val="11"/><name val="Calibri"/></font>
+        <font><b/><sz val="11"/><name val="Calibri"/></font>
+        <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FFFFFFFF"/></font>
+        <font><b/><sz val="14"/><name val="Calibri"/></font>
+    </fonts>
+    <fills count="5">
+        <fill><patternFill patternType="none"/></fill>
+        <fill><patternFill patternType="gray125"/></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FFFFD965"/><bgColor indexed="64"/></patternFill></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FF00B050"/><bgColor indexed="64"/></patternFill></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/><bgColor indexed="64"/></patternFill></fill>
+    </fills>
+    <borders count="2">
+        <border><left/><right/><top/><bottom/><diagonal/></border>
+        <border>
+            <left style="thin"><color rgb="FFD3D3D3"/></left>
+            <right style="thin"><color rgb="FFD3D3D3"/></right>
+            <top style="thin"><color rgb="FFD3D3D3"/></top>
+            <bottom style="thin"><color rgb="FFD3D3D3"/></bottom>
+            <diagonal/>
+        </border>
+    </borders>
+    <cellStyleXfs count="1">
+        <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+    </cellStyleXfs>
+    <cellXfs count="9">
+        <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyAlignment="1" applyBorder="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+        <xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+        <xf numFmtId="0" fontId="2" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="2" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    </cellXfs>
+    <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>';
+
         $files = [
             '[Content_Types].xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>',
             '_rels/.rels' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>',
             'docProps/core.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>' . $this->xml($sheetName) . '</dc:title><dc:creator>ChatGPT</dc:creator><cp:lastModifiedBy>ChatGPT</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">' . gmdate('Y-m-d\TH:i:s\Z') . '</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">' . gmdate('Y-m-d\TH:i:s\Z') . '</dcterms:modified></cp:coreProperties>',
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>' . $this->xml($title) . '</dc:title><dc:creator>Admin</dc:creator><cp:lastModifiedBy>Admin</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">' . gmdate('Y-m-d\TH:i:s\Z') . '</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">' . gmdate('Y-m-d\TH:i:s\Z') . '</dcterms:modified></cp:coreProperties>',
             'docProps/app.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Microsoft Excel</Application></Properties>',
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Microsoft Excel</Application></Properties>',
             'xl/workbook.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="' . $this->xml($sheetName) . '" sheetId="1" r:id="rId1"/></sheets></workbook>',
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Log Barang" sheetId="1" r:id="rId1"/></sheets></workbook>',
             'xl/_rels/workbook.xml.rels' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
-            'xl/styles.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>',
+            'xl/styles.xml' => $stylesXml,
             'xl/worksheets/sheet1.xml' => $sheetXml,
         ];
+
         return $this->buildZipBinary($files);
     }
 
-    private function buildLogBarangPdf(string $title, array $rows): string
+    private function buildLogBarangPdf(string $title, array $rows, array $filters = []): string
     {
         $columns = [
-            ['title' => 'No', 'key' => 'no', 'width' => 24, 'align' => 'C'],
-            ['title' => 'Tanggal', 'key' => 'date', 'width' => 58, 'align' => 'L'],
-            ['title' => 'Nama Barang', 'key' => 'item', 'width' => 100, 'align' => 'L'],
-            ['title' => 'Qty', 'key' => 'qty', 'width' => 28, 'align' => 'C'],
-            ['title' => 'No. PO', 'key' => 'no_po', 'width' => 60, 'align' => 'L'],
-            ['title' => 'Status', 'key' => 'status', 'width' => 46, 'align' => 'C'],
-            ['title' => 'Divisi', 'key' => 'division', 'width' => 78, 'align' => 'L'],
-            ['title' => 'Log No', 'key' => 'log_no', 'width' => 70, 'align' => 'L'],
-            ['title' => 'Keterangan', 'key' => 'keterangan', 'width' => 81, 'align' => 'L'],
+            ['title' => 'No', 'key' => 'no', 'width' => 20, 'align' => 'C'],
+            ['title' => 'Tanggal', 'key' => 'date', 'width' => 45, 'align' => 'C'],
+            ['title' => 'Waktu Input', 'key' => 'time', 'width' => 45, 'align' => 'C'],
+            ['title' => 'Nama Barang', 'key' => 'item', 'width' => 90, 'align' => 'L'],
+            ['title' => 'Qty', 'key' => 'qty', 'width' => 20, 'align' => 'C'],
+            ['title' => 'Satuan', 'key' => 'satuan', 'width' => 35, 'align' => 'L'],
+            ['title' => 'Harga', 'key' => 'harga', 'width' => 65, 'align' => 'R'],
+            ['title' => 'Status', 'key' => 'status', 'width' => 45, 'align' => 'C'],
+            ['title' => 'Divisi', 'key' => 'division', 'width' => 60, 'align' => 'L'],
+            ['title' => 'Divisi Terkait', 'key' => 'divisi_terkait', 'width' => 60, 'align' => 'L'],
+            ['title' => 'No. PO', 'key' => 'no_po', 'width' => 65, 'align' => 'L'],
+            ['title' => 'PIC', 'key' => 'pic', 'width' => 70, 'align' => 'L'],
+            ['title' => 'Log No', 'key' => 'log_no', 'width' => 75, 'align' => 'C'],
+            ['title' => 'Keterangan', 'key' => 'keterangan', 'width' => 107, 'align' => 'L'],
+        ];
+
+        $charMap = [
+            'no' => 4,
+            'date' => 10,
+            'time' => 8,
+            'item' => 20,
+            'qty' => 4,
+            'satuan' => 8,
+            'harga' => 14,
+            'status' => 8,
+            'division' => 12,
+            'divisi_terkait' => 12,
+            'no_po' => 12,
+            'pic' => 14,
+            'log_no' => 16,
+            'keterangan' => 22,
         ];
 
         $normalizeText = function (string $text): string {
-            $text = trim(preg_replace('/\s+/', ' ', str_replace(["
-", "
-", "	"], ' ', $text)) ?? $text);
+            $text = trim(preg_replace('/\s+/', ' ', str_replace(["\r\n", "\r", "\n", "\t"], ' ', $text)) ?? $text);
             if ($text === '') {
                 return '-';
             }
@@ -4294,21 +4573,25 @@ SQL);
                     $text = $converted;
                 }
             }
-            $text = preg_replace('/[^ -~-ÿ]/', '', $text) ?? $text;
+            $text = preg_replace('/[^ -~€-ÿ]/', '', $text) ?? $text;
             return $text === '' ? '-' : $text;
         };
+
         $escape = function (string $text) use ($normalizeText): string {
             $text = $normalizeText($text);
             return str_replace(["\\", "(", ")"], ["\\\\", "\(", "\)"], $text);
         };
+
         $textLen = function (string $text) use ($normalizeText): int {
             $text = $normalizeText($text);
             return strlen($text);
         };
+
         $textSub = function (string $text, int $start, ?int $length = null) use ($normalizeText): string {
             $text = $normalizeText($text);
             return $length === null ? substr($text, $start) : substr($text, $start, $length);
         };
+
         $wrapText = function (string $text, int $maxChars) use ($normalizeText, $textLen, $textSub): array {
             $text = $normalizeText($text);
             if ($textLen($text) <= $maxChars) {
@@ -4339,21 +4622,49 @@ SQL);
             return $lines ?: ['-'];
         };
 
-        $pageWidth = 595;
-        $pageHeight = 842;
+        $wrappedHeaders = [];
+        $maxHeaderLines = 1;
+        foreach ($columns as $column) {
+            $key = $column['key'];
+            $wrappedHeaders[$key] = $wrapText($column['title'], $charMap[$key] ?? 12);
+            $maxHeaderLines = max($maxHeaderLines, count($wrappedHeaders[$key]));
+        }
+
+        $year = (int) ($filters['log_year'] ?? date('Y'));
+        $month = (int) ($filters['log_month'] ?? 0);
+        $dateVal = trim((string) ($filters['log_date'] ?? ''));
+        if ($dateVal !== '') {
+            $periode = $dateVal;
+        } elseif ($month > 0) {
+            $periode = $this->monthName($month) . ' ' . $year;
+        } else {
+            $periode = 'Semua Bulan ' . $year;
+        }
+        $periodeText = 'Periode: ' . $periode;
+        if (!empty($filters['log_status'])) {
+            $periodeText .= ' | Status: ' . $filters['log_status'];
+        }
+        if (!empty($filters['log_division'])) {
+            $periodeText .= ' | Divisi: ' . $filters['log_division'];
+        }
+
+        $pageWidth = 842;
+        $pageHeight = 595;
         $margin = 20;
-        $top = $pageHeight - 24;
-        $bottomMargin = 24;
+        $top = $pageHeight - 20;
+        $bottomMargin = 30;
         $tableX = $margin;
         $lineHeight = 10;
         $cellPaddingX = 4;
         $cellPaddingY = 4;
-        $headerHeight = 18;
         $rowGap = 2;
-        $blue = '0.16 0.37 0.65';
+
+        $headerColor = '1.0 0.85 0.40';
+        $headerStroke = '0 0 0';
+        $headerTextColor = '0 0 0';
         $textColor = '0.15 0.18 0.22';
-        $border = '0.78 0.84 0.90';
-        $altFill = '0.97 0.98 1';
+        $border = '0 0 0';
+        $altFill = '0.96 0.96 0.96';
 
         $objects = [];
         $objects[1] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
@@ -4363,15 +4674,16 @@ SQL);
         $current = [];
         $y = $top;
 
-        $addText = function (float $x, float $yPos, string $text, int $fontId = 1, int $fontSize = 8, string $color = '0 0 0') use (&$current, $escape) {
+        $addText = function (float $x, float $yPos, string $text, int $fontId = 1, float $fontSize = 7.5, string $color = '0 0 0') use (&$current, $escape) {
             $current[] = 'BT';
-            $current[] = sprintf('/F%d %d Tf', $fontId, $fontSize);
+            $current[] = sprintf('/F%d %.1f Tf', $fontId, $fontSize);
             $current[] = $color . ' rg';
             $current[] = sprintf('1 0 0 1 %.2f %.2f Tm', $x, $yPos);
             $current[] = '(' . $escape($text) . ') Tj';
             $current[] = 'ET';
         };
-        $addRect = function (float $x, float $yPos, float $w, float $h, ?string $fill = null, string $stroke = '0 0 0', float $lineWidth = 0.6) use (&$current) {
+
+        $addRect = function (float $x, float $yPos, float $w, float $h, ?string $fill = null, string $stroke = '0 0 0', float $lineWidth = 0.5) use (&$current) {
             $current[] = sprintf('%.2f w', $lineWidth);
             if ($fill !== null) {
                 $current[] = $fill . ' rg';
@@ -4379,61 +4691,98 @@ SQL);
             $current[] = $stroke . ' RG';
             $current[] = sprintf('%.2f %.2f %.2f %.2f re %s', $x, $yPos, $w, $h, $fill !== null ? 'B' : 'S');
         };
-        $startPage = function () use (&$current, &$y, $top, $title, $margin, $addText, $textColor, $blue) {
+
+        $startPage = function () use (&$current, &$y, $top, $title, $margin, $addText, $textColor, $periodeText) {
             $current = [];
             $y = $top;
-            $addText($margin, $y - 2, $title, 2, 13, $blue);
-            $addText($margin, $y - 18, 'Diexport: ' . date('d-m-Y H:i:s'), 1, 8, $textColor);
-            $y -= 36;
+            $addText($margin, $y - 2, $title, 2, 12, '0 0 0');
+            $addText($margin, $y - 14, $periodeText, 1, 8, $textColor);
+            $addText($margin, $y - 24, 'Diexport: ' . date('d-m-Y H:i:s'), 1, 7, $textColor);
+            $y -= 38;
         };
-        $drawHeader = function () use (&$y, $columns, $tableX, $headerHeight, $addRect, $addText, $blue) {
-            $x = $tableX;
+
+        $drawHeader = function () use (&$y, $columns, $tableX, $wrappedHeaders, $maxHeaderLines, $addRect, $addText, $headerColor, $headerStroke, $headerTextColor) {
+            $headerHeight = max(18, ($maxHeaderLines * 9) + 6);
             $rowY = $y - $headerHeight;
+            $x = $tableX;
             foreach ($columns as $column) {
-                $addRect($x, $rowY, $column['width'], $headerHeight, $blue, $blue, 0.8);
-                $textX = $x + 4;
-                if (($column['align'] ?? 'L') === 'C') {
-                    $textX = $x + ($column['width'] / 2) - ((strlen($column['title']) * 3.2) / 2);
+                $key = $column['key'];
+                $addRect($x, $rowY, $column['width'], $headerHeight, $headerColor, $headerStroke, 0.6);
+                
+                $lines = $wrappedHeaders[$key];
+                $lineCount = count($lines);
+                $lineY = $rowY + ($headerHeight / 2) + (($lineCount - 1) * 4.5) - 3;
+                foreach ($lines as $line) {
+                    $lineWidth = strlen($line) * 3.8;
+                    $textX = $x + 4;
+                    if (($column['align'] ?? 'L') === 'C') {
+                        $textX = $x + ($column['width'] / 2) - ($lineWidth / 2);
+                    }
+                    $addText($textX, $lineY, $line, 2, 7.5, $headerTextColor);
+                    $lineY -= 9;
                 }
-                $addText($textX, $rowY + 6, $column['title'], 2, 7, '1 1 1');
                 $x += $column['width'];
             }
             $y = $rowY - 2;
         };
-        $finishPage = function () use (&$streams, &$current) {
+
+        $finishPage = function () use (&$streams, &$current, $margin, $bottomMargin, $addText, $textColor) {
             if (!empty($current)) {
-                $streams[] = implode("
-", $current);
+                $addText($margin, $bottomMargin - 12, '* = ada lampiran PO', 1, 7, $textColor);
+                $streams[] = implode("\n", $current);
             }
             $current = [];
         };
 
-        $charMap = [
-            'no' => 4,
-            'date' => 10,
-            'item' => 22,
-            'qty' => 3,
-            'no_po' => 12,
-            'status' => 8,
-            'division' => 14,
-            'log_no' => 13,
-            'keterangan' => 15,
-        ];
-
         $startPage();
         $drawHeader();
 
+        $number = 1;
         foreach ($rows as $index => $row) {
+            $priceVal = (double) ($row['harga'] ?? 0);
+            $priceStr = $priceVal > 0 ? 'Rp ' . number_format($priceVal, 0, ',', '.') : '-';
+
+            $noPoVal = trim((string) ($row['no_po'] ?? ''));
+            if ($noPoVal === '' || $noPoVal === '-') {
+                $noPoStr = '-';
+            } else {
+                $pdfPath = trim((string) ($row['pdf'] ?? ''));
+                if ($pdfPath !== '') {
+                    $noPoStr = $noPoVal . '*';
+                } else {
+                    $noPoStr = $noPoVal;
+                }
+            }
+
+            $divisionStr = trim((string) ($row['division'] ?? ''));
+            if ($divisionStr === '') $divisionStr = '-';
+            $divTerkaitStr = trim((string) ($row['divisi_terkait'] ?? ''));
+            if ($divTerkaitStr === '') $divTerkaitStr = '-';
+
+            $keteranganStr = trim((string) ($row['keterangan'] ?? ''));
+            if ($keteranganStr === '') $keteranganStr = '-';
+
+            $satuanStr = trim((string) ($row['satuan'] ?? ''));
+            if ($satuanStr === '') $satuanStr = '-';
+
+            $picStr = trim((string) ($row['pic_nama'] ?? ''));
+            if ($picStr === '') $picStr = '-';
+
             $cells = [
-                'no' => (string) ($row['no'] ?? ''),
+                'no' => (string) $number++,
                 'date' => (string) ($row['date'] ?? '-'),
+                'time' => (string) ($row['created_time'] ?? '-'),
                 'item' => (string) ($row['item'] ?? '-'),
-                'qty' => (string) ($row['qty'] ?? '1'),
-                'no_po' => (string) (($row['no_po'] ?? '') !== '' ? $row['no_po'] : '-'),
+                'qty' => (string) ($row['qty'] ?? '0'),
+                'satuan' => $satuanStr,
+                'harga' => $priceStr,
                 'status' => (string) ($row['status'] ?? '-'),
-                'division' => (string) (($row['division'] ?? '') !== '' ? $row['division'] : '-'),
-                'log_no' => (string) (($row['log_no'] ?? '') !== '' ? $row['log_no'] : '-'),
-                'keterangan' => (string) (($row['keterangan'] ?? '') !== '' ? $row['keterangan'] : '-'),
+                'division' => $divisionStr,
+                'divisi_terkait' => $divTerkaitStr,
+                'no_po' => $noPoStr,
+                'pic' => $picStr,
+                'log_no' => (string) ($row['log_no'] ?? '-'),
+                'keterangan' => $keteranganStr,
             ];
 
             $wrapped = [];
@@ -4444,7 +4793,7 @@ SQL);
                 $maxLines = max($maxLines, count($wrapped[$key]));
             }
 
-            $rowHeight = max(20, ($maxLines * $lineHeight) + ($cellPaddingY * 2));
+            $rowHeight = max(16, ($maxLines * $lineHeight) + ($cellPaddingY * 2));
             if (($y - $rowHeight) < $bottomMargin) {
                 $finishPage();
                 $startPage();
@@ -4455,24 +4804,51 @@ SQL);
             $x = $tableX;
             foreach ($columns as $column) {
                 $key = $column['key'];
-                $fill = $index % 2 === 0 ? $altFill : '1 1 1';
-                $addRect($x, $rowY, $column['width'], $rowHeight, $fill, $border, 0.5);
-                $fontId = ($key === 'status') ? 2 : 1;
-                $color = ($key === 'status') ? $blue : $textColor;
+                
+                $cellFill = $index % 2 === 0 ? $altFill : '1 1 1';
+                $fontColor = $textColor;
+                $fontId = 1;
+                
+                if ($key === 'status') {
+                    $statusVal = strtoupper(trim((string)$cells[$key]));
+                    if ($statusVal === 'MASUK') {
+                        $cellFill = '0.0 0.69 0.31';
+                        $fontColor = '1 1 1';
+                        $fontId = 2;
+                    } elseif ($statusVal === 'KELUAR') {
+                        $cellFill = '1.0 0.0 0.0';
+                        $fontColor = '1 1 1';
+                        $fontId = 2;
+                    }
+                }
+
+                $addRect($x, $rowY, $column['width'], $rowHeight, $cellFill, $border, 0.5);
+                
                 $lineY = $rowY + $rowHeight - 10;
                 foreach ($wrapped[$key] as $line) {
                     $lineWidth = strlen($line) * 3.8;
                     $textX = $x + $cellPaddingX;
                     if (($column['align'] ?? 'L') === 'C') {
                         $textX = $x + max(2, ($column['width'] - $lineWidth) / 2);
+                    } elseif (($column['align'] ?? 'L') === 'R') {
+                        $textX = $x + $column['width'] - $lineWidth - $cellPaddingX;
                     }
-                    $addText($textX, $lineY, $line, $fontId, 7, $color);
+                    $addText($textX, $lineY, $line, $fontId, 7.5, $fontColor);
                     $lineY -= $lineHeight;
                 }
                 $x += $column['width'];
             }
             $y = $rowY - $rowGap;
         }
+
+        $totalText = 'Total Transaksi: ' . count($rows) . ' data';
+        if (($y - 15) < $bottomMargin) {
+            $finishPage();
+            $startPage();
+            $drawHeader();
+        }
+        $addText($tableX, $y - 12, $totalText, 2, 8.5, $textColor);
+        $y -= 15;
 
         $finishPage();
         if (empty($streams)) {
@@ -4505,30 +4881,19 @@ endstream";
         $objects[$catalogId] = "<< /Type /Catalog /Pages {$pagesId} 0 R >>";
 
         ksort($objects);
-        $pdf = "%PDF-1.4
-";
+        $pdf = "%PDF-1.4\n";
         $offsets = [0];
         foreach ($objects as $id => $object) {
             $offsets[$id] = strlen($pdf);
-            $pdf .= $id . " 0 obj
-" . $object . "
-endobj
-";
+            $pdf .= $id . " 0 obj\n" . $object . "\nendobj\n";
         }
         $xref = strlen($pdf);
         $size = $catalogId + 1;
-        $pdf .= "xref
-0 {$size}
-0000000000 65535 f 
-";
+        $pdf .= "xref\n0 {$size}\n0000000000 65535 f \n";
         for ($i = 1; $i < $size; $i++) {
-            $pdf .= sprintf("%010d 00000 n 
-", $offsets[$i] ?? 0);
+            $pdf .= sprintf("%010d 00000 n \n", $offsets[$i] ?? 0);
         }
-        $pdf .= "trailer << /Size {$size} /Root {$catalogId} 0 R >>
-startxref
-{$xref}
-%%EOF";
+        $pdf .= "trailer << /Size {$size} /Root {$catalogId} 0 R >>\nstartxref\n{$xref}\n%%EOF";
         return $pdf;
     }
 
@@ -5028,7 +5393,7 @@ startxref
             echo $xlsx;
             exit;
         }
-        $pdf = $this->buildLogBarangPdf($title, $rows);
+        $pdf = $this->buildLogBarangPdf($title, $rows, $filters);
         header('Content-Type: application/pdf');
         header('Content-Disposition: attachment; filename="' . $base . '.pdf"');
         header('Content-Length: ' . strlen($pdf));

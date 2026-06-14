@@ -57,6 +57,10 @@ class UiModel
             $data['cctv_breakdown'] = $this->buildCctvBreakdown($pdo, $data['cctv_breakdown']);
             $data['log_rows'] = $this->fetchLogRows($pdo, $filters);
             $data['log_filters'] = $this->buildLogFilters($pdo, $filters);
+            $selected = $data['log_filters']['selected'];
+            $data['log_summary'] = $this->getLogSummaryStats($pdo, (int)$selected['year'], (int)$selected['month']);
+            $data['log_distinct_divisions'] = $this->fetchDistinctLogDivisions($pdo);
+            $data['log_distinct_months'] = $this->fetchDistinctLogMonths($pdo);
         } catch (Throwable $e) {
             $data['category_cards'] = $this->buildCategoryCardsSafe($pdo, $data['category_cards']);
         }
@@ -2310,30 +2314,34 @@ SQL);
     {
         $state = $this->normalizeLogFilterState($filters);
         try {
-            $where = ['YEAR(tanggal) = :year'];
+            $where = ['YEAR(l.tanggal) = :year'];
             $params = ['year' => $state['year']];
 
             if ($state['month'] > 0) {
-                $where[] = 'MONTH(tanggal) = :month';
+                $where[] = 'MONTH(l.tanggal) = :month';
                 $params['month'] = $state['month'];
             }
             if ($state['date'] !== '') {
-                $where[] = 'tanggal = :date';
+                $where[] = 'l.tanggal = :date';
                 $params['date'] = $state['date'];
             }
             if ($state['status'] !== '') {
-                $where[] = 'UPPER(status) = :status';
+                $where[] = 'UPPER(l.status) = :status';
                 $params['status'] = $state['status'];
             }
+            if ($state['division'] !== '') {
+                $where[] = 'l.divisi = :division';
+                $params['division'] = $state['division'];
+            }
             if ($state['search'] !== '') {
-                $where[] = '(log_no LIKE :search OR nama_barang LIKE :search OR COALESCE(no_po, "") LIKE :search OR COALESCE(divisi, "") LIKE :search OR COALESCE(keterangan, "") LIKE :search)';
+                $where[] = '(l.log_no LIKE :search OR l.nama_barang LIKE :search OR COALESCE(l.no_po, "") LIKE :search OR COALESCE(l.divisi, "") LIKE :search OR COALESCE(l.divisi_terkait, "") LIKE :search OR COALESCE(l.keterangan, "") LIKE :search OR COALESCE(u.nama_lengkap, "") LIKE :search OR COALESCE(u.username, "") LIKE :search)';
                 $params['search'] = '%' . $state['search'] . '%';
             }
 
             $orderSql = $state['sort'] === 'oldest' ? 'ASC' : 'DESC';
-            $sql = 'SELECT id, log_no, tanggal, created_at, nama_barang, status, qty, no_po, surat_pemesanan_pdf, divisi, keterangan FROM log_barang WHERE '
+            $sql = 'SELECT l.id, l.log_no, l.tanggal, l.created_at, l.nama_barang, l.status, l.qty, l.satuan, l.harga, l.pic_id, l.no_po, l.surat_pemesanan_pdf, l.divisi, l.divisi_terkait, l.keterangan, u.nama_lengkap AS pic_nama, u.username AS pic_username FROM log_barang l LEFT JOIN users u ON u.id = l.pic_id WHERE '
                 . implode(' AND ', $where)
-                . ' ORDER BY tanggal ' . $orderSql . ', created_at ' . $orderSql . ', id ' . $orderSql . ' LIMIT 500';
+                . ' ORDER BY l.tanggal ' . $orderSql . ', l.created_at ' . $orderSql . ', l.id ' . $orderSql . ' LIMIT 500';
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             $rows = $stmt->fetchAll();
@@ -2356,10 +2364,15 @@ SQL);
                     'status' => $status,
                     'status_class' => $status === 'KELUAR' ? 'out' : 'in',
                     'qty' => (int) ($row['qty'] ?? 1),
+                    'satuan' => (string) ($row['satuan'] ?? 'Unit'),
+                    'harga' => (double) ($row['harga'] ?? 0.00),
+                    'pic_id' => (int) ($row['pic_id'] ?? 0),
+                    'pic_nama' => (string) ($row['pic_nama'] ?? $row['pic_username'] ?? '-'),
                     'no_po' => (string) ($row['no_po'] ?? '-'),
                     'pdf' => $pdf,
                     'pdf_name' => $pdf !== '' ? basename($pdf) : '',
                     'division' => (string) ($row['divisi'] ?? '-'),
+                    'divisi_terkait' => (string) ($row['divisi_terkait'] ?? '-'),
                     'log_no' => (string) ($row['log_no'] ?? '-'),
                     'keterangan' => (string) ($row['keterangan'] ?? ''),
                     'created_time' => $this->formatCreatedTime((string) ($row['created_at'] ?? '')),
@@ -2393,7 +2406,7 @@ SQL);
             $state['year'] = $years[0];
         }
 
-        $months = [0 => 'Semua Bulan'];
+        $months = [];
         for ($i = 1; $i <= 12; $i++) {
             $months[$i] = $this->monthName($i);
         }
@@ -2421,14 +2434,46 @@ SQL);
         $defaultYear = (int) $now->format('Y');
         $defaultMonth = (int) $now->format('n');
 
-        $year = (int) ($filters['log_year'] ?? $defaultYear);
-        if ($year < 2000 || $year > 2100) {
-            $year = $defaultYear;
+        $hasLogMonth = isset($filters['log_month']) && trim((string)$filters['log_month']) !== '';
+
+        if ($hasLogMonth) {
+            $monthVal = trim((string)$filters['log_month']);
+            if ($monthVal === 'all' || $monthVal === '0') {
+                $month = 0;
+            } else {
+                $month = (int)$monthVal;
+                if ($month < 1 || $month > 12) {
+                    $month = $defaultMonth;
+                }
+            }
+            $year = isset($filters['log_year']) ? (int)$filters['log_year'] : $defaultYear;
+            if ($month === 0) {
+                $selectedMonthYear = 'all';
+            } else {
+                $selectedMonthYear = $year . '-' . str_pad((string)$month, 2, '0', STR_PAD_LEFT);
+            }
+        } else {
+            $selectedMonthYear = trim((string) ($filters['log_month_year'] ?? ''));
+            if ($selectedMonthYear === 'all') {
+                $year = $defaultYear;
+                $month = 0;
+            } elseif ($selectedMonthYear !== '') {
+                $parts = explode('-', $selectedMonthYear);
+                if (count($parts) === 2) {
+                    $year = (int) $parts[0];
+                    $month = (int) $parts[1];
+                } else {
+                    $year = $defaultYear;
+                    $month = $defaultMonth;
+                    $selectedMonthYear = $year . '-' . str_pad((string)$month, 2, '0', STR_PAD_LEFT);
+                }
+            } else {
+                $year = $defaultYear;
+                $month = $defaultMonth;
+                $selectedMonthYear = $year . '-' . str_pad((string)$month, 2, '0', STR_PAD_LEFT);
+            }
         }
-        $month = (int) ($filters['log_month'] ?? $defaultMonth);
-        if ($month < 0 || $month > 12) {
-            $month = $defaultMonth;
-        }
+
         $date = trim((string) ($filters['log_date'] ?? ''));
         if ($date !== '') {
             $dt = DateTimeImmutable::createFromFormat('Y-m-d', $date);
@@ -2437,8 +2482,10 @@ SQL);
             } else {
                 $year = (int) $dt->format('Y');
                 $month = (int) $dt->format('n');
+                $selectedMonthYear = $year . '-' . str_pad((string)$month, 2, '0', STR_PAD_LEFT);
             }
         }
+
         $status = strtoupper(trim((string) ($filters['log_status'] ?? '')));
         if (!in_array($status, ['', 'MASUK', 'KELUAR'], true)) {
             $status = '';
@@ -2447,14 +2494,136 @@ SQL);
         if (!in_array($sort, ['newest', 'oldest'], true)) {
             $sort = 'newest';
         }
+        $division = trim((string) ($filters['log_division'] ?? ''));
+
         return [
             'year' => $year,
             'month' => $month,
+            'month_year' => $selectedMonthYear,
             'date' => $date,
             'search' => trim((string) ($filters['log_search'] ?? '')),
             'status' => $status,
             'sort' => $sort,
+            'division' => $division,
         ];
+    }
+
+    public function getLogSummaryStats(PDO $pdo, int $year, int $month): array
+    {
+        $stats = [
+            'total_transaksi' => 0,
+            'barang_masuk_qty' => 0,
+            'barang_keluar_qty' => 0,
+            'total_nilai_masuk' => 0.00,
+        ];
+        
+        try {
+            // 1. Total Transaksi
+            if ($month > 0) {
+                $stmt = $pdo->prepare('SELECT COUNT(*) FROM log_barang WHERE YEAR(tanggal) = :year AND MONTH(tanggal) = :month');
+                $stmt->execute(['year' => $year, 'month' => $month]);
+            } else {
+                $stmt = $pdo->prepare('SELECT COUNT(*) FROM log_barang WHERE YEAR(tanggal) = :year');
+                $stmt->execute(['year' => $year]);
+            }
+            $stats['total_transaksi'] = (int) $stmt->fetchColumn();
+            
+            // 2. Barang Masuk Qty
+            if ($month > 0) {
+                $stmt = $pdo->prepare('SELECT SUM(qty) FROM log_barang WHERE YEAR(tanggal) = :year AND MONTH(tanggal) = :month AND UPPER(status) = "MASUK"');
+                $stmt->execute(['year' => $year, 'month' => $month]);
+            } else {
+                $stmt = $pdo->prepare('SELECT SUM(qty) FROM log_barang WHERE YEAR(tanggal) = :year AND UPPER(status) = "MASUK"');
+                $stmt->execute(['year' => $year]);
+            }
+            $stats['barang_masuk_qty'] = (int) $stmt->fetchColumn();
+            
+            // 3. Barang Keluar Qty
+            if ($month > 0) {
+                $stmt = $pdo->prepare('SELECT SUM(qty) FROM log_barang WHERE YEAR(tanggal) = :year AND MONTH(tanggal) = :month AND UPPER(status) = "KELUAR"');
+                $stmt->execute(['year' => $year, 'month' => $month]);
+            } else {
+                $stmt = $pdo->prepare('SELECT SUM(qty) FROM log_barang WHERE YEAR(tanggal) = :year AND UPPER(status) = "KELUAR"');
+                $stmt->execute(['year' => $year]);
+            }
+            $stats['barang_keluar_qty'] = (int) $stmt->fetchColumn();
+            
+            // 4. Total Nilai Masuk
+            if ($month > 0) {
+                $stmt = $pdo->prepare('SELECT SUM(qty * harga) FROM log_barang WHERE YEAR(tanggal) = :year AND MONTH(tanggal) = :month AND UPPER(status) = "MASUK"');
+                $stmt->execute(['year' => $year, 'month' => $month]);
+            } else {
+                $stmt = $pdo->prepare('SELECT SUM(qty * harga) FROM log_barang WHERE YEAR(tanggal) = :year AND UPPER(status) = "MASUK"');
+                $stmt->execute(['year' => $year]);
+            }
+            $stats['total_nilai_masuk'] = (double) $stmt->fetchColumn();
+        } catch (Throwable $e) {
+        }
+        
+        return $stats;
+    }
+
+    public function fetchDistinctLogDivisions(PDO $pdo): array
+    {
+        try {
+            $stmt = $pdo->query('SELECT DISTINCT divisi FROM log_barang WHERE divisi IS NOT NULL AND TRIM(divisi) <> "" ORDER BY divisi ASC');
+            return $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    public function fetchDistinctLogMonths(PDO $pdo): array
+    {
+        try {
+            $stmt = $pdo->query('SELECT MIN(tanggal) as min_date, MAX(tanggal) as max_date FROM log_barang');
+            $row = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
+            
+            $minDateStr = $row['min_date'] ?? '';
+            $maxDateStr = $row['max_date'] ?? '';
+            
+            $now = new DateTimeImmutable('now', new DateTimeZone('Asia/Jakarta'));
+            
+            if ($minDateStr !== '') {
+                $minDate = new DateTime($minDateStr);
+            } else {
+                $minDate = new DateTime($now->format('Y-m-01'));
+            }
+            
+            if ($maxDateStr !== '') {
+                $maxDate = new DateTime($maxDateStr);
+            } else {
+                $maxDate = new DateTime($now->format('Y-m-t'));
+            }
+            
+            $curFirst = new DateTime($now->format('Y-m-01'));
+            if ($minDate > $curFirst) {
+                $minDate = $curFirst;
+            }
+            if ($maxDate < $curFirst) {
+                $maxDate = $curFirst;
+            }
+            
+            $minDate->modify('first day of this month');
+            $maxDate->modify('first day of this month');
+            
+            $months = [];
+            $temp = clone $maxDate;
+            while ($temp >= $minDate) {
+                $val = $temp->format('Y-m');
+                $m = (int) $temp->format('n');
+                $y = (int) $temp->format('Y');
+                $months[$val] = $this->monthName($m) . ' ' . $y;
+                $temp->modify('-1 month');
+            }
+            
+            $months = ['all' => 'Semua Bulan'] + $months;
+            return $months;
+        } catch (Throwable $e) {
+            $currentVal = date('Y-m');
+            $currentLabel = $this->monthName((int)date('m')) . ' ' . date('Y');
+            return ['all' => 'Semua Bulan', $currentVal => $currentLabel];
+        }
     }
 
     private function defaultCategoryCards(): array
