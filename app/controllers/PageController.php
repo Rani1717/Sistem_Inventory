@@ -149,7 +149,9 @@ class PageController
         }
         if (AuthController::isAdminSpmt()) {
             $authModelForAdmin = new AuthModel();
-            $data['pending_user_count'] = $authModelForAdmin->countPendingUsers();
+            $pendingUserNotif = $authModelForAdmin->fetchPendingUsersForNotification();
+            $data['pending_user_count'] = $pendingUserNotif['count'];
+            $data['pending_user_notifications'] = $pendingUserNotif;
         }
         $data['accessible_pages'] = AuthController::accessiblePages();
         if ($page === 'data-inventaris') {
@@ -2193,9 +2195,24 @@ class PageController
     }
     private function handleUserManagementAction(): void
     {
+        // ---- EXPORT (GET) ----
+        if (($_GET['action'] ?? '') === 'export' && AuthController::isAdminSpmt()) {
+            $pdo = Database::getConnection();
+            if ($pdo instanceof PDO) {
+                $filters = [
+                    'search' => trim((string) ($_GET['search'] ?? '')),
+                    'status' => trim((string) ($_GET['status'] ?? '')),
+                    'division' => trim((string) ($_GET['division'] ?? '')),
+                ];
+                $this->streamUserManagementExport($pdo, (string) ($_GET['format'] ?? 'pdf'), $filters);
+            }
+            exit;
+        }
+
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             return;
         }
+
 
         if (!AuthController::isAdminSpmt()) {
             http_response_code(403);
@@ -2261,6 +2278,51 @@ class PageController
             }
         }
         return 'index.php?' . http_build_query($query);
+    }
+
+    private function streamUserManagementExport(PDO $pdo, string $format, array $filters = []): void
+    {
+        $rows = $this->fetchUserReportRows($pdo, $filters);
+        $title = 'Data User - ' . date('d-m-Y');
+        $base  = 'data_user_' . date('Ymd');
+
+        while (ob_get_level() > 0) { ob_end_clean(); }
+
+        if (strtolower($format) === 'xlsx') {
+            $headers = ['No', 'Nama Lengkap', 'Username', 'Email', 'Role', 'Divisi', 'Unit Kerja', 'Status', 'Tanggal Daftar', 'Login Terakhir'];
+            $excelRows = [];
+            foreach ($rows as $r) {
+                $excelRows[] = [
+                    $r['no'], $r['nama'], $r['username'], $r['email'], $r['role'],
+                    $r['divisi'], $r['unit'], $r['status'], $r['created_at'], $r['last_login'],
+                ];
+            }
+            $xlsx = $this->buildGenericLaporanXlsx($title, $headers, $excelRows, [0, 4, 7]);
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="' . $base . '.xlsx"');
+            header('Content-Length: ' . strlen($xlsx));
+            echo $xlsx;
+            exit;
+        }
+
+        // PDF — landscape, 11 columns
+        $columns = [
+            ['key' => 'no',         'title' => 'No',            'width' => 26,  'chars' => 4],
+            ['key' => 'nama',       'title' => 'Nama Lengkap',  'width' => 108, 'chars' => 18],
+            ['key' => 'username',   'title' => 'Username',      'width' => 72,  'chars' => 11],
+            ['key' => 'email',      'title' => 'Email',         'width' => 130, 'chars' => 22],
+            ['key' => 'role',       'title' => 'Role',          'width' => 46,  'chars' => 7],
+            ['key' => 'divisi',     'title' => 'Divisi',        'width' => 120, 'chars' => 20],
+            ['key' => 'status',     'title' => 'Status',        'width' => 58,  'chars' => 9],
+            ['key' => 'created_at', 'title' => 'Tgl Daftar',   'width' => 90,  'chars' => 14],
+            ['key' => 'last_login', 'title' => 'Login Terakhir','width' => 90,  'chars' => 14],
+        ];
+        $pdf = $this->buildGenericReportPdf($title, $columns, $rows);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $base . '.pdf"');
+        header('Content-Length: ' . strlen($pdf));
+        echo $pdf;
+        exit;
     }
 
     private function handleComplaintAction(): void
@@ -4975,8 +5037,403 @@ endstream";
         if ($type === 'inventory') {
             $sheets = $this->fetchAllInventoryReportSheets($pdo, $filters);
             if ($format === 'xlsx') {
-                $excelSheets = $this->buildInventoryDetailExcelSheets($sheets);
-                $xlsx = $this->buildMultiSheetXlsx($excelSheets);
+                if (!class_exists('\\PhpOffice\\PhpSpreadsheet\\Spreadsheet')) {
+                    if (file_exists(__DIR__ . '/../../peminjaman_laptop/vendor/autoload.php')) {
+                        require_once __DIR__ . '/../../peminjaman_laptop/vendor/autoload.php';
+                    } elseif (file_exists(__DIR__ . '/../../vendor/autoload.php')) {
+                        require_once __DIR__ . '/../../vendor/autoload.php';
+                    }
+                }
+                if (!class_exists('\\PhpOffice\\PhpSpreadsheet\\Spreadsheet')) {
+                    http_response_code(500);
+                    echo 'PhpSpreadsheet library tidak tersedia.';
+                    exit;
+                }
+
+                $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+                
+                // Create sheets
+                $sheetSpjm = $spreadsheet->getActiveSheet();
+                $sheetSpjm->setTitle('SPJM');
+
+                $sheetSpmt = $spreadsheet->createSheet();
+                $sheetSpmt->setTitle('SPMT');
+
+                $sheetSubreg = $spreadsheet->createSheet();
+                $sheetSubreg->setTitle('SUBREG');
+
+                $sheetMap = [
+                    'SPJM' => $sheetSpjm,
+                    'SPMT' => $sheetSpmt,
+                    'SUBREG' => $sheetSubreg,
+                ];
+
+                // Set default font to Arial 10 for all sheets
+                $spreadsheet->getDefaultStyle()->getFont()->setName('Arial')->setSize(10);
+
+                // Helper to setup sheet headers
+                $setupSheet = function ($sheet) {
+                    $colWidths = [
+                        'A' => 5,   // NO
+                        'B' => 18,  // UNIT KERJA
+                        'C' => 20,  // JENIS PERANGKAT
+                        'D' => 20,  // COMPUTER NAME
+                        'E' => 20,  // USER
+                        'F' => 15,  // PROSESSOR
+                        'G' => 15,  // RAM
+                        'H' => 15,  // KAPASITAS HARDDISK
+                        'I' => 15,  // IP ADDRESS
+                        'J' => 18,  // SISTEM OPERASI
+                        'K' => 12,  // LICENSED
+                        'L' => 22,  // MICROSOFT OFFICE
+                        'M' => 12,  // LICENSED
+                        'N' => 25,  // INVENTARIS PC
+                        'O' => 25,  // INVENTARIS MONITOR
+                        'P' => 25,  // INVENTARIS KEYBOARD
+                        'Q' => 25,  // INVENTARIS MOUSE
+                        'R' => 30,  // INVENTARIS LAINNYA
+                        'S' => 20,  // DOKUMENTASI
+                    ];
+                    foreach ($colWidths as $col => $width) {
+                        $sheet->getColumnDimension($col)->setWidth($width);
+                    }
+
+                    // Header heights
+                    $sheet->getRowDimension(1)->setRowHeight(30);
+                    $sheet->getRowDimension(2)->setRowHeight(30);
+
+                    // Header values
+                    $sheet->setCellValue('A1', 'NO');
+                    $sheet->setCellValue('B1', 'UNIT KERJA');
+                    $sheet->setCellValue('C1', 'JENIS PERANGKAT');
+                    $sheet->setCellValue('D1', 'COMPUTER NAME');
+                    $sheet->setCellValue('E1', 'USER');
+                    $sheet->setCellValue('F1', 'SPESIFIKASI');
+                    $sheet->setCellValue('I1', 'IP ADDRESS');
+                    $sheet->setCellValue('J1', 'SISTEM OPERASI');
+                    $sheet->setCellValue('K1', 'LICENSED');
+                    $sheet->setCellValue('L1', 'MICROSOFT OFFICE');
+                    $sheet->setCellValue('M1', 'LICENSED');
+                    $sheet->setCellValue('N1', 'INVENTARIS PC');
+                    $sheet->setCellValue('O1', 'INVENTARIS MONITOR');
+                    $sheet->setCellValue('P1', 'INVENTARIS KEYBOARD');
+                    $sheet->setCellValue('Q1', 'INVENTARIS MOUSE');
+                    $sheet->setCellValue('R1', 'INVENTARIS LAINNYA');
+                    $sheet->setCellValue('S1', 'DOKUMENTASI');
+
+                    $sheet->setCellValue('F2', 'PROSESSOR');
+                    $sheet->setCellValue('G2', 'RAM');
+                    $sheet->setCellValue('H2', 'KAPASITAS HARDDISK');
+
+                    // Merge headers
+                    $merges = [
+                        'A1:A2', 'B1:B2', 'C1:C2', 'D1:D2', 'E1:E2', 
+                        'F1:H1', 
+                        'I1:I2', 'J1:J2', 'K1:K2', 'L1:L2', 'M1:M2', 
+                        'N1:N2', 'O1:O2', 'P1:P2', 'Q1:Q2', 'R1:R2', 'S1:S2'
+                    ];
+                    foreach ($merges as $mergeRange) {
+                        $sheet->mergeCells($mergeRange);
+                    }
+
+                    // Style headers
+                    $headerStyle = [
+                        'font' => [
+                            'bold' => true,
+                            'color' => ['rgb' => 'FFFFFF'],
+                            'size' => 10,
+                            'name' => 'Arial'
+                        ],
+                        'alignment' => [
+                            'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                            'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
+                            'wrapText' => true
+                        ],
+                        'fill' => [
+                            'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                            'startColor' => ['rgb' => '1F3864']
+                        ]
+                    ];
+                    $sheet->getStyle('A1:S2')->applyFromArray($headerStyle);
+
+                    // Freeze rows 1 & 2
+                    $sheet->freezePane('A3');
+                };
+
+                // Setup headers for all sheets
+                $setupSheet($sheetSpjm);
+                $setupSheet($sheetSpmt);
+                $setupSheet($sheetSubreg);
+
+                // Fetch divisions
+                $f = $this->buildLaporanFilters($filters);
+                [$from, $to] = $this->laporanDateBounds($filters);
+
+                $divSql = "SELECT division_code, division_label, division_group_name, inventory_db_name FROM master_divisi WHERE is_active = 1 ORDER BY CASE WHEN LOWER(CONCAT(division_code, ' ', division_label, ' ', inventory_db_name)) LIKE '%spmt%' THEN 0 WHEN LOWER(CONCAT(division_code, ' ', division_label, ' ', inventory_db_name)) LIKE '%subreg%' THEN 1 ELSE 2 END ASC, division_label ASC, id ASC";
+                $stmt = $pdo->query($divSql);
+                $divisions = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                if ($f['division'] !== '') {
+                    $selectedDivision = $f['division'];
+                    $divisions = array_values(array_filter($divisions, function (array $row) use ($selectedDivision): bool {
+                        return $this->reportDivisionMatches($row, $selectedDivision);
+                    }));
+                }
+
+                $currentRows = ['SPJM' => 3, 'SPMT' => 3, 'SUBREG' => 3];
+                $globalNos = ['SPJM' => 1, 'SPMT' => 1, 'SUBREG' => 1];
+                $sheetDivIndices = ['SPJM' => 0, 'SPMT' => 0, 'SUBREG' => 0];
+
+                foreach ($divisions as $division) {
+                    $db = (string) ($division['inventory_db_name'] ?? '');
+                    if (!$this->isSafeIdentifier($db)) {
+                        continue;
+                    }
+                    $label = (string) ($division['division_label'] ?? $db);
+
+                    // Determine sheet group
+                    $dbLower = strtolower($db);
+                    $codeLower = strtolower((string)($division['division_code'] ?? ''));
+                    $labelLower = strtolower($label);
+                    
+                    if (strpos($dbLower, 'spjm') !== false || strpos($codeLower, 'spjm') !== false || strpos($labelLower, 'spjm') !== false) {
+                        $grp = 'SPJM';
+                    } elseif (strpos($dbLower, 'subreg') !== false || strpos($codeLower, 'subreg') !== false || strpos($labelLower, 'subreg') !== false) {
+                        $grp = 'SUBREG';
+                    } else {
+                        $grp = 'SPMT';
+                    }
+
+                    $activeSheet = $sheetMap[$grp];
+                    $currentRow = &$currentRows[$grp];
+                    $globalNo = &$globalNos[$grp];
+                    $divIdx = &$sheetDivIndices[$grp];
+
+                    // Fetch PCs for this division
+                    $dateCol = $this->reportTableDateColumn($pdo, $db, 'pc'); 
+                    $where = []; 
+                    $params = [];
+                    if ($dateCol !== '') { 
+                        if ($from !== '') { $where[] = "DATE(`$dateCol`) >= ?"; $params[] = $from; } 
+                        if ($to !== '') { $where[] = "DATE(`$dateCol`) <= ?"; $params[] = $to; } 
+                    }
+                    $sql = sprintf('SELECT * FROM `%s`.`pc` %s ORDER BY `user` ASC, id_inventaris ASC', $db, $where ? ('WHERE ' . implode(' AND ', $where)) : '');
+                    $stmt = $pdo->prepare($sql); 
+                    $stmt->execute($params);
+                    $pcs = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+                    if (empty($pcs)) {
+                        continue;
+                    }
+
+                    // Draw Division Separator Row
+                    $activeSheet->getRowDimension($currentRow)->setRowHeight(24);
+                    $activeSheet->mergeCells("A{$currentRow}:S{$currentRow}");
+                    
+                    $char = chr(65 + $divIdx); // A, B, C...
+                    $separatorText = $char . "    " . strtoupper($label);
+                    $activeSheet->setCellValue("A{$currentRow}", $separatorText);
+
+                    // Style Division Separator Row
+                    $separatorStyle = [
+                        'font' => [
+                            'bold' => true,
+                            'size' => 10,
+                            'name' => 'Arial'
+                        ],
+                        'alignment' => [
+                            'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT,
+                            'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+                        ],
+                        'fill' => [
+                            'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                            'startColor' => ['rgb' => 'D9E1F2']
+                        ]
+                    ];
+                    $activeSheet->getStyle("A{$currentRow}:S{$currentRow}")->applyFromArray($separatorStyle);
+                    $currentRow++;
+                    $divIdx++;
+
+                    // Fetch Perangkat Lain for this division
+                    try {
+                        $sqlPL = sprintf('SELECT * FROM `%s`.`perangkat_lain`', $db);
+                        $stmtPL = $pdo->query($sqlPL);
+                        $allPerangkatLain = $stmtPL ? $stmtPL->fetchAll(PDO::FETCH_ASSOC) : [];
+                    } catch (Throwable $e) {
+                        $allPerangkatLain = [];
+                    }
+
+                    // Draw PC data rows
+                    foreach ($pcs as $pc) {
+                        $activeSheet->getRowDimension($currentRow)->setRowHeight(20);
+
+                        // Find matching perangkat_lain rows
+                        $related = [];
+                        $pcId = isset($pc['id']) && (int)$pc['id'] > 0 ? (int)$pc['id'] : null;
+                        $pcUser = trim((string)($pc['user'] ?? ''));
+                        $pcCompName = trim((string)($pc['computer_name'] ?? ''));
+                        $pcUnit = trim((string)($pc['unit_kerja'] ?? ''));
+
+                        foreach ($allPerangkatLain as $pl) {
+                            $matched = false;
+                            $plPcRowId = isset($pl['pc_row_id']) && $pl['pc_row_id'] !== null ? (int)$pl['pc_row_id'] : null;
+                            
+                            if ($plPcRowId !== null && $pcId !== null) {
+                                if ($plPcRowId === $pcId) {
+                                    $matched = true;
+                                }
+                            } else {
+                                if ($pcUser !== '') {
+                                    if (trim((string)($pl['user'] ?? '')) === $pcUser && ($pl['pc_row_id'] === null || ($pl['edit_source'] ?? '') !== 'standalone')) {
+                                        $matched = true;
+                                    }
+                                } else {
+                                    $fallback = $pcCompName;
+                                    $plVal = trim((string)($pl['user'] ?? ''));
+                                    if ($plVal === '') {
+                                        $plVal = trim((string)($pl['unit_kerja'] ?? ''));
+                                    }
+                                    if ($plVal === $fallback && ($pl['pc_row_id'] === null || ($pl['edit_source'] ?? '') !== 'standalone')) {
+                                        $matched = true;
+                                    }
+                                }
+                            }
+                            if ($matched) {
+                                $related[] = $pl;
+                            }
+                        }
+
+                        // Group related assets
+                        $monitors = [];
+                        $keyboards = [];
+                        $mice = [];
+                        $others = [];
+                        foreach ($related as $pl) {
+                            $jp = strtolower(trim((string)($pl['jenis_perangkat'] ?? '')));
+                            $idInv = trim((string)($pl['id_inventaris'] ?? ''));
+                            if ($idInv === '') {
+                                $idInv = '-';
+                            }
+                            if (strpos($jp, 'monitor') !== false) {
+                                $monitors[] = $idInv;
+                            } elseif (strpos($jp, 'keyboard') !== false) {
+                                $keyboards[] = $idInv;
+                            } elseif (strpos($jp, 'mouse') !== false) {
+                                $mice[] = $idInv;
+                            } else {
+                                $others[] = $idInv . ' (' . ($pl['jenis_perangkat'] ?? '-') . ')';
+                            }
+                        }
+                        $monitorStr = $monitors ? implode(', ', $monitors) : '-';
+                        $keyboardStr = $keyboards ? implode(', ', $keyboards) : '-';
+                        $mouseStr = $mice ? implode(', ', $mice) : '-';
+                        $otherStr = $others ? implode(', ', $others) : '-';
+
+                        // Fill cells
+                        $activeSheet->setCellValue("A{$currentRow}", $globalNo++);
+                        $activeSheet->setCellValue("B{$currentRow}", ($pc['unit_kerja'] ?? '') !== '' ? $pc['unit_kerja'] : '-');
+                        $activeSheet->setCellValue("C{$currentRow}", ($pc['merk_perangkat'] ?? '') !== '' ? $pc['merk_perangkat'] : '-');
+                        $activeSheet->setCellValue("D{$currentRow}", ($pc['computer_name'] ?? '') !== '' ? $pc['computer_name'] : '-');
+                        $activeSheet->setCellValue("E{$currentRow}", ($pc['user'] ?? '') !== '' ? $pc['user'] : '-');
+                        $activeSheet->setCellValue("F{$currentRow}", ($pc['processor'] ?? '') !== '' ? $pc['processor'] : '-');
+                        $activeSheet->setCellValue("G{$currentRow}", ($pc['ram'] ?? '') !== '' ? $pc['ram'] : '-');
+                        $activeSheet->setCellValue("H{$currentRow}", ($pc['kapasitas_harddisk'] ?? '') !== '' ? $pc['kapasitas_harddisk'] : '-');
+                        $activeSheet->setCellValue("I{$currentRow}", ($pc['ip_address'] ?? '') !== '' ? $pc['ip_address'] : '-');
+                        $activeSheet->setCellValue("J{$currentRow}", ($pc['sistem_operasi'] ?? '') !== '' ? $pc['sistem_operasi'] : '-');
+                        $activeSheet->setCellValue("K{$currentRow}", ($pc['licensed_windows'] ?? '') !== '' ? $pc['licensed_windows'] : '-');
+                        $activeSheet->setCellValue("L{$currentRow}", ($pc['microsoft_office'] ?? '') !== '' ? $pc['microsoft_office'] : '-');
+                        $activeSheet->setCellValue("M{$currentRow}", ($pc['licensed_office'] ?? '') !== '' ? $pc['licensed_office'] : '-');
+                        $activeSheet->setCellValue("N{$currentRow}", ($pc['id_inventaris'] ?? '') !== '' ? $pc['id_inventaris'] : '-');
+                        $activeSheet->setCellValue("O{$currentRow}", $monitorStr);
+                        $activeSheet->setCellValue("P{$currentRow}", $keyboardStr);
+                        $activeSheet->setCellValue("Q{$currentRow}", $mouseStr);
+                        $activeSheet->setCellValue("R{$currentRow}", $otherStr);
+                        $activeSheet->setCellValue("S{$currentRow}", ($pc['computer_name'] ?? '') !== '' ? $pc['computer_name'] : '-');
+
+                        // Style data row
+                        $rowStyle = [
+                            'borders' => [
+                                'allBorders' => [
+                                    'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                                    'color' => ['rgb' => 'D3D3D3']
+                                ]
+                            ]
+                        ];
+                        // Alternating row color
+                        if ($currentRow % 2 === 0) {
+                            $rowStyle['fill'] = [
+                                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                                'startColor' => ['rgb' => 'F2F2F2']
+                            ];
+                        } else {
+                            $rowStyle['fill'] = [
+                                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                                'startColor' => ['rgb' => 'FFFFFF']
+                            ];
+                        }
+                        $activeSheet->getStyle("A{$currentRow}:S{$currentRow}")->applyFromArray($rowStyle);
+
+                        // Alignments
+                        // Center columns: A, I, K, M, N, O, P, Q, R, S
+                        $centerCols = ['A', 'I', 'K', 'M', 'N', 'O', 'P', 'Q', 'R', 'S'];
+                        foreach ($centerCols as $col) {
+                            $activeSheet->getStyle($col . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                        }
+                        // Left columns: B, C, D, E, F, G, H, J, L
+                        $leftCols = ['B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'L'];
+                        foreach ($leftCols as $col) {
+                            $activeSheet->getStyle($col . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                        }
+
+                        // Status Licensed Styling
+                        // Column K (Windows License) and Column M (Office License)
+                        foreach (['K', 'M'] as $col) {
+                            $val = strtoupper(trim((string)$activeSheet->getCell($col . $currentRow)->getValue()));
+                            if ($val === 'LICENSED') {
+                                $activeSheet->getStyle($col . $currentRow)->applyFromArray([
+                                    'fill' => [
+                                        'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                                        'startColor' => ['rgb' => 'E2EFDA']
+                                    ],
+                                    'font' => [
+                                        'color' => ['rgb' => '375623'],
+                                        'bold' => true
+                                    ]
+                                ]);
+                            } elseif ($val === 'UNLICENSED' || $val === 'TIDAK LICENSED' || $val === 'NO') {
+                                $activeSheet->getStyle($col . $currentRow)->applyFromArray([
+                                    'fill' => [
+                                        'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                                        'startColor' => ['rgb' => 'FCE4D6']
+                                    ],
+                                    'font' => [
+                                        'color' => ['rgb' => 'C00000'],
+                                        'bold' => true
+                                    ]
+                                ]);
+                            }
+                        }
+
+                        // General cell vertical center alignment for the row
+                        $activeSheet->getStyle("A{$currentRow}:S{$currentRow}")->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+
+                        $currentRow++;
+                    }
+                }
+
+                // Set active sheet index to the first sheet that has rows
+                $activeIdx = 0;
+                if ($currentRows['SPMT'] > 3) {
+                    $activeIdx = 1;
+                } elseif ($currentRows['SUBREG'] > 3) {
+                    $activeIdx = 2;
+                }
+                $spreadsheet->setActiveSheetIndex($activeIdx);
+
+                $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+                ob_start();
+                $writer->save('php://output');
+                $xlsx = ob_get_clean();
+
                 header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                 header('Content-Disposition: attachment; filename="' . $base . '.xlsx"');
                 header('Content-Length: ' . strlen($xlsx));
@@ -5336,43 +5793,169 @@ endstream";
                 } else {
                     $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
                     $sheet = $spreadsheet->getActiveSheet();
-                    
-                    $sheet->setCellValue('A1', $title);
-                    $sheet->getStyle('A1')->getFont()->setBold(true);
-                    $sheet->getStyle('A1')->getAlignment()->setWrapText(true);
+                    $sheet->setTitle('Routine Monitoring');
+
+                    // Default font: Arial 10
+                    $spreadsheet->getDefaultStyle()->getFont()->setName('Arial')->setSize(10);
+
+                    // ---- Column widths ----
+                    $rmColWidths = ['A' => 6, 'B' => 16, 'C' => 14, 'D' => 36, 'E' => 16, 'F' => 36, 'G' => 22, 'H' => 22];
+                    foreach ($rmColWidths as $col => $width) {
+                        $sheet->getColumnDimension($col)->setWidth($width);
+                    }
+
+                    // ---- Row 1: Title (navy text, bold) ----
                     $sheet->mergeCells('A1:H1');
-                    
-                    $sheet->setCellValue('A2', 'Diexport');
-                    $sheet->setCellValue('B2', date('d-m-Y H:i:s'));
-                    
-                    $headers = $this->routineReportHeaders();
-                    $colIndex = 'A';
-                    foreach ($headers as $header) {
-                        $sheet->setCellValue($colIndex . '4', $header);
-                        $sheet->getStyle($colIndex . '4')->getFont()->setBold(true);
-                        $colIndex++;
+                    $sheet->setCellValue('A1', $title);
+                    $sheet->getStyle('A1')->applyFromArray([
+                        'font'      => ['bold' => true, 'size' => 13, 'name' => 'Arial', 'color' => ['rgb' => '1F3864']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
+                    ]);
+                    $sheet->getRowDimension(1)->setRowHeight(26);
+
+                    // ---- Row 2: Export date (italic, gray) ----
+                    $sheet->mergeCells('A2:H2');
+                    $sheet->setCellValue('A2', 'Diexport: ' . date('d-m-Y H:i:s'));
+                    $sheet->getStyle('A2')->applyFromArray([
+                        'font'      => ['italic' => true, 'size' => 9, 'name' => 'Arial', 'color' => ['rgb' => '595959']],
+                        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
+                    ]);
+                    $sheet->getRowDimension(2)->setRowHeight(16);
+
+                    // ---- Row 3: Spacer ----
+                    $sheet->getRowDimension(3)->setRowHeight(6);
+
+                    // ---- Row 4: Header (navy background, white bold) ----
+                    $rmHeaders = $this->routineReportHeaders();
+                    $rmHeaderCols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+                    foreach ($rmHeaderCols as $idx => $col) {
+                        $sheet->setCellValue($col . '4', $rmHeaders[$idx] ?? '');
                     }
-                    
-                    $dataRows = $this->routineReportRowsForOutput($rows);
+                    $sheet->getStyle('A4:H4')->applyFromArray([
+                        'font'      => ['bold' => true, 'size' => 10, 'name' => 'Arial', 'color' => ['rgb' => 'FFFFFF']],
+                        'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '1F3864']],
+                        'alignment' => [
+                            'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                            'vertical'   => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
+                            'wrapText'   => true,
+                        ],
+                        'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => 'D3D3D3']]],
+                    ]);
+                    $sheet->getRowDimension(4)->setRowHeight(28);
+
+                    // Freeze header rows
+                    $sheet->freezePane('A5');
+
+                    // ---- Group rows by kategori ----
+                    $groupedRows = [];
+                    foreach ($rows as $row) {
+                        $kat = strtoupper(trim((string)($row['kategori'] ?? '-')));
+                        $groupedRows[$kat][] = $row;
+                    }
+
+                    // Category color map: [background, text color, icon label]
+                    $catColors = [
+                        'CCTV'   => ['bg' => '1A5276', 'fg' => 'FFFFFF', 'icon' => '📷'],
+                        'GATE'   => ['bg' => '1E8449', 'fg' => 'FFFFFF', 'icon' => '🚪'],
+                        'SERVER' => ['bg' => '6C3483', 'fg' => 'FFFFFF', 'icon' => '🖥'],
+                    ];
+                    $defaultCatColor = ['bg' => '2E4053', 'fg' => 'FFFFFF', 'icon' => '📋'];
+
+                    // Define preferred order
+                    $categoryOrder = ['CCTV', 'GATE', 'SERVER'];
+                    // Add any extra categories not in preferred order
+                    foreach (array_keys($groupedRows) as $kat) {
+                        if (!in_array($kat, $categoryOrder, true)) {
+                            $categoryOrder[] = $kat;
+                        }
+                    }
+
                     $barisSekarang = 5;
-                    foreach ($dataRows as $rowOut) {
-                        $sheet->setCellValue('A' . $barisSekarang, $rowOut[0]);
-                        $sheet->setCellValue('B' . $barisSekarang, $rowOut[1]);
-                        $sheet->setCellValue('C' . $barisSekarang, $rowOut[2]);
-                        $sheet->setCellValue('D' . $barisSekarang, $rowOut[3]);
-                        $sheet->setCellValue('E' . $barisSekarang, $rowOut[4]);
-                        $sheet->setCellValue('F' . $barisSekarang, $rowOut[5]);
-                        $sheet->setCellValue('G' . $barisSekarang, $rowOut[6]);
-                        $sheet->setCellValue('H' . $barisSekarang, $rowOut[7]);
-                        
-                        $sheet->getStyle('A' . $barisSekarang)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
-                        $sheet->getStyle('B' . $barisSekarang)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
-                        
+                    $globalNo      = 1;
+
+                    foreach ($categoryOrder as $kat) {
+                        if (!isset($groupedRows[$kat]) || empty($groupedRows[$kat])) {
+                            continue;
+                        }
+                        $catRows  = $groupedRows[$kat];
+                        $catMeta  = $catColors[$kat] ?? $defaultCatColor;
+                        $catCount = count($catRows);
+
+                        // ---- Category separator row ----
+                        $sheet->mergeCells('A' . $barisSekarang . ':H' . $barisSekarang);
+                        $sheet->setCellValue('A' . $barisSekarang, '  ' . $kat . '   (' . $catCount . ' data)');
+                        $sheet->getStyle('A' . $barisSekarang . ':H' . $barisSekarang)->applyFromArray([
+                            'font'      => ['bold' => true, 'size' => 10, 'name' => 'Arial', 'color' => ['rgb' => $catMeta['fg']]],
+                            'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => $catMeta['bg']]],
+                            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
+                            'borders'   => [
+                                'top'    => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM, 'color' => ['rgb' => $catMeta['bg']]],
+                                'bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM, 'color' => ['rgb' => $catMeta['bg']]],
+                            ],
+                        ]);
+                        $sheet->getRowDimension($barisSekarang)->setRowHeight(22);
                         $barisSekarang++;
-                    }
-                    
-                    foreach (range('A', 'H') as $col) {
-                        $sheet->getColumnDimension($col)->setAutoSize(true);
+
+                        // ---- Data rows for this category ----
+                        $catDataNo = 1; // per-category numbering in No column
+                        foreach ($catRows as $row) {
+                            $isEven  = ($catDataNo % 2 === 0);
+                            $rowFill = $isEven ? 'EEF4FB' : 'FFFFFF';
+
+                            $sheet->setCellValue('A' . $barisSekarang, $globalNo);
+                            $sheet->setCellValue('B' . $barisSekarang, (string)($row['tanggal'] ?? '-'));
+                            $sheet->setCellValue('C' . $barisSekarang, strtoupper((string)($row['kategori'] ?? '-')));
+                            $sheet->setCellValue('D' . $barisSekarang, (string)($row['checking'] ?? '-'));
+                            $sheet->setCellValue('E' . $barisSekarang, ucwords(strtolower((string)($row['kondisi'] ?? '-'))));
+                            $sheet->setCellValue('F' . $barisSekarang, (string)($row['keterangan'] ?? '-'));
+                            $sheet->setCellValue('G' . $barisSekarang, (string)($row['checked_by'] ?? '-'));
+                            $sheet->setCellValue('H' . $barisSekarang, (string)($row['update'] ?? '-'));
+
+                            // Base style
+                            $sheet->getStyle('A' . $barisSekarang . ':H' . $barisSekarang)->applyFromArray([
+                                'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => $rowFill]],
+                                'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => 'D3D3D3']]],
+                                'alignment' => ['vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
+                            ]);
+
+                            // Center: No, Tanggal, Kategori, Kondisi, Update
+                            foreach (['A', 'B', 'C', 'E', 'H'] as $centerCol) {
+                                $sheet->getStyle($centerCol . $barisSekarang)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                            }
+                            // Left: Nama Checking, Keterangan, Dicek Oleh
+                            foreach (['D', 'F', 'G'] as $leftCol) {
+                                $sheet->getStyle($leftCol . $barisSekarang)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                            }
+                            $sheet->getStyle('F' . $barisSekarang)->getAlignment()->setWrapText(true);
+
+                            // ---- Status highlight: Kondisi column (E) ----
+                            $kondisiVal = strtoupper(trim((string)($row['kondisi'] ?? '')));
+                            if (in_array($kondisiVal, ['BAIK', 'ON', 'AKTIF', 'AMAN', 'ACTIVE'], true)) {
+                                $sheet->getStyle('E' . $barisSekarang)->applyFromArray([
+                                    'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D4EDDA']],
+                                    'font' => ['bold' => true, 'color' => ['rgb' => '155724']],
+                                ]);
+                            } elseif (in_array($kondisiVal, ['KURANG BAIK', 'WARNING', 'PENDING'], true)) {
+                                $sheet->getStyle('E' . $barisSekarang)->applyFromArray([
+                                    'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFF3CD']],
+                                    'font' => ['bold' => true, 'color' => ['rgb' => '856404']],
+                                ]);
+                            } elseif (in_array($kondisiVal, ['BURUK', 'OFF', 'TIDAK AKTIF', 'RUSAK'], true)) {
+                                $sheet->getStyle('E' . $barisSekarang)->applyFromArray([
+                                    'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F8D7DA']],
+                                    'font' => ['bold' => true, 'color' => ['rgb' => '721C24']],
+                                ]);
+                            }
+
+                            $sheet->getRowDimension($barisSekarang)->setRowHeight(20);
+                            $barisSekarang++;
+                            $catDataNo++;
+                            $globalNo++;
+                        }
+
+                        // Spacer row after each category
+                        $sheet->getRowDimension($barisSekarang)->setRowHeight(8);
+                        $barisSekarang++;
                     }
                 }
                 
@@ -5386,7 +5969,7 @@ endstream";
                 echo $xlsx;
                 exit;
             }
-            $pdf = $this->buildGenericReportPdf($title, $this->routineReportPdfColumns(), $rows);
+            $pdf = $this->buildRoutineMonitoringGroupedPdf($title, $rows);
             header('Content-Type: application/pdf');
             header('Content-Disposition: attachment; filename="' . $base . '.pdf"');
             header('Content-Length: ' . strlen($pdf));
@@ -5397,14 +5980,25 @@ endstream";
         if ($type === 'user') {
             $rows = $this->fetchUserReportRows($pdo, $filters);
             if ($format === 'xlsx') {
-                $xlsx = $this->buildGenericLaporanXlsx($title, $this->userReportHeaders(), $this->userReportRowsForOutput($rows));
+                if (!class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+                    if (file_exists(__DIR__ . '/../../peminjaman_laptop/vendor/autoload.php')) {
+                        require_once __DIR__ . '/../../peminjaman_laptop/vendor/autoload.php';
+                    } elseif (file_exists(__DIR__ . '/../../vendor/autoload.php')) {
+                        require_once __DIR__ . '/../../vendor/autoload.php';
+                    }
+                }
+                $spreadsheet = $this->buildUserReportXlsx($title, $rows);
+                $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
                 header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                 header('Content-Disposition: attachment; filename="' . $base . '.xlsx"');
+                ob_start();
+                $writer->save('php://output');
+                $xlsx = ob_get_clean();
                 header('Content-Length: ' . strlen($xlsx));
                 echo $xlsx;
                 exit;
             }
-            $pdf = $this->buildGenericReportPdf($title, $this->userReportPdfColumns(), $rows);
+            $pdf = $this->buildUserReportPdf($title, $rows);
             header('Content-Type: application/pdf');
             header('Content-Disposition: attachment; filename="' . $base . '.pdf"');
             header('Content-Length: ' . strlen($pdf));
@@ -5752,7 +6346,7 @@ endstream";
                 ['Sistem Operasi', (string) ($summary['os'] ?? '-')], ['Licensed Windows', (string) ($summary['license'] ?? '-')],
                 ['MS Office', (string) ($summary['office'] ?? '-')], ['Licensed Office', (string) ($summary['office_license'] ?? '-')],
             ];
-            $summaryWidth = 395;
+            $summaryWidth = 392;
             $rowHeight = 20;
             for ($i = 0; $i < count($rows); $i += 2) {
                 $left = $rows[$i];
@@ -5806,7 +6400,16 @@ endstream";
                 foreach ($columns as $column) {
                     $key = (string) $column['key'];
                     $fill = null;
-                    if ($key === 'status') { $statusValue = strtoupper(trim((string) ($row['status'] ?? ''))); $fill = $statusValue === 'RUSAK' ? $red : ($statusValue === 'AKTIF' ? $green : null); }
+                    if ($key === 'status') {
+                        $statusValue = strtoupper(trim((string) ($row['status'] ?? '')));
+                        if ($statusValue === 'AKTIF') {
+                            $fill = '0.90 0.97 0.93';
+                        } elseif ($statusValue === 'RUSAK') {
+                            $fill = '0.99 0.91 0.90';
+                        } else {
+                            $fill = '1.00 0.95 0.88';
+                        }
+                    }
                     $addRect($x, $rowY, (float) $column['width'], $rowHeight, $fill ?: '1 1 1', $border, 0.65);
                     if ($key === 'image') {
                         $imageKey = trim((string) ($row['image'] ?? ''));
@@ -5818,9 +6421,22 @@ endstream";
                             $addText($x + 20, $rowY + ($rowHeight / 2) - 4, '-', 1, 8, $black);
                         }
                     } else {
-                        $textColor = ($key === 'status' && in_array(strtoupper(trim((string) ($row['status'] ?? ''))), ['AKTIF', 'RUSAK'], true)) ? '1 1 1' : $black;
+                        if ($key === 'status') {
+                            $statusValue = strtoupper(trim((string) ($row['status'] ?? '')));
+                            if ($statusValue === 'AKTIF') {
+                                $textColor = '0.15 0.44 0.23';
+                            } elseif ($statusValue === 'RUSAK') {
+                                $textColor = '0.72 0.11 0.11';
+                            } else {
+                                $textColor = '0.90 0.32 0.00';
+                            }
+                        } else {
+                            $textColor = $black;
+                        }
                         $font = $key === 'status' ? 2 : 1;
-                        $lineY = $rowY + $rowHeight - 13;
+                        $linesCount = count($wrapped[$key]);
+                        $textHeight = $linesCount * 10 - 3;
+                        $lineY = $rowY + (($rowHeight - $textHeight) / 2) + $textHeight - 7;
                         foreach ($wrapped[$key] as $line) {
                             $addText($x + 5, $lineY, $line, $font, 7, $textColor);
                             $lineY -= 10;
@@ -5979,6 +6595,351 @@ endstream";
         }, $rows);
     }
 
+    private function buildUserReportXlsx(string $title, array $rows): \PhpOffice\PhpSpreadsheet\Spreadsheet
+    {
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Laporan User');
+
+        // Default font
+        $spreadsheet->getDefaultStyle()->getFont()->setName('Arial')->setSize(10);
+
+        // Column widths: No | Nama | Username | Email | Role | Divisi | Unit Kerja | Status | Tgl Daftar | Login Terakhir
+        $colWidths = ['A' => 5, 'B' => 28, 'C' => 18, 'D' => 32, 'E' => 12, 'F' => 22, 'G' => 28, 'H' => 14, 'I' => 18, 'J' => 18];
+        foreach ($colWidths as $col => $width) {
+            $sheet->getColumnDimension($col)->setWidth($width);
+        }
+
+        // Row 1: Title
+        $sheet->mergeCells('A1:J1');
+        $sheet->setCellValue('A1', $title);
+        $sheet->getStyle('A1')->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 13, 'name' => 'Arial', 'color' => ['rgb' => '1F3864']],
+            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
+        ]);
+        $sheet->getRowDimension(1)->setRowHeight(26);
+
+        // Row 2: Export date
+        $sheet->mergeCells('A2:J2');
+        $sheet->setCellValue('A2', 'Diexport: ' . date('d-m-Y H:i:s'));
+        $sheet->getStyle('A2')->applyFromArray([
+            'font'      => ['italic' => true, 'size' => 9, 'name' => 'Arial', 'color' => ['rgb' => '595959']],
+            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
+        ]);
+        $sheet->getRowDimension(2)->setRowHeight(16);
+
+        // Row 3: Spacer
+        $sheet->getRowDimension(3)->setRowHeight(6);
+
+        // Row 4: Header
+        $headers = ['No', 'Nama Lengkap', 'Username', 'Email', 'Role', 'Divisi', 'Unit Kerja', 'Status', 'Tgl Daftar', 'Login Terakhir'];
+        $hCols   = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+        foreach ($hCols as $idx => $col) {
+            $sheet->setCellValue($col . '4', $headers[$idx]);
+        }
+        $sheet->getStyle('A4:J4')->applyFromArray([
+            'font'      => ['bold' => true, 'size' => 10, 'name' => 'Arial', 'color' => ['rgb' => 'FFFFFF']],
+            'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '1F3864']],
+            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER, 'wrapText' => true],
+            'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => 'D3D3D3']]],
+        ]);
+        $sheet->getRowDimension(4)->setRowHeight(24);
+        $sheet->freezePane('A5');
+
+        // Group by Role
+        $groupedRows   = [];
+        foreach ($rows as $row) {
+            $role = strtoupper(trim((string)($row['role'] ?? 'LAINNYA')));
+            $groupedRows[$role][] = $row;
+        }
+        $roleOrder = ['ADMIN', 'USER'];
+        foreach (array_keys($groupedRows) as $r) {
+            if (!in_array($r, $roleOrder, true)) { $roleOrder[] = $r; }
+        }
+
+        // Role color map
+        $roleColors = [
+            'ADMIN'   => ['bg' => '1F3864', 'fg' => 'FFFFFF'],
+            'USER'    => ['bg' => '1A5276', 'fg' => 'FFFFFF'],
+        ];
+        $defaultRoleColor = ['bg' => '2E4053', 'fg' => 'FFFFFF'];
+
+        $baris    = 5;
+        $globalNo = 1;
+
+        foreach ($roleOrder as $role) {
+            if (!isset($groupedRows[$role]) || empty($groupedRows[$role])) { continue; }
+            $roleRows  = $groupedRows[$role];
+            $roleMeta  = $roleColors[$role] ?? $defaultRoleColor;
+            $roleCount = count($roleRows);
+
+            // Role separator row
+            $sheet->mergeCells('A' . $baris . ':J' . $baris);
+            $sheet->setCellValue('A' . $baris, '  ' . $role . '   (' . $roleCount . ' akun)');
+            $sheet->getStyle('A' . $baris . ':J' . $baris)->applyFromArray([
+                'font'      => ['bold' => true, 'size' => 10, 'name' => 'Arial', 'color' => ['rgb' => $roleMeta['fg']]],
+                'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => $roleMeta['bg']]],
+                'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT, 'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
+                'borders'   => ['top' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM, 'color' => ['rgb' => $roleMeta['bg']]], 'bottom' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM, 'color' => ['rgb' => $roleMeta['bg']]]],
+            ]);
+            $sheet->getRowDimension($baris)->setRowHeight(22);
+            $baris++;
+
+            $roleDataNo = 1;
+            foreach ($roleRows as $row) {
+                $isEven  = ($roleDataNo % 2 === 0);
+                $rowFill = $isEven ? 'EEF4FB' : 'FFFFFF';
+
+                $sheet->setCellValue('A' . $baris, $globalNo);
+                $sheet->setCellValue('B' . $baris, (string)($row['nama'] ?? '-'));
+                $sheet->setCellValue('C' . $baris, (string)($row['username'] ?? '-'));
+                $sheet->setCellValue('D' . $baris, (string)($row['email'] ?? '-'));
+                $sheet->setCellValue('E' . $baris, strtoupper((string)($row['role'] ?? '-')));
+                $sheet->setCellValue('F' . $baris, (string)($row['divisi'] ?? '-'));
+                $sheet->setCellValue('G' . $baris, (string)($row['unit'] ?? '-'));
+                $sheet->setCellValue('H' . $baris, (string)($row['status'] ?? '-'));
+                $sheet->setCellValue('I' . $baris, (string)($row['created_at'] ?? '-'));
+                $sheet->setCellValue('J' . $baris, (string)($row['last_login'] ?? '-'));
+
+                // Base style
+                $sheet->getStyle('A' . $baris . ':J' . $baris)->applyFromArray([
+                    'fill'      => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => $rowFill]],
+                    'borders'   => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['rgb' => 'D3D3D3']]],
+                    'alignment' => ['vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER],
+                ]);
+
+                // Center: No, Role, Status
+                foreach (['A', 'E', 'H', 'I', 'J'] as $cCol) {
+                    $sheet->getStyle($cCol . $baris)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                }
+                // Left: Nama, Username, Email, Divisi, Unit
+                foreach (['B', 'C', 'D', 'F', 'G'] as $lCol) {
+                    $sheet->getStyle($lCol . $baris)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                }
+
+                // Status color (H)
+                $statusVal = strtolower(trim((string)($row['status'] ?? '')));
+                if (in_array($statusVal, ['aktif', 'active'], true)) {
+                    $sheet->getStyle('H' . $baris)->applyFromArray([
+                        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D4EDDA']],
+                        'font' => ['bold' => true, 'color' => ['rgb' => '155724']],
+                    ]);
+                } else {
+                    $sheet->getStyle('H' . $baris)->applyFromArray([
+                        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFF3CD']],
+                        'font' => ['bold' => true, 'color' => ['rgb' => '856404']],
+                    ]);
+                }
+
+                // Role color (E)
+                $roleVal = strtoupper(trim((string)($row['role'] ?? '')));
+                if ($roleVal === 'ADMIN') {
+                    $sheet->getStyle('E' . $baris)->applyFromArray([
+                        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D6EAF8']],
+                        'font' => ['bold' => true, 'color' => ['rgb' => '1A5276']],
+                    ]);
+                } else {
+                    $sheet->getStyle('E' . $baris)->applyFromArray([
+                        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'EAFAF1']],
+                        'font' => ['bold' => false, 'color' => ['rgb' => '1E8449']],
+                    ]);
+                }
+
+                $sheet->getRowDimension($baris)->setRowHeight(20);
+                $baris++;
+                $roleDataNo++;
+                $globalNo++;
+            }
+
+            // Spacer
+            $sheet->getRowDimension($baris)->setRowHeight(8);
+            $baris++;
+        }
+
+        return $spreadsheet;
+    }
+
+    private function buildUserReportPdf(string $title, array $rows): string
+    {
+        $pageWidth  = 842; $pageHeight = 595; $margin = 22;
+        $navyBg  = '0.12 0.22 0.39'; $white = '1 1 1';
+        $textMain = '0.12 0.15 0.20'; $textGray = '0.35 0.38 0.42';
+        $altFill  = '0.93 0.96 0.98'; $border = '0.83 0.83 0.83';
+
+        $roleColors = [
+            'ADMIN' => '0.08 0.16 0.31',
+            'USER'  => '0.10 0.32 0.47',
+        ];
+        $defaultRoleColor = '0.18 0.25 0.31';
+
+        $columns = [
+            ['title' => 'No',            'key' => 'no',          'width' => 20,  'align' => 'center', 'chars' => 4],
+            ['title' => 'Nama Lengkap',  'key' => 'nama',        'width' => 130, 'align' => 'left',   'chars' => 22],
+            ['title' => 'Username',      'key' => 'username',    'width' => 88,  'align' => 'left',   'chars' => 14],
+            ['title' => 'Email',         'key' => 'email',       'width' => 150, 'align' => 'left',   'chars' => 25],
+            ['title' => 'Role',          'key' => 'role',        'width' => 50,  'align' => 'center', 'chars' => 8],
+            ['title' => 'Divisi',        'key' => 'divisi',      'width' => 100, 'align' => 'left',   'chars' => 17],
+            ['title' => 'Unit Kerja',    'key' => 'unit',        'width' => 105, 'align' => 'left',   'chars' => 17],
+            ['title' => 'Status',        'key' => 'status',      'width' => 58,  'align' => 'center', 'chars' => 9],
+            ['title' => 'Tgl Daftar',    'key' => 'created_at',  'width' => 62,  'align' => 'center', 'chars' => 10],
+            ['title' => 'Login Terakhir','key' => 'last_login',  'width' => 72,  'align' => 'center', 'chars' => 11],
+        ];
+        $tableWidth = array_sum(array_column($columns, 'width'));
+
+        $objects = [
+            1 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica      /Encoding /WinAnsiEncoding >>',
+            2 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+        ];
+        $streams = []; $current = []; $y = $pageHeight - $margin;
+
+        $escape = function (string $text): string {
+            $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
+            if (function_exists('iconv')) { $c = @iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', $text); if ($c !== false && $c !== '') { $text = $c; } }
+            $text = preg_replace('/[^ -~\x80-\xFF]/', '', $text) ?? $text;
+            return str_replace(['\\', '(', ')'], ['\\\\', '\(', '\)'], $text === '' ? '-' : $text);
+        };
+        $addText = function (float $x, float $yPos, string $text, int $fontId = 1, int $fontSize = 7, string $color = '0 0 0') use (&$current, $escape) {
+            $current[] = 'BT'; $current[] = sprintf('/F%d %d Tf', $fontId, $fontSize); $current[] = $color . ' rg';
+            $current[] = sprintf('1 0 0 1 %.2f %.2f Tm', $x, $yPos); $current[] = '(' . $escape($text) . ') Tj'; $current[] = 'ET';
+        };
+        $addRect = function (float $x, float $yPos, float $w, float $h, ?string $fill = null, string $stroke = '0 0 0', float $lineWidth = 0.5) use (&$current) {
+            $current[] = sprintf('%.2f w', $lineWidth);
+            if ($fill !== null) { $current[] = $fill . ' rg'; }
+            $current[] = $stroke . ' RG'; $current[] = sprintf('%.2f %.2f %.2f %.2f re %s', $x, $yPos, $w, $h, $fill !== null ? 'B' : 'S');
+        };
+        $wrap = function (string $text, int $maxChars): array {
+            $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
+            if ($text === '') { return ['-']; }
+            $words = preg_split('/\s+/', $text) ?: [$text]; $lines = []; $line = '';
+            foreach ($words as $word) {
+                $candidate = $line === '' ? $word : $line . ' ' . $word;
+                if (strlen($candidate) <= $maxChars) { $line = $candidate; continue; }
+                if ($line !== '') { $lines[] = $line; }
+                while (strlen($word) > $maxChars) { $lines[] = substr($word, 0, $maxChars); $word = substr($word, $maxChars); }
+                $line = $word;
+            }
+            if ($line !== '') { $lines[] = $line; }
+            return array_slice($lines ?: ['-'], 0, 3);
+        };
+        $finishPage = function () use (&$streams, &$current) { if ($current) { $streams[] = implode("\n", $current); } $current = []; };
+        $startPage = function () use (&$current, &$y, $pageHeight, $margin, $title, $addText, $navyBg, $textGray) {
+            $current = []; $y = $pageHeight - $margin;
+            $addText($margin, $y - 5, $title, 2, 13, $navyBg);
+            $addText($margin, $y - 19, 'Diexport: ' . date('d-m-Y H:i:s'), 1, 7, $textGray);
+            $y -= 34;
+        };
+        $drawColumnHeader = function () use (&$y, $columns, $margin, $addRect, $addText, $navyBg) {
+            $x = $margin; $h = 18; $rowY = $y - $h;
+            foreach ($columns as $col) {
+                $addRect($x, $rowY, (float)$col['width'], $h, $navyBg, $navyBg, 0.6);
+                $cx = ($col['align'] ?? 'left') === 'center' ? $x + ((float)$col['width'] / 2) - (strlen($col['title']) * 2) : $x + 3;
+                $addText($cx, $rowY + 6, $col['title'], 2, 6, '1 1 1');
+                $x += (float)$col['width'];
+            }
+            $y = $rowY - 2;
+        };
+        $drawRoleBand = function (string $role, int $count, string $color) use (&$y, $margin, $addRect, $addText, $tableWidth) {
+            $h = 16; $rowY = $y - $h;
+            $addRect($margin, $rowY, (float)$tableWidth, $h, $color, $color, 0.3);
+            $addText($margin + 5, $rowY + 5, $role . '   (' . $count . ' akun)', 2, 8, '1 1 1');
+            $y = $rowY - 2;
+        };
+
+        // Group by role
+        $groupedRows = [];
+        foreach ($rows as $row) { $r = strtoupper(trim((string)($row['role'] ?? 'LAINNYA'))); $groupedRows[$r][] = $row; }
+        $roleOrder = ['ADMIN', 'USER'];
+        foreach (array_keys($groupedRows) as $r) { if (!in_array($r, $roleOrder, true)) { $roleOrder[] = $r; } }
+
+        $startPage();
+        $drawColumnHeader();
+        $globalNo = 1;
+
+        foreach ($roleOrder as $role) {
+            if (!isset($groupedRows[$role]) || empty($groupedRows[$role])) { continue; }
+            $roleRows  = $groupedRows[$role];
+            $roleCount = count($roleRows);
+            $roleColor = $roleColors[$role] ?? $defaultRoleColor;
+
+            if (($y - 20) < $margin) { $finishPage(); $startPage(); $drawColumnHeader(); }
+            $drawRoleBand($role, $roleCount, $roleColor);
+
+            $roleDataNo = 1;
+            foreach ($roleRows as $row) {
+                $wrapped = []; $maxLines = 1;
+                foreach ($columns as $col) {
+                    $key = (string)$col['key'];
+                    $val = $key === 'no' ? (string)$globalNo : ($key === 'role' ? strtoupper((string)($row[$key] ?? '-')) : (string)($row[$key] ?? '-'));
+                    $wrapped[$key] = $wrap($val, (int)($col['chars'] ?? 12));
+                    $maxLines = max($maxLines, count($wrapped[$key]));
+                }
+                $rowHeight = max(18, $maxLines * 9 + 6);
+
+                if (($y - $rowHeight) < $margin) { $finishPage(); $startPage(); $drawColumnHeader(); }
+                $rowY = $y - $rowHeight; $x = $margin;
+                $isEven = ($roleDataNo % 2 === 0);
+
+                // Status + role colors
+                $statusUpper = strtolower(trim((string)($row['status'] ?? '')));
+                $statusFill  = in_array($statusUpper, ['aktif', 'active'], true) ? '0.83 0.93 0.85' : '1 0.95 0.80';
+                $statusTxt   = in_array($statusUpper, ['aktif', 'active'], true) ? '0.08 0.34 0.14' : '0.52 0.39 0.02';
+                $roleUpper   = strtoupper(trim((string)($row['role'] ?? '')));
+                $roleFill    = $roleUpper === 'ADMIN' ? '0.84 0.91 0.97' : '0.91 0.97 0.95';
+                $roleTxt     = $roleUpper === 'ADMIN' ? '0.10 0.32 0.47' : '0.12 0.52 0.29';
+
+                foreach ($columns as $col) {
+                    $key = (string)$col['key']; $cw = (float)$col['width'];
+                    if ($key === 'status')      { $fill = $statusFill; }
+                    elseif ($key === 'role')    { $fill = $roleFill; }
+                    else                         { $fill = $isEven ? $altFill : $white; }
+                    $addRect($x, $rowY, $cw, $rowHeight, $fill, $border, 0.35);
+
+                    $linesArr = $wrapped[$key]; $nLines = count($linesArr);
+                    $textBlock = $nLines * 9 - 3;
+                    $lineY = $rowY + (($rowHeight - $textBlock) / 2) + $textBlock - 6;
+                    $fontId = ($key === 'status' || $key === 'role') ? 2 : 1;
+                    $txtCol = $key === 'status' ? $statusTxt : ($key === 'role' ? $roleTxt : $textMain);
+
+                    foreach ($linesArr as $line) {
+                        $textX = ($col['align'] ?? 'left') === 'center' ? $x + ($cw / 2) - (strlen($line) * 1.9) : $x + 3;
+                        $addText($textX, $lineY, $line, $fontId, 6, $txtCol);
+                        $lineY -= 9;
+                    }
+                    $x += $cw;
+                }
+                $y = $rowY - 1; $roleDataNo++; $globalNo++;
+            }
+            $y -= 6;
+        }
+
+        if (!$rows) { $addText($margin, $y - 18, 'Tidak ada data.', 1, 9, $textMain); }
+        $finishPage();
+
+        // Assemble PDF
+        $nextId = 3; $contentIds = []; $pageIds = [];
+        foreach ($streams as $stream) {
+            $contentId = $nextId++; $pageId = $nextId++;
+            $objects[$contentId] = '<< /Length ' . strlen($stream) . " >>\nstream\n" . $stream . "\nendstream";
+            $objects[$pageId] = ''; $contentIds[] = $contentId; $pageIds[] = $pageId;
+        }
+        $pagesId = $nextId++;
+        foreach ($pageIds as $index => $pageId) {
+            $objects[$pageId] = "<< /Type /Page /Parent {$pagesId} 0 R /MediaBox [0 0 {$pageWidth} {$pageHeight}] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents {$contentIds[$index]} 0 R >>";
+        }
+        $kids = implode(' ', array_map(static fn($id) => $id . ' 0 R', $pageIds));
+        $objects[$pagesId] = '<< /Type /Pages /Count ' . count($pageIds) . ' /Kids [ ' . $kids . ' ] >>';
+        $catalogId = $nextId++;
+        $objects[$catalogId] = "<< /Type /Catalog /Pages {$pagesId} 0 R >>";
+        ksort($objects);
+        $pdf = "%PDF-1.4\n"; $offsets = [0];
+        foreach ($objects as $id => $object) { $offsets[$id] = strlen($pdf); $pdf .= $id . " 0 obj\n" . $object . "\nendobj\n"; }
+        $xref = strlen($pdf); $size = $catalogId + 1;
+        $pdf .= "xref\n0 {$size}\n0000000000 65535 f \n";
+        for ($i = 1; $i < $size; $i++) { $pdf .= sprintf("%010d 00000 n \n", $offsets[$i] ?? 0); }
+        $pdf .= "trailer << /Size {$size} /Root {$catalogId} 0 R >>\nstartxref\n{$xref}\n%%EOF";
+        return $pdf;
+    }
+
     private function buildGenericLaporanXlsx(string $title, array $headers, array $rows, array $centerCols = []): string
     {
         $sheetRows = [[$title], ['Diexport', date('d-m-Y H:i:s')], [], $headers];
@@ -6051,6 +7012,11 @@ endstream";
         $f = $this->buildLaporanFilters($filters);
         $role = strtolower(trim((string) $f['user_role']));
         $division = trim((string) $f['user_division']);
+        
+        $search = trim((string) ($filters['search'] ?? ''));
+        $status = trim((string) ($filters['status'] ?? ''));
+        $pageDivision = trim((string) ($filters['division'] ?? ''));
+
         $where = [];
         $params = [];
         if (in_array($role, ['admin', 'user'], true)) {
@@ -6062,6 +7028,20 @@ endstream";
             $params['division_exact'] = $division;
             $params['division_like'] = '%' . strtolower($division) . '%';
         }
+        if ($search !== '') {
+            $where[] = '(LOWER(u.nama_lengkap) LIKE :search OR LOWER(u.email) LIKE :search OR LOWER(u.username) LIKE :search OR LOWER(COALESCE(md.division_label, "")) LIKE :search OR LOWER(u.unit_kerja_default) LIKE :search OR LOWER(u.role) LIKE :search)';
+            $params['search'] = '%' . strtolower($search) . '%';
+        }
+        if ($status === 'active') {
+            $where[] = 'u.is_active = 1';
+        } elseif ($status === 'pending') {
+            $where[] = 'u.is_active = 0';
+        }
+        if ($pageDivision !== '' && $pageDivision !== 'all') {
+            $where[] = '(LOWER(COALESCE(md.division_label, "")) = :page_div OR LOWER(u.unit_kerja_default) = :page_div)';
+            $params['page_div'] = strtolower($pageDivision);
+        }
+
         $sql = 'SELECT u.id, u.username, u.nama_lengkap, u.email, u.role, u.is_active, u.unit_kerja_default, u.created_at, u.last_login_at, COALESCE(NULLIF(md.division_label, ""), NULLIF(md.division_code, ""), "-") AS divisi FROM users u LEFT JOIN master_divisi md ON md.id = u.default_divisi_id ' . ($where ? 'WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY u.role ASC, u.nama_lengkap ASC, u.id ASC';
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
@@ -6424,10 +7404,53 @@ endstream";
         $files['docProps/app.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Microsoft Excel</Application></Properties>';
         $files['xl/workbook.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' . $workbookSheets . '</sheets></workbook>';
         $files['xl/_rels/workbook.xml.rels'] = $workbookRels;
-        $files['xl/styles.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+        $files['xl/styles.xml'] = $this->buildExcelStylesXml();
         foreach ($files as $fileName => $fileContent) { $files[$fileName] = str_replace('\\n', "
 ", $fileContent); }
         return $this->buildZipBinary($files);
+    }
+
+    private function buildExcelStylesXml(): string
+    {
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="4">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="14"/><name val="Calibri"/><color rgb="FF1B3E6F"/></font>
+    <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FFFFFFFF"/></font>
+  </fonts>
+  <fills count="4">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF2A66A5"/><bgColor rgb="FF2A66A5"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFEAF5FB"/><bgColor rgb="FFEAF5FB"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border>
+      <left style="thin"><color rgb="FFD3D3D3"/></left>
+      <right style="thin"><color rgb="FFD3D3D3"/></right>
+      <top style="thin"><color rgb="FFD3D3D3"/></top>
+      <bottom style="thin"><color rgb="FFD3D3D3"/></bottom>
+    </border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="7">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+  </cellXfs>
+  <cellStyles count="1">
+    <cellStyle name="Normal" xfId="0" builtinId="0"/>
+  </cellStyles>
+</styleSheet>';
     }
 
     private function buildGenericWorksheetXml(array $rows, array $widths, array $centerCols = []): string
@@ -6435,11 +7458,324 @@ endstream";
         $xmlRows = []; $maxCols = max(1, count($widths));
         foreach ($rows as $rIndex => $row) {
             $cells = [];
-            foreach (array_values($row) as $cIndex => $value) { $maxCols = max($maxCols, $cIndex + 1); if ($value === null || $value === '') { continue; } $firstCell = (string) ($row[0] ?? ''); $style = ($rIndex === 0 || $rIndex === 3 || $firstCell === 'No' || substr($firstCell, 0, 24) === 'Laporan Data Inventaris') ? ' s="1"' : (in_array($cIndex, $centerCols, true) ? ' s="2"' : ''); $ref = $this->excelColumnName($cIndex + 1) . ($rIndex + 1); $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>'; }
+            $rowValues = array_values($row);
+            $firstCell = (string) ($rowValues[0] ?? '');
+            
+            foreach ($rowValues as $cIndex => $value) {
+                $maxCols = max($maxCols, $cIndex + 1);
+                if ($value === null || $value === '') {
+                    continue;
+                }
+                
+                $style = '';
+                if ($rIndex === 0 || strpos((string)$value, 'Laporan Data Inventaris') === 0) {
+                    $style = ' s="1"'; // Title
+                } else if ($firstCell === 'No' || $value === 'No') {
+                    $style = ' s="2"'; // Table Header (blue background, white bold text)
+                } else if ($value !== null && substr(trim((string)$value), -1) === ':') {
+                    $style = ' s="3"'; // Summary Label (light blue background, bold text)
+                } else if ($cIndex > 0 && substr(trim((string)($rowValues[$cIndex - 1] ?? '')), -1) === ':') {
+                    $style = ' s="4"'; // Summary Value
+                } else if ($rIndex === 1 && $cIndex === 0) {
+                    $style = ' s="6"'; // Normal bold (Diexport label)
+                } else {
+                    // Regular data row
+                    if ($cIndex === 0 || in_array($cIndex, $centerCols, true)) {
+                        $style = ' s="5"'; // Centered cell
+                    } else {
+                        $style = ' s="0"'; // Normal cell
+                    }
+                }
+                
+                $ref = $this->excelColumnName($cIndex + 1) . ($rIndex + 1);
+                $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
+            }
             $xmlRows[] = '<row r="' . ($rIndex + 1) . '">' . implode('', $cells) . '</row>';
         }
         $cols = ''; for ($i = 0; $i < $maxCols; $i++) { $cols .= '<col min="' . ($i + 1) . '" max="' . ($i + 1) . '" width="' . (float) ($widths[$i] ?? 18) . '" customWidth="1"/>'; }
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:' . $this->excelColumnName($maxCols) . max(1, count($rows)) . '"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols>' . $cols . '</cols><sheetData>' . implode('', $xmlRows) . '</sheetData></worksheet>';
+    }
+
+    private function buildRoutineMonitoringGroupedPdf(string $title, array $rows): string
+    {
+        // ---- Page setup (Landscape A4) ----
+        $pageWidth  = 842;
+        $pageHeight = 595;
+        $margin     = 24;
+
+        // ---- Color palette (PDF RGB 0–1) ----
+        $navyBg   = '0.12 0.22 0.39';   // #1F3864  – column header fill
+        $white    = '1 1 1';
+        $textMain = '0.12 0.15 0.20';   // near-black
+        $textGray = '0.35 0.38 0.42';   // gray for metadata
+        $altFill  = '0.93 0.96 0.98';   // light blue-white even rows
+        $border   = '0.83 0.83 0.83';   // #D3D3D3 thin border
+
+        // Category separator colors
+        $catColors = [
+            'CCTV'   => '0.10 0.32 0.47',   // #1A5276
+            'GATE'   => '0.12 0.52 0.29',   // #1E8449
+            'SERVER' => '0.42 0.21 0.51',   // #6C3483
+        ];
+        $defaultCatColor = '0.18 0.25 0.31'; // dark slate
+
+        // ---- Column definitions ----
+        $columns = [
+            ['title' => 'No',           'key' => 'no',          'width' => 22,  'align' => 'center', 'chars' => 4],
+            ['title' => 'Tanggal',      'key' => 'tanggal',     'width' => 65,  'align' => 'center', 'chars' => 10],
+            ['title' => 'Kategori',     'key' => 'kategori',    'width' => 55,  'align' => 'center', 'chars' => 9],
+            ['title' => 'Nama Checking','key' => 'checking',    'width' => 160, 'align' => 'left',   'chars' => 28],
+            ['title' => 'Kondisi',      'key' => 'kondisi',     'width' => 65,  'align' => 'center', 'chars' => 10],
+            ['title' => 'Keterangan',   'key' => 'keterangan',  'width' => 185, 'align' => 'left',   'chars' => 30],
+            ['title' => 'Dicek Oleh',   'key' => 'checked_by',  'width' => 120, 'align' => 'left',   'chars' => 18],
+            ['title' => 'Update',       'key' => 'update',      'width' => 105, 'align' => 'left',   'chars' => 16],
+        ];
+        $tableWidth = array_sum(array_column($columns, 'width')); // should equal ~777
+
+        // ---- PDF primitives ----
+        $objects = [
+            1 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica       /Encoding /WinAnsiEncoding >>',
+            2 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold  /Encoding /WinAnsiEncoding >>',
+        ];
+        $streams = [];
+        $current = [];
+        $y       = $pageHeight - $margin;
+
+        $escape = function (string $text): string {
+            $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
+            if (function_exists('iconv')) {
+                $c = @iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', $text);
+                if ($c !== false && $c !== '') { $text = $c; }
+            }
+            $text = preg_replace('/[^ -~\x80-\xFF]/', '', $text) ?? $text;
+            return str_replace(['\\', '(', ')'], ['\\\\', '\(', '\)'], $text === '' ? '-' : $text);
+        };
+
+        $addText = function (float $x, float $yPos, string $text, int $fontId = 1, int $fontSize = 7, string $color = '0 0 0') use (&$current, $escape) {
+            $current[] = 'BT';
+            $current[] = sprintf('/F%d %d Tf', $fontId, $fontSize);
+            $current[] = $color . ' rg';
+            $current[] = sprintf('1 0 0 1 %.2f %.2f Tm', $x, $yPos);
+            $current[] = '(' . $escape($text) . ') Tj';
+            $current[] = 'ET';
+        };
+
+        $addRect = function (float $x, float $yPos, float $w, float $h, ?string $fill = null, string $stroke = '0 0 0', float $lineWidth = 0.5) use (&$current) {
+            $current[] = sprintf('%.2f w', $lineWidth);
+            if ($fill !== null) { $current[] = $fill . ' rg'; }
+            $current[] = $stroke . ' RG';
+            $current[] = sprintf('%.2f %.2f %.2f %.2f re %s', $x, $yPos, $w, $h, $fill !== null ? 'B' : 'S');
+        };
+
+        $wrap = function (string $text, int $maxChars): array {
+            $text = trim(preg_replace('/\s+/', ' ', $text) ?? $text);
+            if ($text === '') { return ['-']; }
+            $words = preg_split('/\s+/', $text) ?: [$text];
+            $lines = []; $line = '';
+            foreach ($words as $word) {
+                $candidate = $line === '' ? $word : $line . ' ' . $word;
+                if (strlen($candidate) <= $maxChars) { $line = $candidate; continue; }
+                if ($line !== '') { $lines[] = $line; }
+                while (strlen($word) > $maxChars) { $lines[] = substr($word, 0, $maxChars); $word = substr($word, $maxChars); }
+                $line = $word;
+            }
+            if ($line !== '') { $lines[] = $line; }
+            return array_slice($lines ?: ['-'], 0, 3);
+        };
+
+        $finishPage = function () use (&$streams, &$current) {
+            if ($current) { $streams[] = implode("\n", $current); }
+            $current = [];
+        };
+
+        $startPage = function () use (&$current, &$y, $pageHeight, $margin, $title, $addText, $navyBg, $textGray, $tableWidth) {
+            $current = [];
+            $y = $pageHeight - $margin;
+            // Title
+            $addText($margin, $y - 5, $title, 2, 13, $navyBg);
+            // Export date
+            $addText($margin, $y - 19, 'Diexport: ' . date('d-m-Y H:i:s'), 1, 7, $textGray);
+            $y -= 34;
+        };
+
+        $drawColumnHeader = function () use (&$y, $columns, $margin, $addRect, $addText, $navyBg) {
+            $x = $margin;
+            $h = 18;
+            $rowY = $y - $h;
+            foreach ($columns as $col) {
+                $addRect($x, $rowY, (float)$col['width'], $h, $navyBg, $navyBg, 0.6);
+                $cx = $x + 3;
+                if (($col['align'] ?? 'left') === 'center') {
+                    $cx = $x + ((float)$col['width'] / 2) - (strlen($col['title']) * 2);
+                }
+                $addText($cx, $rowY + 6, $col['title'], 2, 6, '1 1 1');
+                $x += (float)$col['width'];
+            }
+            $y = $rowY - 2;
+        };
+
+        $drawCategoryBand = function (string $kat, int $count, string $catColor) use (&$y, $columns, $margin, $addRect, $addText, $tableWidth) {
+            $h = 16;
+            $rowY = $y - $h;
+            // Full-width background
+            $addRect($margin, $rowY, (float)$tableWidth, $h, $catColor, $catColor, 0.3);
+            $addText($margin + 5, $rowY + 5, $kat . '   (' . $count . ' data)', 2, 8, '1 1 1');
+            $y = $rowY - 2;
+        };
+
+        // ---- Group rows ----
+        $groupedRows = [];
+        foreach ($rows as $row) {
+            $kat = strtoupper(trim((string)($row['kategori'] ?? '-')));
+            $groupedRows[$kat][] = $row;
+        }
+        $categoryOrder = ['CCTV', 'GATE', 'SERVER'];
+        foreach (array_keys($groupedRows) as $kat) {
+            if (!in_array($kat, $categoryOrder, true)) { $categoryOrder[] = $kat; }
+        }
+
+        // ---- Render ----
+        $startPage();
+        $drawColumnHeader();
+
+        $globalNo = 1;
+
+        foreach ($categoryOrder as $kat) {
+            if (!isset($groupedRows[$kat]) || empty($groupedRows[$kat])) { continue; }
+            $catRows  = $groupedRows[$kat];
+            $catCount = count($catRows);
+            $catColor = $catColors[$kat] ?? $defaultCatColor;
+
+            // Category band
+            if (($y - 20) < $margin) {
+                $finishPage();
+                $startPage();
+                $drawColumnHeader();
+            }
+            $drawCategoryBand($kat, $catCount, $catColor);
+
+            $catDataNo = 1;
+            foreach ($catRows as $row) {
+                // Build wrapped cells
+                $wrapped  = [];
+                $maxLines = 1;
+                foreach ($columns as $col) {
+                    $key = (string)$col['key'];
+                    $val = $key === 'no' ? (string)$globalNo
+                        : ($key === 'kategori' ? strtoupper((string)($row['kategori'] ?? '-'))
+                        : ($key === 'kondisi'  ? ucwords(strtolower((string)($row['kondisi'] ?? '-')))
+                        : (string)($row[$key] ?? '-')));
+                    $wrapped[$key] = $wrap($val, (int)($col['chars'] ?? 12));
+                    $maxLines = max($maxLines, count($wrapped[$key]));
+                }
+                $rowHeight = max(18, $maxLines * 9 + 6);
+
+                if (($y - $rowHeight) < $margin) {
+                    $finishPage();
+                    $startPage();
+                    $drawColumnHeader();
+                }
+
+                $rowY   = $y - $rowHeight;
+                $x      = $margin;
+                $isEven = ($catDataNo % 2 === 0);
+
+                // Status color for Kondisi
+                $kondisiUpper = strtoupper(trim((string)($row['kondisi'] ?? '')));
+                $kondisiColor = null; // null = use row fill
+                if (in_array($kondisiUpper, ['BAIK', 'ON', 'AKTIF', 'AMAN', 'ACTIVE'], true)) {
+                    $kondisiColor = '0.83 0.93 0.85'; // green tint
+                } elseif (in_array($kondisiUpper, ['KURANG BAIK', 'WARNING', 'PENDING'], true)) {
+                    $kondisiColor = '1 0.95 0.80';    // yellow tint
+                } elseif (in_array($kondisiUpper, ['BURUK', 'OFF', 'TIDAK AKTIF', 'RUSAK'], true)) {
+                    $kondisiColor = '0.97 0.84 0.85'; // red tint
+                }
+
+                foreach ($columns as $col) {
+                    $key  = (string)$col['key'];
+                    $cw   = (float)$col['width'];
+                    $fill = $isEven ? $altFill : $white;
+                    if ($key === 'kondisi' && $kondisiColor !== null) {
+                        $fill = $kondisiColor;
+                    }
+                    $addRect($x, $rowY, $cw, $rowHeight, $fill, $border, 0.35);
+
+                    $linesArr  = $wrapped[$key];
+                    $nLines    = count($linesArr);
+                    $textBlock = $nLines * 9 - 3;
+                    $lineY     = $rowY + (($rowHeight - $textBlock) / 2) + $textBlock - 6;
+
+                    $fontId    = ($key === 'kondisi' && $kondisiColor !== null) ? 2 : 1;
+                    $textColor = ($key === 'kondisi' && $kondisiColor !== null)
+                        ? (in_array($kondisiUpper, ['BAIK', 'ON', 'AKTIF', 'AMAN', 'ACTIVE'], true)
+                            ? '0.08 0.34 0.14'   // dark green
+                            : (in_array($kondisiUpper, ['KURANG BAIK', 'WARNING', 'PENDING'], true)
+                                ? '0.52 0.39 0.02' // dark yellow
+                                : '0.44 0.11 0.14')) // dark red
+                        : $textMain;
+
+                    foreach ($linesArr as $line) {
+                        if (($col['align'] ?? 'left') === 'center') {
+                            $textX = $x + ($cw / 2) - (strlen($line) * 1.9);
+                        } else {
+                            $textX = $x + 3;
+                        }
+                        $addText($textX, $lineY, $line, $fontId, 6, $textColor);
+                        $lineY -= 9;
+                    }
+                    $x += $cw;
+                }
+
+                $y = $rowY - 1;
+                $catDataNo++;
+                $globalNo++;
+            }
+
+            // Spacer after category
+            $y -= 6;
+        }
+
+        if (!$rows) {
+            $addText($margin, $y - 18, 'Tidak ada data.', 1, 9, $textMain);
+        }
+        $finishPage();
+
+        // ---- Assemble PDF ----
+        $nextId    = 3;
+        $contentIds = [];
+        $pageIds    = [];
+        foreach ($streams as $stream) {
+            $contentId = $nextId++;
+            $pageId    = $nextId++;
+            $objects[$contentId] = '<< /Length ' . strlen($stream) . " >>\nstream\n" . $stream . "\nendstream";
+            $objects[$pageId]    = '';
+            $contentIds[] = $contentId;
+            $pageIds[]    = $pageId;
+        }
+        $pagesId = $nextId++;
+        foreach ($pageIds as $index => $pageId) {
+            $objects[$pageId] = "<< /Type /Page /Parent {$pagesId} 0 R /MediaBox [0 0 {$pageWidth} {$pageHeight}] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents {$contentIds[$index]} 0 R >>";
+        }
+        $kids = implode(' ', array_map(static fn($id) => $id . ' 0 R', $pageIds));
+        $objects[$pagesId] = '<< /Type /Pages /Count ' . count($pageIds) . ' /Kids [ ' . $kids . ' ] >>';
+        $catalogId = $nextId++;
+        $objects[$catalogId] = "<< /Type /Catalog /Pages {$pagesId} 0 R >>";
+
+        ksort($objects);
+        $pdf     = "%PDF-1.4\n";
+        $offsets = [0];
+        foreach ($objects as $id => $object) {
+            $offsets[$id] = strlen($pdf);
+            $pdf .= $id . " 0 obj\n" . $object . "\nendobj\n";
+        }
+        $xref = strlen($pdf);
+        $size = $catalogId + 1;
+        $pdf .= "xref\n0 {$size}\n0000000000 65535 f \n";
+        for ($i = 1; $i < $size; $i++) {
+            $pdf .= sprintf("%010d 00000 n \n", $offsets[$i] ?? 0);
+        }
+        $pdf .= "trailer << /Size {$size} /Root {$catalogId} 0 R >>\nstartxref\n{$xref}\n%%EOF";
+        return $pdf;
     }
 
     private function buildGenericReportPdf(string $title, array $columns, array $rows): string
@@ -6454,7 +7790,7 @@ endstream";
         $finishPage = function () use (&$streams, &$current) { if ($current) { $streams[] = implode("\n", $current); } $current = []; };
         $drawHeader = function () use (&$y, $columns, $margin, $addRect, $addText, $blue) { $x = $margin; $h = 18; $rowY = $y - $h; foreach ($columns as $col) { $addRect($x, $rowY, (float) $col['width'], $h, $blue, $blue, 0.7); $addText($x + 3, $rowY + 6, (string) $col['title'], 2, 6, '1 1 1'); $x += (float) $col['width']; } $y = $rowY - 2; };
         $startPage(); $drawHeader();
-        foreach ($rows as $idx => $row) { $wrapped = []; $maxLines = 1; foreach ($columns as $col) { $key = (string) $col['key']; $wrapped[$key] = $wrap((string) ($row[$key] ?? '-'), (int) ($col['chars'] ?? 12)); $maxLines = max($maxLines, count($wrapped[$key])); } $rowHeight = max(20, $maxLines * 9 + 8); if (($y - $rowHeight) < $margin) { $finishPage(); $startPage(); $drawHeader(); } $rowY = $y - $rowHeight; $x = $margin; foreach ($columns as $col) { $key = (string) $col['key']; $addRect($x, $rowY, (float) $col['width'], $rowHeight, $idx % 2 === 0 ? $altFill : '1 1 1', $border, 0.45); $lineY = $rowY + $rowHeight - 10; foreach ($wrapped[$key] as $line) { $addText($x + 3, $lineY, $line, 1, 6, $textColor); $lineY -= 9; } $x += (float) $col['width']; } $y = $rowY - 2; }
+        foreach ($rows as $idx => $row) { $wrapped = []; $maxLines = 1; foreach ($columns as $col) { $key = (string) $col['key']; $wrapped[$key] = $wrap((string) ($row[$key] ?? '-'), (int) ($col['chars'] ?? 12)); $maxLines = max($maxLines, count($wrapped[$key])); } $rowHeight = max(20, $maxLines * 9 + 8); if (($y - $rowHeight) < $margin) { $finishPage(); $startPage(); $drawHeader(); } $rowY = $y - $rowHeight; $x = $margin; foreach ($columns as $col) { $key = (string) $col['key']; $addRect($x, $rowY, (float) $col['width'], $rowHeight, $idx % 2 === 0 ? $altFill : '1 1 1', $border, 0.45); $linesCount = count($wrapped[$key]); $textHeight = $linesCount * 9 - 3; $lineY = $rowY + (($rowHeight - $textHeight) / 2) + $textHeight - 6; foreach ($wrapped[$key] as $line) { $addText($x + 3, $lineY, $line, 1, 6, $textColor); $lineY -= 9; } $x += (float) $col['width']; } $y = $rowY - 2; }
         if (!$rows) { $addText($margin, $y - 18, 'Tidak ada data.', 1, 9, $textColor); } $finishPage();
         $nextId = 3; $contentIds = []; $pageIds = []; foreach ($streams as $stream) { $contentId = $nextId++; $pageId = $nextId++; $objects[$contentId] = '<< /Length ' . strlen($stream) . " >>\nstream\n" . $stream . "\nendstream"; $objects[$pageId] = ''; $contentIds[] = $contentId; $pageIds[] = $pageId; }
         $pagesId = $nextId++; foreach ($pageIds as $index => $pageId) { $objects[$pageId] = "<< /Type /Page /Parent {$pagesId} 0 R /MediaBox [0 0 {$pageWidth} {$pageHeight}] /Resources << /Font << /F1 1 0 R /F2 2 0 R >> >> /Contents {$contentIds[$index]} 0 R >>"; } $kids = implode(' ', array_map(static fn ($id) => $id . ' 0 R', $pageIds)); $objects[$pagesId] = '<< /Type /Pages /Count ' . count($pageIds) . ' /Kids [ ' . $kids . ' ] >>'; $catalogId = $nextId++; $objects[$catalogId] = "<< /Type /Catalog /Pages {$pagesId} 0 R >>";
@@ -7261,9 +8597,7 @@ endstream";
             'xl/_rels/workbook.xml.rels' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 '
                 . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
-            'xl/styles.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-'
-                . '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>',
+            'xl/styles.xml' => $this->buildExcelStylesXml(),
             'xl/worksheets/sheet1.xml' => $worksheetXml,
         ];
 
@@ -7286,11 +8620,34 @@ endstream";
         $xmlRows = [];
         foreach ($rows as $rowIndex => $row) {
             $cells = [];
-            foreach (array_values($row) as $columnIndex => $value) {
+            $rowValues = array_values($row);
+            $firstCell = (string) ($rowValues[0] ?? '');
+            
+            foreach ($rowValues as $columnIndex => $value) {
                 if ($value === null || $value === '') {
                     continue;
                 }
-                $style = ($rowIndex === 0 || $rowIndex === 9) ? ' s="1"' : '';
+                
+                $style = '';
+                if ($rowIndex === 0 || strpos((string)$value, 'Laporan Data Inventaris') === 0) {
+                    $style = ' s="1"'; // Title
+                } else if ($firstCell === 'No' || $value === 'No') {
+                    $style = ' s="2"'; // Table Header (blue background, white bold text)
+                } else if ($value !== null && substr(trim((string)$value), -1) === ':') {
+                    $style = ' s="3"'; // Summary Label (light blue background, bold text)
+                } else if ($columnIndex > 0 && substr(trim((string)($rowValues[$columnIndex - 1] ?? '')), -1) === ':') {
+                    $style = ' s="4"'; // Summary Value
+                } else if ($rowIndex === 1 && $columnIndex === 0) {
+                    $style = ' s="6"'; // Normal bold (Diexport label)
+                } else {
+                    // Regular data row
+                    if ($columnIndex === 0 || $columnIndex === 1 || $columnIndex === 6) {
+                        $style = ' s="5"'; // Centered cell
+                    } else {
+                        $style = ' s="0"'; // Normal cell
+                    }
+                }
+                
                 $ref = $this->excelColumnName($columnIndex + 1) . (string) ($rowIndex + 1);
                 $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
             }
@@ -7621,7 +8978,13 @@ endstream";
                 $fill = null;
                 if ($column['key'] === 'status') {
                     $statusValue = strtoupper(trim((string) ($row['status'] ?? '')));
-                    $fill = $statusValue === 'RUSAK' ? $red : ($statusValue === 'AKTIF' ? $green : null);
+                    if ($statusValue === 'AKTIF') {
+                        $fill = '0.90 0.97 0.93';
+                    } elseif ($statusValue === 'RUSAK') {
+                        $fill = '0.99 0.91 0.90';
+                    } else {
+                        $fill = '1.00 0.95 0.88';
+                    }
                 }
                 $addRect($x, $rowY, $column['width'], $cellHeight, $fill, '0.75 0.81 0.89', 0.8);
                 if ($column['key'] === 'image') {
@@ -7641,9 +9004,22 @@ endstream";
                     continue;
                 }
 
-                $textColor = ($column['key'] === 'status' && in_array(strtoupper(trim((string) ($row['status'] ?? ''))), ['AKTIF', 'RUSAK'], true)) ? '1 1 1' : $black;
+                if ($column['key'] === 'status') {
+                    $statusValue = strtoupper(trim((string) ($row['status'] ?? '')));
+                    if ($statusValue === 'AKTIF') {
+                        $textColor = '0.15 0.44 0.23';
+                    } elseif ($statusValue === 'RUSAK') {
+                        $textColor = '0.72 0.11 0.11';
+                    } else {
+                        $textColor = '0.90 0.32 0.00';
+                    }
+                } else {
+                    $textColor = $black;
+                }
                 $font = $column['key'] === 'status' ? 2 : 1;
-                $lineY = $rowY + $cellHeight - 14;
+                $linesCount = count($wrapped[$column['key']]);
+                $textHeight = $linesCount * 11 - 3;
+                $lineY = $rowY + (($cellHeight - $textHeight) / 2) + $textHeight - 8;
                 foreach ($wrapped[$column['key']] as $line) {
                     $addText($x + 6, $lineY, $line, $font, 8, $textColor);
                     $lineY -= 11;

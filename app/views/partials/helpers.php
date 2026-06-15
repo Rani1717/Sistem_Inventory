@@ -91,8 +91,17 @@ if (!function_exists('renderTopbar')) {
         $displayName = trim((string) ($auth['nama_lengkap'] ?? $auth['username'] ?? 'User'));
         $displayEmail = trim((string) ($auth['email'] ?? ($data['user_email'] ?? '')));
         $canAccessItSupport = AuthController::canAccessItSupport();
+        $isAdmin = AuthController::isAdminSpmt();
+
         $notifications = $canAccessItSupport ? ($data['it_support_notifications'] ?? ['count' => 0, 'items' => []]) : ['count' => 0, 'items' => []];
         $notificationCount = (int) ($notifications['count'] ?? 0);
+
+        $pendingUserNotif = ($isAdmin && !empty($data['pending_user_notifications']))
+            ? $data['pending_user_notifications']
+            : ['count' => 0, 'items' => []];
+        $pendingUserCount = (int) ($pendingUserNotif['count'] ?? 0);
+
+        $totalBadgeCount = $notificationCount + $pendingUserCount;
         ?>
         <header class="topbar">
             <button type="button" class="topbar__mobile-menu js-sidebar-toggle" aria-label="Buka menu" aria-controls="appSidebar" aria-expanded="false"><i class="fa-solid fa-bars"></i></button>
@@ -102,13 +111,15 @@ if (!function_exists('renderTopbar')) {
                 <div class="topbar__search-results js-global-search-results" hidden></div>
             </div>
             <div class="topbar__icons">
-                <?php if ($canAccessItSupport): ?>
+                <?php if ($canAccessItSupport || $isAdmin): ?>
                 <div class="topbar__dropdown">
-                    <button type="button" class="topbar__icon-btn js-toggle-notifications" aria-label="Notifikasi IT Support" aria-expanded="false" data-notification-count="<?= (int) $notificationCount; ?>">
+                    <button type="button" class="topbar__icon-btn js-toggle-notifications" aria-label="Notifikasi" aria-expanded="false" data-notification-count="<?= (int) $totalBadgeCount; ?>">
                         <i class="fa-solid fa-bell"></i>
-                        <span class="topbar__badge js-notification-badge"<?= $notificationCount > 0 ? "" : " hidden"; ?>><?= $notificationCount > 99 ? "99+" : (int) $notificationCount; ?></span>
+                        <span class="topbar__badge js-notification-badge"<?= $totalBadgeCount > 0 ? "" : " hidden"; ?>><?= $totalBadgeCount > 99 ? "99+" : (int) $totalBadgeCount; ?></span>
                     </button>
                     <div class="topbar__menu topbar__menu--notifications js-notification-menu" hidden>
+
+                        <?php if ($canAccessItSupport): ?>
                         <div class="topbar__menu-header"><strong>IT Support baru</strong><span><span class="js-notification-count-text"><?= (int) $notificationCount; ?></span> notifikasi</span></div>
                         <?php if (!empty($notifications['items'])): ?>
                             <?php foreach ($notifications['items'] as $item): ?>
@@ -123,6 +134,26 @@ if (!function_exists('renderTopbar')) {
                         <?php else: ?>
                             <div class="notification-empty">Belum ada form IT Support baru.</div>
                         <?php endif; ?>
+                        <?php endif; ?>
+
+                        <?php if ($isAdmin): ?>
+                        <div class="notif-section-divider"></div>
+                        <div class="topbar__menu-header topbar__menu-header--user"><strong><i class="fa-solid fa-user-clock"></i> Akun Menunggu Validasi</strong><span class="notif-pending-count"><?= $pendingUserCount; ?></span></div>
+                        <?php if (!empty($pendingUserNotif['items'])): ?>
+                            <?php foreach ($pendingUserNotif['items'] as $uItem): ?>
+                                <a class="notification-item notification-item--user" href="index.php?page=user-management">
+                                    <strong><?= e((string) ($uItem['nama_lengkap'] ?? '-')); ?></strong>
+                                    <small><?= e((string) ($uItem['email'] ?? '-')); ?></small>
+                                    <small class="notif-user-division"><?= e((string) ($uItem['unit_kerja_default'] ?? '-')); ?></small>
+                                    <em><?= e((string) ($uItem['created_at'] ?? '')); ?></em>
+                                </a>
+                            <?php endforeach; ?>
+                            <a class="topbar__menu-footer topbar__menu-footer--user" href="index.php?page=user-management">Kelola semua akun pending</a>
+                        <?php else: ?>
+                            <div class="notification-empty">Tidak ada akun yang menunggu validasi.</div>
+                        <?php endif; ?>
+                        <?php endif; ?>
+
                     </div>
                 </div>
                 <?php endif; ?>

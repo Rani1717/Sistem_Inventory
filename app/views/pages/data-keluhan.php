@@ -66,6 +66,39 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
     white-space: nowrap !important;
     flex-shrink: 0 !important;
 }
+
+/* Rounded Table Design for IT Support Issue */
+.table-wrap--complaints {
+    background: rgba(255, 255, 255, 0.92) !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(42, 102, 165, 0.12) !important;
+    box-shadow: 0 12px 30px rgba(13, 51, 108, 0.06) !important;
+    margin-bottom: 24px !important;
+    display: block !important; /* Overriding flex layout from style.css */
+}
+
+.table-wrap--complaints .complaint-table-scroll {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+.table-wrap--complaints .data-table--complaints {
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+    width: 100% !important;
+    border: none !important;
+}
+
+.table-wrap--complaints .data-table--complaints th,
+.table-wrap--complaints .data-table--complaints td {
+    border: none !important;
+    border-bottom: 1px solid rgba(42, 102, 165, 0.10) !important;
+}
+
+.table-wrap--complaints .data-table--complaints tr:last-child td {
+    border-bottom: none !important;
+}
 </style>
 <div class="complaint-page">
     <div class="detail-header detail-header--report">

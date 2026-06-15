@@ -165,7 +165,7 @@ class AuthModel
             if ((int) ($existing['is_active'] ?? 0) === 1) {
                 throw new RuntimeException('Email sudah terdaftar dan aktif. Silakan gunakan menu lupa password untuk mengganti password.');
             }
-            $stmt = $this->pdo->prepare('UPDATE users SET nama_lengkap = :nama_lengkap, password_hash = :password_hash, default_divisi_id = :default_divisi_id, unit_kerja_default = :unit_kerja_default, sheet_sumber = :sheet_sumber, is_active = 0, must_change_password = 0 WHERE id = :id LIMIT 1');
+            $stmt = $this->pdo->prepare('UPDATE users SET nama_lengkap = :nama_lengkap, password_hash = :password_hash, default_divisi_id = :default_divisi_id, unit_kerja_default = :unit_kerja_default, sheet_sumber = :sheet_sumber, is_active = 0, must_change_password = 0, is_validated = 0 WHERE id = :id LIMIT 1');
             $stmt->execute([
                 'nama_lengkap' => $name,
                 'password_hash' => hash('sha256', $password),
@@ -192,7 +192,7 @@ class AuthModel
             $suffix++;
             $username = $baseUsername . '.' . $suffix;
         }
-        $stmt = $this->pdo->prepare('INSERT INTO users (username, nama_lengkap, email, password_hash, role, default_divisi_id, unit_kerja_default, sheet_sumber, is_active, must_change_password) VALUES (:username, :nama_lengkap, :email, :password_hash, "user", :default_divisi_id, :unit_kerja_default, :sheet_sumber, 0, 0)');
+        $stmt = $this->pdo->prepare('INSERT INTO users (username, nama_lengkap, email, password_hash, role, default_divisi_id, unit_kerja_default, sheet_sumber, is_active, must_change_password, is_validated) VALUES (:username, :nama_lengkap, :email, :password_hash, "user", :default_divisi_id, :unit_kerja_default, :sheet_sumber, 0, 0, 0)');
         $stmt->execute([
             'username' => $username,
             'nama_lengkap' => $name,
@@ -228,7 +228,7 @@ class AuthModel
             $where[] = 'u.is_active = 1';
         }
 
-        $sql = 'SELECT u.id, u.username, u.nama_lengkap, u.email, u.role, u.default_divisi_id, u.unit_kerja_default, u.is_active, u.must_change_password, u.last_login_at, u.created_at, d.division_label
+        $sql = 'SELECT u.id, u.username, u.nama_lengkap, u.email, u.role, u.default_divisi_id, u.unit_kerja_default, u.is_active, u.is_validated, u.must_change_password, u.last_login_at, u.created_at, d.division_label
                 FROM users u
                 LEFT JOIN master_divisi d ON d.id = u.default_divisi_id';
         if ($where) {
@@ -249,8 +249,32 @@ class AuthModel
         if (!$this->pdo instanceof PDO) {
             return 0;
         }
-        $stmt = $this->pdo->query('SELECT COUNT(*) FROM users WHERE is_active = 0');
+        $stmt = $this->pdo->query('SELECT COUNT(*) FROM users WHERE is_active = 0 AND is_validated = 0');
         return $stmt ? (int) $stmt->fetchColumn() : 0;
+    }
+
+    public function fetchPendingUsersForNotification(int $limit = 5): array
+    {
+        if (!$this->pdo instanceof PDO) {
+            return ['count' => 0, 'items' => []];
+        }
+        try {
+            $countStmt = $this->pdo->query('SELECT COUNT(*) FROM users WHERE is_active = 0 AND is_validated = 0');
+            $count = $countStmt ? (int) $countStmt->fetchColumn() : 0;
+
+            $stmt = $this->pdo->prepare(
+                'SELECT id, nama_lengkap, email, unit_kerja_default, created_at
+                 FROM users WHERE is_active = 0 AND is_validated = 0
+                 ORDER BY created_at DESC
+                 LIMIT :lim'
+            );
+            $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $items = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+            return ['count' => $count, 'items' => $items];
+        } catch (Throwable $e) {
+            return ['count' => 0, 'items' => []];
+        }
     }
 
     public function updateUserStatus(int $userId, bool $isActive): void
@@ -258,8 +282,13 @@ class AuthModel
         if (!$this->pdo instanceof PDO) {
             throw new RuntimeException('Koneksi database tidak tersedia.');
         }
-        $stmt = $this->pdo->prepare('UPDATE users SET is_active = :is_active WHERE id = :id LIMIT 1');
-        $stmt->execute(['is_active' => $isActive ? 1 : 0, 'id' => $userId]);
+        if ($isActive) {
+            $stmt = $this->pdo->prepare('UPDATE users SET is_active = 1, is_validated = 1 WHERE id = :id LIMIT 1');
+            $stmt->execute(['id' => $userId]);
+        } else {
+            $stmt = $this->pdo->prepare('UPDATE users SET is_active = 0 WHERE id = :id LIMIT 1');
+            $stmt->execute(['id' => $userId]);
+        }
     }
 
     public function updateUserRole(int $userId, string $role): void
