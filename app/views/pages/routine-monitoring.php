@@ -61,6 +61,14 @@ $monthPdfUrl = 'index.php?' . http_build_query([
     'routine_year' => $yearValue,
     'routine_search' => $searchValue,
 ]);
+$monthExcelUrl = 'index.php?' . http_build_query([
+    'page' => 'routine-monitoring',
+    'action' => 'export_routine_xlsx_pivot',
+    'recap_scope' => 'month',
+    'routine_month' => $monthValue,
+    'routine_year' => $yearValue,
+    'routine_search' => $searchValue,
+]);
 // Build week options for dropdown (only pivot PDF per minggu)
 $weekDropdownOptions = [];
 if (!empty($days)) {
@@ -81,6 +89,15 @@ if (!empty($days)) {
             'url_pivot'  => 'index.php?' . http_build_query([
                 'page' => 'routine-monitoring',
                 'action' => 'export_routine_pdf_pivot',
+                'recap_scope' => 'week',
+                'week_start' => $weekStart->format('Y-m-d'),
+                'routine_month' => $monthValue,
+                'routine_year' => $yearValue,
+                'routine_search' => $searchValue,
+            ]),
+            'url_excel'  => 'index.php?' . http_build_query([
+                'page' => 'routine-monitoring',
+                'action' => 'export_routine_xlsx_pivot',
                 'recap_scope' => 'week',
                 'week_start' => $weekStart->format('Y-m-d'),
                 'routine_month' => $monthValue,
@@ -139,19 +156,36 @@ body.has-modal-open .routine-manager-modal {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 14px;
-    border: 1.5px solid #cbd5e1;
-    border-radius: 8px;
-    background: #fff;
-    color: #334155;
+    padding: 7px 16px;
+    border: 1.5px solid #1d4a86;
+    border-radius: 20px;
+    background: #1d4a86;
+    color: #fff;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     text-decoration: none;
     cursor: pointer;
-    transition: border-color 0.15s, background 0.15s, color 0.15s;
+    transition: all 0.15s;
     white-space: nowrap;
 }
-.recap-pdf-btn:hover { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
+.recap-pdf-btn:hover { border-color: #163f72; background: #163f72; color: #fff; }
+.recap-excel-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 16px;
+    border: 1.5px solid #157347;
+    border-radius: 20px;
+    background: #157347;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.recap-excel-btn:hover { border-color: #105936; background: #105936; color: #fff; }
 .recap-week-dropdown-wrap { position: relative; }
 .recap-week-trigger {
     display: inline-flex;
@@ -159,7 +193,7 @@ body.has-modal-open .routine-manager-modal {
     gap: 8px;
     padding: 7px 14px;
     border: 1.5px solid #cbd5e1;
-    border-radius: 8px;
+    border-radius: 20px;
     background: #fff;
     color: #334155;
     font-size: 13px;
@@ -169,7 +203,7 @@ body.has-modal-open .routine-manager-modal {
     white-space: nowrap;
 }
 .recap-week-trigger:hover,
-.recap-week-trigger[aria-expanded="true"] { border-color: #2563eb; background: #eff6ff; color: #2563eb; }
+.recap-week-trigger[aria-expanded="true"] { border-color: #1d4a86; background: #eff6ff; color: #1d4a86; }
 .recap-week-chevron { font-size: 11px; transition: transform 0.2s; }
 .recap-week-trigger[aria-expanded="true"] .recap-week-chevron { transform: rotate(180deg); }
 .recap-week-menu {
@@ -1231,17 +1265,34 @@ body.has-modal-open .routine-manager-modal {
                 <a class="recap-pdf-btn js-recap-month-pdf" href="<?= e($monthPdfUrl); ?>">
                     <i class="fa-regular fa-file-pdf"></i> PDF bulanan
                 </a>
+                <a class="recap-excel-btn js-recap-month-excel" href="<?= e($monthExcelUrl); ?>">
+                    <i class="fa-regular fa-file-excel"></i> Excel bulanan
+                </a>
                 <?php if (!empty($weekDropdownOptions)): ?>
                 <div class="recap-week-dropdown-wrap">
                     <button type="button" class="recap-week-trigger js-recap-week-trigger" aria-haspopup="true" aria-expanded="false" id="recapWeekTrigger">
                         <span class="js-recap-week-label">Pilih Minggu</span>
                         <i class="fa-solid fa-chevron-down recap-week-chevron"></i>
                     </button>
-                    <div class="recap-week-menu" id="recapWeekMenu" hidden>
+                    <div class="recap-week-menu" id="recapWeekMenu" hidden style="min-width: 320px !important; padding: 4px 0;">
                         <?php foreach ($weekDropdownOptions as $opt): ?>
-                        <a class="recap-week-item" href="<?= e($opt['url_pivot']); ?>">
-                            <i class="fa-regular fa-file-pdf"></i> <?= e($opt['label']); ?>
-                        </a>
+                        <div class="recap-week-row" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid #f1f5f9; gap: 12px;">
+                            <span style="font-size: 12px; font-weight: 600; color: #475569; white-space: nowrap;"><?= e($opt['label']); ?></span>
+                            <div style="display: flex; gap: 6px;">
+                                <a href="<?= e($opt['url_pivot']); ?>" title="Export PDF" 
+                                   style="display: inline-flex !important; flex-direction: row !important; align-items: center !important; gap: 4px !important; color: #1d4a86 !important; font-size: 11px !important; font-weight: 600 !important; text-decoration: none !important; padding: 4px 10px !important; background-color: #eff6ff !important; border: 1.5px solid #1d4a86 !important; border-radius: 20px !important; transition: all 0.15s !important; white-space: nowrap !important;"
+                                   onmouseover="this.style.backgroundColor='#1d4a86'; this.style.color='#ffffff';" 
+                                   onmouseout="this.style.backgroundColor='#eff6ff'; this.style.color='#1d4a86';">
+                                    <i class="fa-regular fa-file-pdf"></i> PDF
+                                </a>
+                                <a href="<?= e($opt['url_excel']); ?>" title="Export Excel" 
+                                   style="display: inline-flex !important; flex-direction: row !important; align-items: center !important; gap: 4px !important; color: #157347 !important; font-size: 11px !important; font-weight: 600 !important; text-decoration: none !important; padding: 4px 10px !important; background-color: #ecfdf5 !important; border: 1.5px solid #157347 !important; border-radius: 20px !important; transition: all 0.15s !important; white-space: nowrap !important;"
+                                   onmouseover="this.style.backgroundColor='#157347'; this.style.color='#ffffff';" 
+                                   onmouseout="this.style.backgroundColor='#ecfdf5'; this.style.color='#157347';">
+                                    <i class="fa-regular fa-file-excel"></i> Excel
+                                </a>
+                            </div>
+                        </div>
                         <?php endforeach; ?>
                     </div>
                 </div>
@@ -1284,8 +1335,9 @@ body.has-modal-open .routine-manager-modal {
                 <div>
                     <h2 id="routineRecapTitle">Rekap Harian</h2>
                 </div>
-                <div class="routine-recap-dialog__actions">
+                <div class="routine-recap-dialog__actions" style="display: flex; gap: 8px;">
                     <a href="#" class="btn btn--secondary js-routine-recap-pdf"><i class="fa-solid fa-file-pdf"></i> Download PDF</a>
+                    <a href="#" class="btn btn--success js-routine-recap-excel" style="background-color: #10b981; color: #fff; border-color: #10b981;"><i class="fa-solid fa-file-excel"></i> Download Excel</a>
                     <button type="button" class="icon-round js-close-routine-recap" aria-label="Tutup"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
@@ -1319,6 +1371,7 @@ body.has-modal-open .routine-manager-modal {
     var body = modal ? modal.querySelector('.js-routine-recap-body') : null;
     var title = modal ? modal.querySelector('#routineRecapTitle') : null;
     var pdfLink = modal ? modal.querySelector('.js-routine-recap-pdf') : null;
+    var excelLink = modal ? modal.querySelector('.js-routine-recap-excel') : null;
     var month = <?= json_encode($monthValue); ?>;
     var year = <?= json_encode($yearValue); ?>;
     var search = <?= json_encode($searchValue); ?>;
@@ -1412,6 +1465,9 @@ body.has-modal-open .routine-manager-modal {
         var groups = recapData[dateKey] || {};
         title.textContent = 'Rekap Harian ' + formatDate(dateKey);
         pdfLink.href = 'index.php?page=routine-monitoring&action=export_routine_pdf&recap_scope=day&routine_month=' + encodeURIComponent(month) + '&routine_year=' + encodeURIComponent(year) + '&routine_search=' + encodeURIComponent(search) + '&recap_date=' + encodeURIComponent(dateKey);
+        if (excelLink) {
+            excelLink.href = 'index.php?page=routine-monitoring&action=export_routine_xlsx_pivot&recap_scope=day&routine_month=' + encodeURIComponent(month) + '&routine_year=' + encodeURIComponent(year) + '&routine_search=' + encodeURIComponent(search) + '&recap_date=' + encodeURIComponent(dateKey);
+        }
         var html = '';
         var hasAny = false;
         groupOrder.forEach(function (groupName) {

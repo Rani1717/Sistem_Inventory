@@ -1130,6 +1130,10 @@ class PageController
             $this->streamRoutineMonitoringPivotPdf($filters);
             exit;
         }
+        if (($_GET['action'] ?? '') === 'export_routine_xlsx_pivot') {
+            $this->streamRoutineMonitoringPivotExcel($filters);
+            exit;
+        }
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             return;
         }
@@ -2192,6 +2196,429 @@ class PageController
         header('Content-Disposition: attachment; filename="' . $base . '.pdf"');
         header('Content-Length: ' . strlen($pdf));
         echo $pdf;
+    }
+    private function streamRoutineMonitoringPivotExcel(array $filters): void
+    {
+        $pdo = Database::getConnection();
+        if (!$pdo instanceof PDO) {
+            return;
+        }
+
+        if (!class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+            if (file_exists(__DIR__ . '/../../peminjaman_laptop/vendor/autoload.php')) {
+                require_once __DIR__ . '/../../peminjaman_laptop/vendor/autoload.php';
+            } elseif (file_exists(__DIR__ . '/../../vendor/autoload.php')) {
+                require_once __DIR__ . '/../../vendor/autoload.php';
+            }
+        }
+
+        if (!class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+            http_response_code(500);
+            echo 'Library PhpSpreadsheet tidak tersedia.';
+            exit;
+        }
+
+        $scope = strtolower(trim((string) ($_GET['recap_scope'] ?? 'week')));
+        if (!in_array($scope, ['day', 'week', 'month'], true)) {
+            $scope = 'week';
+        }
+
+        $yearNum = (int) ($filters['routine_year'] ?? $_GET['routine_year'] ?? date('Y'));
+        $monthNum = (int) ($filters['routine_month'] ?? $_GET['routine_month'] ?? date('m'));
+        if ($monthNum < 1 || $monthNum > 12) { $monthNum = (int)date('m'); }
+        if ($yearNum < 2020 || $yearNum > 2100) { $yearNum = (int)date('Y'); }
+
+        $daysInMonth = (int)date('t', mktime(0, 0, 0, $monthNum, 1, $yearNum));
+
+        // Setup Date Range
+        if ($scope === 'day') {
+            $requestedDate = trim((string) ($_GET['recap_date'] ?? ''));
+            if ($requestedDate === '') {
+                $requestedDate = sprintf('%04d-%02d-01', $yearNum, $monthNum);
+            }
+            $rangeStart = $requestedDate;
+            $rangeEnd   = $requestedDate;
+            $titleSuffix = date('d/m/Y', strtotime($requestedDate));
+            $baseSuffix  = preg_replace('/[^A-Za-z0-9_-]+/', '-', $requestedDate);
+        } elseif ($scope === 'week') {
+            $weekStartInput = trim((string) ($_GET['week_start'] ?? $_GET['recap_date'] ?? ''));
+            if ($weekStartInput === '') {
+                $weekStartInput = sprintf('%04d-%02d-01', $yearNum, $monthNum);
+            }
+            try {
+                $weekStartDate = new DateTimeImmutable($weekStartInput);
+            } catch (Throwable $e) {
+                $weekStartDate = new DateTimeImmutable(sprintf('%04d-%02d-01', $yearNum, $monthNum));
+            }
+            $weekStartDate = $weekStartDate->modify('monday this week');
+            $weekEndDate   = $weekStartDate->modify('+6 days');
+            
+            $monthStart = new DateTimeImmutable(sprintf('%04d-%02d-01', $yearNum, $monthNum));
+            $monthEnd   = new DateTimeImmutable(sprintf('%04d-%02d-%02d', $yearNum, $monthNum, $daysInMonth));
+            if ($weekStartDate < $monthStart) { $weekStartDate = $monthStart; }
+            if ($weekEndDate   > $monthEnd)   { $weekEndDate   = $monthEnd;   }
+            
+            $rangeStart  = $weekStartDate->format('Y-m-d');
+            $rangeEnd    = $weekEndDate->format('Y-m-d');
+            $titleSuffix = date('d/m/Y', strtotime($rangeStart)) . ' - ' . date('d/m/Y', strtotime($rangeEnd));
+            $baseSuffix  = $rangeStart . '-sd-' . $rangeEnd;
+        } else { // month
+            $rangeStart = sprintf('%04d-%02d-01', $yearNum, $monthNum);
+            $rangeEnd   = sprintf('%04d-%02d-%02d', $yearNum, $monthNum, $daysInMonth);
+            $monthNamesIndo = [
+                1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 
+                5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus', 
+                9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
+            ];
+            $monthName = $monthNamesIndo[$monthNum] ?? date('F', mktime(0, 0, 0, $monthNum, 1, $yearNum));
+            $titleSuffix = $monthName . ' ' . $yearNum;
+            $baseSuffix  = sprintf('%04d-%02d', $yearNum, $monthNum);
+        }
+
+        // Collect dates in range
+        $rangeDates = [];
+        $cur = new DateTimeImmutable($rangeStart);
+        $end = new DateTimeImmutable($rangeEnd);
+        while ($cur <= $end) {
+            $rangeDates[] = $cur->format('Y-m-d');
+            $cur = $cur->modify('+1 day');
+        }
+        $dateCount = count($rangeDates);
+
+        $scopeLabel = match ($scope) {
+            'month' => 'Bulanan',
+            'week'  => 'Mingguan',
+            'day'   => 'Harian',
+            default => 'Mingguan',
+        };
+        $mainTitle = 'Rekap Routine Monitoring ' . $scopeLabel . ' - ' . $titleSuffix;
+
+        $routineData = $this->buildRoutineMonitoringData($filters);
+        $groupedItems = $routineData['grouped_items'] ?? [];
+        $categories = $routineData['categories'] ?? [];
+
+        $categoryOrder = [];
+        foreach ($categories as $cat) {
+            $catName = strtoupper((string) ($cat['category_name'] ?? ''));
+            if ($catName !== '' && $catName !== 'UMUM' && !in_array($catName, $categoryOrder)) {
+                $categoryOrder[] = $catName;
+            }
+        }
+        if (empty($categoryOrder)) {
+            $categoryOrder = ['GATE', 'CCTV', 'SERVER'];
+        }
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+
+        $headerYellowStyle = [
+            'fill' => [
+                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                'startColor' => ['argb' => 'FFFFD965']
+            ],
+            'alignment' => [
+                'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+            ]
+        ];
+
+        $borderStyle = [
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                    'color' => ['argb' => 'FF000000']
+                ]
+            ]
+        ];
+
+        if ($scope === 'day') {
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('Rekap Harian');
+
+            $sheet->setCellValue('A1', $mainTitle);
+            $sheet->getStyle('A1')->getFont()->setBold(true);
+            $sheet->mergeCells('A1:H1');
+
+            $sheet->setCellValue('A2', 'Diexport');
+            $sheet->setCellValue('B2', date('d-m-Y H:i:s'));
+
+            $headers = ['No', 'Tanggal', 'Kategori', 'Checking', 'Kondisi', 'Keterangan', 'Checked By', 'Update'];
+            $colIndex = 'A';
+            foreach ($headers as $header) {
+                $sheet->setCellValue($colIndex . '4', $header);
+                $sheet->getStyle($colIndex . '4')->getFont()->setBold(true);
+                $colIndex++;
+            }
+
+            // Fetch records for the day
+            $dayDate = $rangeStart;
+            $rows = [];
+            foreach ($categoryOrder as $catName) {
+                $items = $groupedItems[$catName] ?? [];
+                foreach ($items as $item) {
+                    list($locVal, $nameVal) = $this->getRoutineItemLocationAndName($item, $catName);
+                    $cell = $item['calendar'][$dayDate] ?? [];
+                    if (empty($cell['condition_status'])) {
+                        continue;
+                    }
+                    $rows[] = [
+                        'tanggal' => date('d/m/Y', strtotime($dayDate)),
+                        'kategori' => $catName,
+                        'checking' => ($locVal !== '' && $catName !== 'SERVER') ? ($locVal . ' - ' . $nameVal) : $nameVal,
+                        'kondisi' => $cell['condition_status'],
+                        'keterangan' => $cell['keterangan'] ?? '-',
+                        'checked_by' => $cell['checked_by_name'] ?? '-',
+                        'update' => $cell['updated_at'] ?? '-',
+                    ];
+                }
+            }
+
+            $currentRow = 5;
+            $no = 1;
+            foreach ($rows as $r) {
+                $sheet->setCellValue('A' . $currentRow, $no++);
+                $sheet->setCellValue('B' . $currentRow, $r['tanggal']);
+                $sheet->setCellValue('C' . $currentRow, $r['kategori']);
+                $sheet->setCellValue('D' . $currentRow, $r['checking']);
+                $sheet->setCellValue('E' . $currentRow, $r['kondisi']);
+                $sheet->setCellValue('F' . $currentRow, $r['keterangan']);
+                $sheet->setCellValue('G' . $currentRow, $r['checked_by']);
+                $sheet->setCellValue('H' . $currentRow, $r['update']);
+
+                $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle('B' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $sheet->getStyle('E' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $currentRow++;
+            }
+
+            foreach (range('A', 'H') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+            $sheet->getStyle('A4:H' . ($currentRow - 1))->applyFromArray($borderStyle);
+
+        } else {
+            // Month / Week - Matrix
+            $sheetIndex = 0;
+            foreach ($categoryOrder as $catName) {
+                $items = $groupedItems[$catName] ?? [];
+                if (empty($items)) {
+                    continue;
+                }
+
+                if ($sheetIndex > 0) {
+                    $sheet = $spreadsheet->createSheet();
+                } else {
+                    $sheet = $spreadsheet->getActiveSheet();
+                }
+                $sheet->setTitle(substr($catName, 0, 31));
+
+                $isCg = in_array($catName, ['CCTV', 'GATE'], true);
+
+                if ($isCg) {
+                    $sheet->mergeCells('A1:A2');
+                    $sheet->setCellValue('A1', 'LOKASI');
+                    
+                    $sheet->mergeCells('B1:B2');
+                    $colBHeader = ($catName === 'CCTV') ? 'NAMA CCTV' : 'NAMA BARANG';
+                    $sheet->setCellValue('B1', $colBHeader);
+                    
+                    $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($dateCount + 2);
+                    $sheet->mergeCells('C1:' . $lastColLetter . '1');
+                    $sheet->setCellValue('C1', 'TANGGAL');
+                    
+                    $keteranganColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($dateCount + 3);
+                    $sheet->mergeCells($keteranganColLetter . '1:' . $keteranganColLetter . '2');
+                    $sheet->setCellValue($keteranganColLetter . '1', 'KETERANGAN');
+                    
+                    for ($d = 0; $d < $dateCount; $d++) {
+                        $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($d + 3);
+                        $dateStr = date('d/m/Y', strtotime($rangeDates[$d]));
+                        $sheet->setCellValue($colLetter . '2', $dateStr);
+                    }
+                    
+                    $sheet->getStyle('A1:A2')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle('B1:B2')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle('C1:' . $lastColLetter . '1')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle('C2:' . $lastColLetter . '2')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle($keteranganColLetter . '1:' . $keteranganColLetter . '2')->applyFromArray($headerYellowStyle);
+                } else { // SERVER / OTHER
+                    $sheet->mergeCells('A1:A2');
+                    $sheet->setCellValue('A1', $catName === 'SERVER' ? 'NAMA SERVER' : 'NAMA CHECKING');
+                    
+                    $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($dateCount + 1);
+                    $sheet->mergeCells('B1:' . $lastColLetter . '1');
+                    $sheet->setCellValue('B1', 'TANGGAL');
+                    
+                    $keteranganColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($dateCount + 2);
+                    $sheet->mergeCells($keteranganColLetter . '1:' . $keteranganColLetter . '2');
+                    $sheet->setCellValue($keteranganColLetter . '1', 'KETERANGAN');
+                    
+                    for ($d = 0; $d < $dateCount; $d++) {
+                        $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($d + 2);
+                        $dateStr = date('d/m/Y', strtotime($rangeDates[$d]));
+                        $sheet->setCellValue($colLetter . '2', $dateStr);
+                    }
+                    
+                    $sheet->getStyle('A1:A2')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle('B1:' . $lastColLetter . '1')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle('B2:' . $lastColLetter . '2')->applyFromArray($headerYellowStyle);
+                    $sheet->getStyle($keteranganColLetter . '1:' . $keteranganColLetter . '2')->applyFromArray($headerYellowStyle);
+                }
+
+                $currentRow = 3;
+                $rowHeights = [];
+                $rowHeights[1] = 14.5;
+                $rowHeights[2] = 14.5;
+
+                foreach ($items as $item) {
+                    list($itemLocation, $itemName) = $this->getRoutineItemLocationAndName($item, $catName);
+
+                    if ($isCg) {
+                        $sheet->setCellValue('A' . $currentRow, $itemLocation);
+                        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                        $sheet->getStyle('A' . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                        
+                        $sheet->setCellValue('B' . $currentRow, $itemName);
+                        $sheet->getStyle('B' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                        $sheet->getStyle('B' . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                    } else {
+                        $sheet->setCellValue('A' . $currentRow, $itemName);
+                        $sheet->getStyle('A' . $currentRow)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                        $sheet->getStyle('A' . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                    }
+
+                    $offCount = 0;
+                    $rowComments = [];
+
+                    for ($d = 0; $d < $dateCount; $d++) {
+                        $dateKey = $rangeDates[$d];
+                        $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($isCg ? $d + 3 : $d + 2);
+                        
+                        $cell = $item['calendar'][$dateKey] ?? [];
+                        $status = strtoupper(trim((string) ($cell['condition_status'] ?? '')));
+                        $keterangan = trim((string) ($cell['keterangan'] ?? ''));
+
+                        $normalizedStatus = '';
+                        if (in_array($catName, ['CCTV', 'SERVER'], true)) {
+                            if ($status === 'ON' || $status === 'BAIK' || $status === 'AKTIF') {
+                                $normalizedStatus = 'ON';
+                            } elseif ($status === 'OFF' || $status === 'RUSAK' || $status === 'TIDAK AKTIF' || $status === 'BURUK') {
+                                $normalizedStatus = 'OFF';
+                                $offCount++;
+                            }
+                        } else { // GATE / OTHER
+                            if ($status === 'BAIK' || $status === 'AKTIF' || $status === 'ON') {
+                                $normalizedStatus = 'Aktif';
+                            } elseif ($status === 'BURUK' || $status === 'RUSAK' || $status === 'OFF') {
+                                $normalizedStatus = 'Rusak';
+                                $offCount++;
+                            }
+                        }
+
+                        if ($keterangan !== '') {
+                            $rowComments[] = "Tgl " . date('d', strtotime($dateKey)) . ": " . $keterangan;
+                        }
+
+                        if ($normalizedStatus !== '') {
+                            $sheet->setCellValue($colLetter . $currentRow, $normalizedStatus);
+                            
+                            if ($keterangan !== '') {
+                                $sheet->getComment($colLetter . $currentRow)->getText()->createTextRun($keterangan);
+                            }
+                            
+                            $isOk = ($normalizedStatus === 'ON' || $normalizedStatus === 'Aktif');
+                            $bgColor = $isOk ? 'FF00B050' : 'FFFF0000';
+                            
+                            $sheet->getStyle($colLetter . $currentRow)->applyFromArray([
+                                'fill' => [
+                                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                                    'startColor' => ['argb' => $bgColor]
+                                ],
+                                'font' => [
+                                    'color' => ['argb' => 'FFFFFFFF'],
+                                    'bold' => true
+                                ],
+                                'alignment' => [
+                                    'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER
+                                ]
+                            ]);
+                        }
+                    }
+
+                    $keteranganText = '';
+                    if (in_array($catName, ['CCTV', 'SERVER'], true)) {
+                        $keteranganText = "Mati: " . $offCount . " kali";
+                        $rowHeights[$currentRow] = 14.5;
+                    } else { // GATE / OTHER
+                        $keteranganText = implode("\n", $rowComments);
+                        if (!empty($rowComments)) {
+                            $sheet->getStyle($keteranganColLetter . $currentRow)->getAlignment()->setWrapText(true);
+                            $rowHeights[$currentRow] = -1; // auto-adjust
+                        } else {
+                            $rowHeights[$currentRow] = 14.5;
+                        }
+                    }
+
+                    $sheet->setCellValue($keteranganColLetter . $currentRow, $keteranganText);
+                    $sheet->getStyle($keteranganColLetter . $currentRow)->getAlignment()->setHorizontal(in_array($catName, ['CCTV', 'SERVER'], true) ? \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER : \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT);
+                    $sheet->getStyle($keteranganColLetter . $currentRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER);
+                    
+                    $currentRow++;
+                }
+
+                $lastRowIndex = $currentRow - 1;
+
+                if ($isCg) {
+                    // Merge consecutive locations in Column A
+                    $mergeStart = 3;
+                    for ($r = 3; $r <= $lastRowIndex; $r++) {
+                        $currentLoc = $sheet->getCell('A' . $r)->getValue();
+                        $nextLoc = ($r < $lastRowIndex) ? $sheet->getCell('A' . ($r + 1))->getValue() : null;
+                        
+                        if ($currentLoc !== $nextLoc) {
+                            if ($r > $mergeStart) {
+                                $sheet->mergeCells('A' . $mergeStart . ':A' . $r);
+                            }
+                            $mergeStart = $r + 1;
+                        }
+                    }
+                }
+
+                $sheet->getColumnDimension('A')->setAutoSize(true);
+                if ($isCg) {
+                    $sheet->getColumnDimension('B')->setAutoSize(true);
+                }
+                for ($d = 0; $d < $dateCount; $d++) {
+                    $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($isCg ? $d + 3 : $d + 2);
+                    $sheet->getColumnDimension($colLetter)->setWidth(13.0);
+                }
+                $sheet->getColumnDimension($keteranganColLetter)->setWidth(30.0);
+
+                for ($r = 1; $r <= $lastRowIndex; $r++) {
+                    $h = isset($rowHeights[$r]) ? $rowHeights[$r] : 14.5;
+                    if ($h > 0) {
+                        $sheet->getRowDimension($r)->setRowHeight($h);
+                    }
+                }
+
+                $sheet->getStyle('A1:' . $keteranganColLetter . $lastRowIndex)->applyFromArray($borderStyle);
+                $sheetIndex++;
+            }
+        }
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $base = 'rekap-pivot-routine-monitoring-' . $scope . '-' . preg_replace('/[^A-Za-z0-9_-]+/', '-', (string) $baseSuffix);
+        
+        while (ob_get_level() > 0) { ob_end_clean(); }
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $base . '.xlsx"');
+        ob_start();
+        $writer->save('php://output');
+        $xlsx = ob_get_clean();
+        header('Content-Length: ' . strlen($xlsx));
+        echo $xlsx;
+        exit;
     }
     private function handleUserManagementAction(): void
     {
