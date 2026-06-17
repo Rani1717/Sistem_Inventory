@@ -12,14 +12,14 @@
         popup.innerHTML = '' +
             '<div class="spmt-popup__backdrop" data-spmt-popup-cancel></div>' +
             '<div class="spmt-popup__dialog" role="dialog" aria-modal="true" aria-labelledby="spmtPopupTitle" tabindex="-1">' +
-                '<button type="button" class="spmt-popup__close" aria-label="Tutup" data-spmt-popup-cancel><i class="fa-solid fa-xmark"></i></button>' +
-                '<div class="spmt-popup__icon"><i class="fa-solid fa-circle-info"></i></div>' +
-                '<h3 id="spmtPopupTitle">Informasi</h3>' +
-                '<p class="spmt-popup__message"></p>' +
-                '<div class="spmt-popup__actions">' +
-                    '<button type="button" class="btn btn--ghost btn--lg spmt-popup__cancel" data-spmt-popup-cancel>Batal</button>' +
-                    '<button type="button" class="btn btn--primary btn--lg spmt-popup__ok" data-spmt-popup-ok>OK</button>' +
-                '</div>' +
+            '<button type="button" class="spmt-popup__close" aria-label="Tutup" data-spmt-popup-cancel><i class="fa-solid fa-xmark"></i></button>' +
+            '<div class="spmt-popup__icon"><i class="fa-solid fa-circle-info"></i></div>' +
+            '<h3 id="spmtPopupTitle">Informasi</h3>' +
+            '<p class="spmt-popup__message"></p>' +
+            '<div class="spmt-popup__actions">' +
+            '<button type="button" class="btn btn--ghost btn--lg spmt-popup__cancel" data-spmt-popup-cancel>Batal</button>' +
+            '<button type="button" class="btn btn--primary btn--lg spmt-popup__ok" data-spmt-popup-ok>OK</button>' +
+            '</div>' +
             '</div>';
         document.body.appendChild(popup);
         return popup;
@@ -284,19 +284,19 @@
             modal.hidden = true;
             modal.innerHTML = '' +
                 '<div class="doc-camera-modal__dialog" role="dialog" aria-modal="true" aria-label="Kamera dan preview foto">' +
-                    '<h3 class="doc-camera-modal__title">Ambil Foto</h3>' +
-                    '<div class="doc-camera-modal__stage">' +
-                        '<video autoplay playsinline></video>' +
-                        '<canvas hidden></canvas>' +
-                        '<img class="doc-camera-modal__preview-image" alt="Preview foto" hidden>' +
-                    '</div>' +
-                    '<p class="doc-camera-modal__hint">Ambil foto atau pilih file, cek preview dulu, lalu simpan ke form.</p>' +
-                    '<div class="doc-camera-modal__actions">' +
-                        '<button type="button" class="btn btn--ghost js-camera-close">Tutup</button>' +
-                        '<button type="button" class="btn btn--primary js-camera-retake" hidden>Ulangi</button>' +
-                        '<button type="button" class="btn btn--primary js-camera-capture">Ambil Foto</button>' +
-                        '<button type="button" class="btn btn--accent js-camera-use" hidden>Gunakan Foto</button>' +
-                    '</div>' +
+                '<h3 class="doc-camera-modal__title">Ambil Foto</h3>' +
+                '<div class="doc-camera-modal__stage">' +
+                '<video autoplay playsinline></video>' +
+                '<canvas hidden></canvas>' +
+                '<img class="doc-camera-modal__preview-image" alt="Preview foto" hidden>' +
+                '</div>' +
+                '<p class="doc-camera-modal__hint">Ambil foto atau pilih file, cek preview dulu, lalu simpan ke form.</p>' +
+                '<div class="doc-camera-modal__actions">' +
+                '<button type="button" class="btn btn--ghost js-camera-close">Tutup</button>' +
+                '<button type="button" class="btn btn--primary js-camera-retake" hidden>Ulangi</button>' +
+                '<button type="button" class="btn btn--primary js-camera-capture">Ambil Foto</button>' +
+                '<button type="button" class="btn btn--accent js-camera-use" hidden>Gunakan Foto</button>' +
+                '</div>' +
                 '</div>';
             document.body.appendChild(modal);
             activeCameraModal = modal;
@@ -495,12 +495,12 @@
                         updateSelectedDisplay(upload, fileInput.files[0]);
                     } else {
                         resetPreview(upload);
-            var existingSrc = upload.getAttribute('data-existing-src') || '';
-            var existingName = upload.getAttribute('data-existing-name') || '';
-            var existingFilePath = upload.querySelector('.js-existing-file-path');
-            if (existingSrc && existingFilePath && existingFilePath.value) {
-                updateExistingDisplay(upload, existingSrc, existingName);
-            }
+                        var existingSrc = upload.getAttribute('data-existing-src') || '';
+                        var existingName = upload.getAttribute('data-existing-name') || '';
+                        var existingFilePath = upload.querySelector('.js-existing-file-path');
+                        if (existingSrc && existingFilePath && existingFilePath.value) {
+                            updateExistingDisplay(upload, existingSrc, existingName);
+                        }
                     }
                 });
             }
@@ -508,12 +508,12 @@
             if (removePreviewBtn) {
                 removePreviewBtn.addEventListener('click', function () {
                     resetPreview(upload);
-            var existingSrc = upload.getAttribute('data-existing-src') || '';
-            var existingName = upload.getAttribute('data-existing-name') || '';
-            var existingFilePath = upload.querySelector('.js-existing-file-path');
-            if (existingSrc && existingFilePath && existingFilePath.value) {
-                updateExistingDisplay(upload, existingSrc, existingName);
-            }
+                    var existingSrc = upload.getAttribute('data-existing-src') || '';
+                    var existingName = upload.getAttribute('data-existing-name') || '';
+                    var existingFilePath = upload.querySelector('.js-existing-file-path');
+                    if (existingSrc && existingFilePath && existingFilePath.value) {
+                        updateExistingDisplay(upload, existingSrc, existingName);
+                    }
                 });
             }
 
@@ -742,7 +742,7 @@
         var flowBarPercentage = isSmallFlowScreen ? 0.56 : (isTabletFlowScreen ? 0.62 : 0.68);
         var flowCategoryPercentage = isSmallFlowScreen ? 0.58 : (isTabletFlowScreen ? 0.66 : 0.72);
 
-        const colors = flowRows.map(function(row) {
+        const colors = flowRows.map(function (row) {
             const label = String(row.label || '').toUpperCase();
             if (label === 'BARANG MASUK') {
                 return '#9184E8'; // style sekarang
@@ -770,7 +770,7 @@
             },
             plugins: [{
                 id: 'barLabels',
-                afterDatasetsDraw: function(chart) {
+                afterDatasetsDraw: function (chart) {
                     const ctx = chart.ctx;
                     ctx.save();
                     ctx.font = '700 12px Montserrat, sans-serif';
@@ -778,9 +778,9 @@
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'bottom';
 
-                    chart.data.datasets.forEach(function(dataset, datasetIndex) {
+                    chart.data.datasets.forEach(function (dataset, datasetIndex) {
                         const meta = chart.getDatasetMeta(datasetIndex);
-                        meta.data.forEach(function(bar, index) {
+                        meta.data.forEach(function (bar, index) {
                             const value = dataset.data[index];
                             if (value !== null && typeof value !== 'undefined') {
                                 ctx.fillText(String(value), bar.x, bar.y - 6);
@@ -936,7 +936,7 @@
             var item = typeof index === 'string' && index !== '' ? detail.otherItems[parseInt(index, 10)] : null;
             var keyInput = document.getElementById('otherItemKey');
             if (keyInput) keyInput.value = selector.value || '';
-            var byId = function(id){ return document.getElementById(id); };
+            var byId = function (id) { return document.getElementById(id); };
             if (byId('otherIdInventaris')) byId('otherIdInventaris').value = item && item.id_inventaris ? item.id_inventaris : '';
             if (byId('otherJenisPerangkat')) byId('otherJenisPerangkat').value = item && item.jenis_perangkat ? item.jenis_perangkat : '';
             if (byId('otherMerkPerangkat')) byId('otherMerkPerangkat').value = item && item.merk_perangkat ? item.merk_perangkat : '';
@@ -1067,15 +1067,15 @@
             var newNotes = item.new_notes && String(item.new_notes).trim() !== '' ? escapeHtml(item.new_notes) : '<em>Tidak ada catatan penanganan</em>';
             return '' +
                 '<article class="complaint-history-item">' +
-                    '<div class="complaint-history-item__top">' +
-                        '<strong>' + escapeHtml(item.old_status || '-') + ' → ' + escapeHtml(item.new_status || '-') + '</strong>' +
-                        '<span>' + escapeHtml(item.changed_at_label || item.changed_at || '-') + '</span>' +
-                    '</div>' +
-                    '<div class="complaint-history-item__meta">Oleh: ' + escapeHtml(item.changed_by || 'User IT') + '</div>' +
-                    '<div class="complaint-history-item__notes">' +
-                        '<div><span>Catatan lama</span><p>' + oldNotes + '</p></div>' +
-                        '<div><span>Catatan baru</span><p>' + newNotes + '</p></div>' +
-                    '</div>' +
+                '<div class="complaint-history-item__top">' +
+                '<strong>' + escapeHtml(item.old_status || '-') + ' → ' + escapeHtml(item.new_status || '-') + '</strong>' +
+                '<span>' + escapeHtml(item.changed_at_label || item.changed_at || '-') + '</span>' +
+                '</div>' +
+                '<div class="complaint-history-item__meta">Oleh: ' + escapeHtml(item.changed_by || 'User IT') + '</div>' +
+                '<div class="complaint-history-item__notes">' +
+                '<div><span>Catatan lama</span><p>' + oldNotes + '</p></div>' +
+                '<div><span>Catatan baru</span><p>' + newNotes + '</p></div>' +
+                '</div>' +
                 '</article>';
         }).join('');
     }
@@ -1244,7 +1244,7 @@
             var wrap = document.getElementById('complaintHistoryListWrap');
             var chevron = toggleHistoryBtn.querySelector('.complaint-modal__history-chevron');
             var isExpanded = toggleHistoryBtn.getAttribute('aria-expanded') === 'true';
-            
+
             if (isExpanded) {
                 toggleHistoryBtn.setAttribute('aria-expanded', 'false');
                 if (wrap) wrap.style.display = 'none';
@@ -1299,7 +1299,7 @@
         if (parentForm) {
             parentForm.addEventListener('submit', function (event) {
                 event.preventDefault();
-                
+
                 // Set loading state
                 syncBtn.disabled = true;
                 var originalText = syncBtn.innerHTML;
@@ -1310,28 +1310,28 @@
                     headers: { 'Accept': 'application/json' },
                     cache: 'no-store'
                 })
-                .then(function (response) {
-                    return response.ok ? response.json() : Promise.reject(new Error('Network response not ok'));
-                })
-                .then(function (res) {
-                    syncBtn.disabled = false;
-                    syncBtn.innerHTML = originalText;
+                    .then(function (response) {
+                        return response.ok ? response.json() : Promise.reject(new Error('Network response not ok'));
+                    })
+                    .then(function (res) {
+                        syncBtn.disabled = false;
+                        syncBtn.innerHTML = originalText;
 
-                    if (res && res.success) {
-                        window.spmtPopup(res.message, 'success').then(function () {
-                            window.location.reload();
-                        });
-                    } else {
-                        var errorMsg = (res && res.message) ? res.message : 'Terjadi kesalahan saat sinkronisasi.';
-                        window.spmtPopup(errorMsg, 'error');
-                    }
-                })
-                .catch(function (err) {
-                    syncBtn.disabled = false;
-                    syncBtn.innerHTML = originalText;
-                    window.spmtPopup('Gagal menghubungi server untuk sinkronisasi. Coba lagi nanti.', 'error');
-                    console.error('GForm Sync Error:', err);
-                });
+                        if (res && res.success) {
+                            window.spmtPopup(res.message, 'success').then(function () {
+                                window.location.reload();
+                            });
+                        } else {
+                            var errorMsg = (res && res.message) ? res.message : 'Terjadi kesalahan saat sinkronisasi.';
+                            window.spmtPopup(errorMsg, 'error');
+                        }
+                    })
+                    .catch(function (err) {
+                        syncBtn.disabled = false;
+                        syncBtn.innerHTML = originalText;
+                        window.spmtPopup('Gagal menghubungi server untuk sinkronisasi. Coba lagi nanti.', 'error');
+                        console.error('GForm Sync Error:', err);
+                    });
             });
         }
     }
@@ -1368,18 +1368,22 @@
             headers: { 'Accept': 'application/json' },
             cache: 'no-store'
         })
-        .then(function (response) {
-            return response.ok ? response.json() : null;
-        })
-        .then(function (res) {
-            if (res && res.success && res.imported > 0) {
-                // Update table component asynchronously without full page reload
-                window.reloadComplaintTableAsynchronously();
-            }
-        })
-        .catch(function (err) {
-            console.warn('Auto-sync failed:', err);
-        });
+            .then(function (response) {
+                return response.ok ? response.json() : null;
+            })
+            .then(function (res) {
+                if (res && res.success && res.imported > 0) {
+                    // Update table component asynchronously without full page reload
+                    window.reloadComplaintTableAsynchronously();
+                    // Update topbar notification badge immediately
+                    if (typeof window.refreshNotifications === 'function') {
+                        window.refreshNotifications();
+                    }
+                }
+            })
+            .catch(function (err) {
+                console.warn('Auto-sync failed:', err);
+            });
     }
 
     // Run auto-sync 1.5s after load
@@ -1391,10 +1395,10 @@
         window.setTimeout(runAutoSync, 1500);
     }
 
-    // Periodic sync check every 30s
+    // Periodic sync check every 5s
     window.setInterval(function () {
         runAutoSync();
-    }, 30000);
+    }, 5000);
 
     document.addEventListener('keydown', function (event) {
         if (event.key !== 'Escape') return;
@@ -1580,10 +1584,12 @@
         });
     }
 
-    closeBtns.forEach(function (btn) { btn.addEventListener('click', function (event) {
-        event.preventDefault();
-        closeModal();
-    }); });
+    closeBtns.forEach(function (btn) {
+        btn.addEventListener('click', function (event) {
+            event.preventDefault();
+            closeModal();
+        });
+    });
     if (modal) {
         modal.addEventListener('click', function (event) {
             if (event.target === modal) closeModal();
@@ -2031,14 +2037,14 @@
         var out = [];
         if (!query) return out;
         if (canUsePage('data-keluhan')) {
-        document.querySelectorAll('.js-complaint-row').forEach(function (row) {
-            var text = normalize(row.getAttribute('data-search') || row.textContent || '');
-            if (text.indexOf(query) !== -1) {
-                var ticket = row.querySelector('.complaint-ticket');
-                var id = row.getAttribute('data-ticket-id') || '';
-                out.push({ title: 'Tiket ' + (ticket ? ticket.textContent.trim() : 'IT Support'), url: 'index.php?page=data-keluhan&focus_ticket=' + encodeURIComponent(id), icon: 'fa-solid fa-bell', keywords: text });
-            }
-        });
+            document.querySelectorAll('.js-complaint-row').forEach(function (row) {
+                var text = normalize(row.getAttribute('data-search') || row.textContent || '');
+                if (text.indexOf(query) !== -1) {
+                    var ticket = row.querySelector('.complaint-ticket');
+                    var id = row.getAttribute('data-ticket-id') || '';
+                    out.push({ title: 'Tiket ' + (ticket ? ticket.textContent.trim() : 'IT Support'), url: 'index.php?page=data-keluhan&focus_ticket=' + encodeURIComponent(id), icon: 'fa-solid fa-bell', keywords: text });
+                }
+            });
         }
         document.querySelectorAll('[data-log-row]').forEach(function (row) {
             var text = normalize(row.getAttribute('data-search-text') || row.textContent || '');
@@ -2055,7 +2061,7 @@
             searchResults.innerHTML = '<div class="global-search-empty">Tidak ada hasil. Coba kata kunci lain.</div>';
         } else {
             searchResults.innerHTML = matches.map(function (item) {
-                return '<a class="global-search-item" href="' + item.url + '"><i class="' + item.icon + '"></i><span>' + item.title.replace(/[<>&]/g, function (c) { return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }) + '</span></a>';
+                return '<a class="global-search-item" href="' + item.url + '"><i class="' + item.icon + '"></i><span>' + item.title.replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; }) + '</span></a>';
             }).join('');
         }
         searchResults.hidden = false;
@@ -2093,30 +2099,42 @@
     var countText = document.querySelector('.js-notification-count-text');
     var lastCount = parseInt(button.getAttribute('data-notification-count') || '0', 10) || 0;
 
-    function escapeHtml(value) {
-        return String(value || '').replace(/[&<>"']/g, function (char) {
-            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char];
-        });
+    var allowedPages = (window.SPMT_DATA && Array.isArray(window.SPMT_DATA.accessible_pages)) ? window.SPMT_DATA.accessible_pages : [];
+    function canUsePage(page) {
+        return !allowedPages.length || allowedPages.indexOf(page) !== -1;
     }
 
-    function setNotificationCount(count) {
-        count = Math.max(0, parseInt(count || 0, 10) || 0);
-        button.setAttribute('data-notification-count', String(count));
+    function escapeHtml(value) {
+        return String(value || '').replace(/[&<>"']/g, function (char) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
+        });
+    }
+    function setNotificationCount(totalCount, itSupportCount) {
+        totalCount = Math.max(0, parseInt(totalCount || 0, 10) || 0);
+        button.setAttribute('data-notification-count', String(totalCount));
         if (badge) {
-            badge.textContent = count > 99 ? '99+' : String(count);
-            badge.hidden = count <= 0;
+            badge.textContent = totalCount > 99 ? '99+' : String(totalCount);
+            badge.hidden = totalCount <= 0;
         }
-        if (countText) countText.textContent = String(count);
-        lastCount = count;
+        if (countText && typeof itSupportCount !== 'undefined') {
+            countText.textContent = String(itSupportCount);
+        }
+        lastCount = totalCount;
     }
 
     function renderNotifications(payload) {
         var count = parseInt(payload && payload.count ? payload.count : 0, 10) || 0;
         var items = payload && Array.isArray(payload.items) ? payload.items : [];
-        setNotificationCount(count);
+        var pendingCount = parseInt(payload && payload.pending_users_count ? payload.pending_users_count : 0, 10) || 0;
+        var pendingItems = payload && Array.isArray(payload.pending_users_items) ? payload.pending_users_items : [];
+        var isAdmin = !!(payload && payload.is_admin);
 
-        var header = menu.querySelector('.topbar__menu-header');
-        var html = header ? header.outerHTML : '<div class="topbar__menu-header"><strong>IT Support baru</strong><span><span class="js-notification-count-text">' + count + '</span> notifikasi</span></div>';
+        var totalCount = count + pendingCount;
+
+        var html = '';
+
+        // IT Support Section
+        html += '<div class="topbar__menu-header"><strong>IT Support baru</strong><span><span class="js-notification-count-text">' + count + '</span> notifikasi</span></div>';
         if (items.length) {
             html += items.map(function (item) {
                 var id = encodeURIComponent(item.id || '0');
@@ -2130,9 +2148,28 @@
         } else {
             html += '<div class="notification-empty">Belum ada form IT Support baru.</div>';
         }
+
+        // Pending Users Section (if admin)
+        if (isAdmin) {
+            html += '<div class="notif-section-divider"></div>';
+            html += '<div class="topbar__menu-header topbar__menu-header--user"><strong><i class="fa-solid fa-user-clock"></i> Akun Menunggu Validasi</strong><span class="notif-pending-count">' + pendingCount + '</span></div>';
+            if (pendingItems.length) {
+                html += pendingItems.map(function (uItem) {
+                    return '<a class="notification-item notification-item--user" href="index.php?page=user-management">' +
+                        '<strong>' + escapeHtml(uItem.nama_lengkap || '-') + '</strong>' +
+                        '<small>' + escapeHtml(uItem.email || '-') + '</small>' +
+                        '<small class="notif-user-division">' + escapeHtml(uItem.unit_kerja_default || '-') + '</small>' +
+                        '<em>' + escapeHtml(uItem.created_at || '') + '</em>' +
+                        '</a>';
+                }).join('') + '<a class="topbar__menu-footer topbar__menu-footer--user" href="index.php?page=user-management">Kelola semua akun pending</a>';
+            } else {
+                html += '<div class="notification-empty">Tidak ada akun yang menunggu validasi.</div>';
+            }
+        }
+
         menu.innerHTML = html;
         countText = document.querySelector('.js-notification-count-text');
-        setNotificationCount(count);
+        setNotificationCount(totalCount, count);
     }
 
     function refreshNotifications() {
@@ -2160,7 +2197,7 @@
                     }
                 }
             })
-            .catch(function () {});
+            .catch(function () { });
     }
 
     menu.addEventListener('click', function (event) {
@@ -2178,7 +2215,8 @@
         }
     });
 
-    window.setInterval(refreshNotifications, 15000);
+    window.refreshNotifications = refreshNotifications;
+    window.setInterval(refreshNotifications, 5000);
     window.addEventListener('focus', refreshNotifications);
 })();
 
@@ -2431,7 +2469,7 @@
                 modal.hidden = false;
                 modal.setAttribute('aria-hidden', 'false');
                 document.body.classList.add('modal-open', 'has-modal-open');
-                
+
                 var firstField = modal.querySelector('input, select, button');
                 if (firstField && firstField.focus) {
                     window.setTimeout(function () { firstField.focus(); }, 0);

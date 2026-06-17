@@ -53,7 +53,7 @@ class PageController
             try {
                 $pdo = Database::getConnection();
                 $lastSync = (int) $this->getSetting($pdo, 'last_gform_sync_time', '0');
-                if (time() - $lastSync > 60) { // check at most once every 60 seconds
+                if (time() - $lastSync > 5) { // check at most once every 5 seconds
                     $this->setSetting($pdo, 'last_gform_sync_time', (string) time());
                     $this->syncGoogleFormSubmissions($pdo, false, true);
                 }
@@ -2932,11 +2932,11 @@ class PageController
             return;
         }
 
-        // Trigger silent background sync on notifications check (throttled to once every 60 seconds)
+        // Trigger silent background sync on notifications check (throttled to once every 5 seconds)
         $importedCount = 0;
         try {
             $lastSync = (int) $this->getSetting($pdo, 'last_gform_sync_time', '0');
-            if (time() - $lastSync > 60) {
+            if (time() - $lastSync > 5) {
                 $this->setSetting($pdo, 'last_gform_sync_time', (string) time());
                 $importedCount = $this->syncGoogleFormSubmissions($pdo, false, true);
             }
@@ -2951,9 +2951,23 @@ class PageController
             $sql = "SELECT id, ticket_no, nama_pelapor AS nama, divisi, aset_yang_perlu_diperbaiki AS barang, CONCAT(DATE_FORMAT(tanggal, '%d/%m/%Y'), ' ', TIME_FORMAT(jam, '%H:%i')) AS tanggal_dan_jam FROM it_support_request WHERE " . $whereUnread . " ORDER BY tanggal DESC, jam DESC, id DESC LIMIT 8";
             $stmt = $pdo->query($sql);
             $items = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+            $pendingCount = 0;
+            $pendingItems = [];
+            $isAdmin = AuthController::isAdminSpmt();
+            if ($isAdmin) {
+                $authModelForAdmin = new AuthModel();
+                $pendingUserNotif = $authModelForAdmin->fetchPendingUsersForNotification();
+                $pendingCount = (int) ($pendingUserNotif['count'] ?? 0);
+                $pendingItems = $pendingUserNotif['items'] ?? [];
+            }
+
             echo json_encode([
                 "count" => $count,
                 "items" => $items ?: [],
+                "pending_users_count" => $pendingCount,
+                "pending_users_items" => $pendingItems ?: [],
+                "is_admin" => $isAdmin,
                 "has_new_imports" => ($importedCount > 0)
             ]);
         } catch (Throwable $e) {
