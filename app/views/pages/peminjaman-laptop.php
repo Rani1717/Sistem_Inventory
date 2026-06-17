@@ -502,9 +502,5 @@ document.querySelector('.js-close-log-toast')?.addEventListener('click', () => {
 });
 
 /* ─── CONFIRM DELETE ─── */
-document.querySelectorAll('.js-confirm-delete').forEach(form => {
-    form.addEventListener('submit', function(e) {
-        if (!confirm(this.dataset.confirmMessage || 'Yakin?')) e.preventDefault();
-    });
-});
+// Ditangani secara global oleh app.js menggunakan window.spmtConfirm kustom
 </script>
