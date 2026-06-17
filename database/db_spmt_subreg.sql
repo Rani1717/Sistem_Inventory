@@ -454,6 +454,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `sheet_sumber` varchar(20) DEFAULT NULL,
   `source_row_excel` int(11) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `is_validated` tinyint(1) NOT NULL DEFAULT 1,
   `must_change_password` tinyint(1) NOT NULL DEFAULT 1,
   `last_login_at` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
