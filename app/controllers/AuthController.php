@@ -234,7 +234,7 @@ class AuthController
         $role = self::role();
         $inventoryPages = ['inventory-pc', 'inventory-other'];
         $dataInventoryPages = ['data-inventaris', 'data-inventaris-subreg', 'inventaris-detail'];
-        $userPages = array_merge($inventoryPages, $dataInventoryPages, ['log-barang', 'routine-monitoring', 'dashboard']);
+        $userPages = array_merge($inventoryPages, $dataInventoryPages, ['log-barang', 'routine-monitoring', 'dashboard', 'notifikasi-alert']);
         $adminPages = array_merge($userPages, ['data-keluhan', 'dashboard', 'laporan']);
 
         if (self::isAdminSpmt()) {
@@ -277,7 +277,7 @@ class AuthController
     public static function accessiblePages(): array
     {
         $pages = ['account-settings'];
-        foreach (['inventory-pc', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'log-barang', 'routine-monitoring', 'data-keluhan', 'dashboard', 'laporan', 'user-management', 'peminjaman-laptop'] as $page) {
+        foreach (['inventory-pc', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'log-barang', 'routine-monitoring', 'data-keluhan', 'dashboard', 'laporan', 'user-management', 'peminjaman-laptop', 'notifikasi-alert'] as $page) {
             if (self::canAccessPage($page)) {
                 $pages[] = $page;
             }

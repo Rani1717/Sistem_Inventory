@@ -2608,3 +2608,34 @@
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
 })();
+
+// Dynamic polling for unread alerts count
+(function () {
+    function pollUnreadAlerts() {
+        var badge = document.querySelector('.js-alert-unread-badge');
+        if (!badge) return;
+        
+        fetch('index.php?ajax=get_unread_alert_count', { cache: 'no-store' })
+            .then(function (response) {
+                return response.ok ? response.json() : null;
+            })
+            .then(function (data) {
+                if (data && typeof data.count === 'number') {
+                    badge.textContent = data.count;
+                    if (data.count > 0) {
+                        badge.style.display = '';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+            })
+            .catch(function (err) {
+                console.warn('Alert polling failed:', err);
+            });
+    }
+    
+    // Poll every 60 seconds
+    setInterval(pollUnreadAlerts, 60000);
+    // Initial check on load
+    document.addEventListener('DOMContentLoaded', pollUnreadAlerts);
+})();

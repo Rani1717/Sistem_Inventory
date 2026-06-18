@@ -34,6 +34,7 @@ class PageController
         'laporan' => ['view' => 'pages/laporan.php', 'layout' => 'app'],
         'account-settings' => ['view' => 'pages/account-settings.php', 'layout' => 'app'],
         'user-management' => ['view' => 'pages/user-management.php', 'layout' => 'app'],
+        'notifikasi-alert' => ['view' => 'pages/notifikasi-alert.php', 'layout' => 'app'],
     ];
 
     public function __construct()
@@ -48,7 +49,7 @@ class PageController
     public function render(string $page): void
     {
         // Silent background sync check on page load to keep things automatic
-        $protectedPages = ['dashboard', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'data-keluhan', 'log-barang', 'peminjaman-laptop', 'routine-monitoring', 'laporan', 'account-settings', 'user-management', 'inventory-pc', 'inventory-other'];
+        $protectedPages = ['dashboard', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'data-keluhan', 'log-barang', 'peminjaman-laptop', 'routine-monitoring', 'laporan', 'account-settings', 'user-management', 'inventory-pc', 'inventory-other', 'notifikasi-alert'];
         if (in_array($page, $protectedPages, true) && AuthController::check()) {
             try {
                 $pdo = Database::getConnection();
@@ -62,6 +63,10 @@ class PageController
             }
         }
 
+        if ((string) ($_GET["ajax"] ?? "") === "get_unread_alert_count") {
+            $this->jsonGetUnreadAlertCount();
+            return;
+        }
         if ((string) ($_GET["ajax"] ?? "") === "it_support_notifications") {
             $this->jsonItSupportNotifications();
             return;
@@ -79,7 +84,7 @@ class PageController
         }
 
         $publicPages = ['splash', 'login'];
-        $protectedPages = ['dashboard', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'data-keluhan', 'log-barang', 'peminjaman-laptop', 'routine-monitoring', 'laporan', 'account-settings', 'user-management', 'inventory-pc', 'inventory-other'];
+        $protectedPages = ['dashboard', 'data-inventaris', 'data-inventaris-subreg', 'inventaris-detail', 'data-keluhan', 'log-barang', 'peminjaman-laptop', 'routine-monitoring', 'laporan', 'account-settings', 'user-management', 'inventory-pc', 'inventory-other', 'notifikasi-alert'];
         if (in_array($page, ['it-support-1', 'it-support-2'], true)) {
             header('Location: it-support.php');
             exit;
@@ -134,6 +139,9 @@ class PageController
         }
         if ($page === 'peminjaman-laptop') {
             $this->handlePeminjamanAction();
+        }
+        if ($page === 'notifikasi-alert') {
+            $this->handleNotifikasiAlertAction();
         }
 
         $data = $this->model->getAll($page, $filters);
@@ -211,6 +219,13 @@ class PageController
                 $data['peminjaman_stats']         = ['total' => 0, 'dipinjam' => 0, 'kembali' => 0];
                 $data['peminjaman_filter']        = '';
                 $data['peminjaman_search']        = '';
+            }
+        }
+        if ($page === 'notifikasi-alert') {
+            $pdo = Database::getConnection();
+            if ($pdo instanceof PDO) {
+                $data['alert_rows'] = $this->buildAlertNotifications($pdo);
+                $data['alert_stats'] = $this->buildAlertStats($pdo);
             }
         }
         if (!empty($_SESSION['flash'])) {
@@ -2915,6 +2930,27 @@ class PageController
         }
 
         header('Location: ' . $this->buildComplaintUrl());
+        exit;
+    }
+
+    private function jsonGetUnreadAlertCount(): void
+    {
+        header("Content-Type: application/json; charset=utf-8");
+        if (!AuthController::check()) {
+            http_response_code(401);
+            echo json_encode(["count" => 0, "error" => "unauthenticated"]);
+            return;
+        }
+        $pdo = Database::getConnection();
+        if (!$pdo instanceof PDO) {
+            echo json_encode(["count" => 0]);
+            return;
+        }
+        $count = 0;
+        try {
+            $count = (int) ($pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE is_read = 0")->fetchColumn() ?? 0);
+        } catch (Throwable $e) {}
+        echo json_encode(["count" => $count]);
         exit;
     }
 
@@ -10281,5 +10317,278 @@ SQL);
         }
         $_SESSION['flash'] = ['type' => $successCount > 0 ? 'success' : 'info', 'message' => $msg];
         return $successCount;
+    }
+
+    private function ensureAlertTable(PDO $pdo): void
+    {
+        $sql = "CREATE TABLE IF NOT EXISTS `alert_notifications` (
+          `id`          bigint(20)   NOT NULL AUTO_INCREMENT,
+          `kategori`    varchar(50)  NOT NULL COMMENT 'PC / CCTV / KELUHAN / LOG / MONITORING',
+          `level`       varchar(20)  NOT NULL DEFAULT 'INFO' COMMENT 'KRITIS / PERINGATAN / INFO',
+          `judul`       varchar(255) NOT NULL COMMENT 'Judul singkat alert',
+          `keterangan`  text         NOT NULL COMMENT 'Penjelasan detail alert',
+          `link_url`    varchar(500) DEFAULT NULL COMMENT 'URL halaman terkait',
+          `is_read`     tinyint(1)   NOT NULL DEFAULT 0,
+          `dibaca_oleh` varchar(100) DEFAULT NULL COMMENT 'username yang menandai sudah dibaca',
+          `dibaca_at`   datetime     DEFAULT NULL,
+          `created_at`  datetime     NOT NULL DEFAULT current_timestamp(),
+          PRIMARY KEY (`id`),
+          KEY `idx_alert_kategori` (`kategori`),
+          KEY `idx_alert_level` (`level`),
+          KEY `idx_alert_is_read` (`is_read`),
+          KEY `idx_alert_created` (`created_at`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        $pdo->exec($sql);
+        try {
+            $pdo->exec("DELETE FROM alert_notifications WHERE is_read = 1 AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+        } catch (Throwable $e) {}
+    }
+
+    private function handleNotifikasiAlertAction(): void
+    {
+        $action = trim((string) ($_POST['action'] ?? $_GET['action'] ?? ''));
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { return; }
+        
+        $pdo = Database::getConnection();
+        if (!$pdo instanceof PDO) {
+            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Koneksi database tidak tersedia.'];
+            header('Location: index.php?page=notifikasi-alert');
+            exit;
+        }
+        
+        $this->ensureAlertTable($pdo);
+
+        try {
+            if ($action === 'mark_read') {
+                $id = (int) ($_POST['id'] ?? $_GET['id'] ?? 0);
+                if ($id <= 0) {
+                    throw new RuntimeException('ID notifikasi tidak valid.');
+                }
+                $username = $_SESSION['auth']['username'] ?? 'system';
+                $stmt = $pdo->prepare('UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = :username WHERE id = :id');
+                $stmt->execute(['username' => $username, 'id' => $id]);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Notifikasi ditandai sudah dibaca.'];
+            } elseif ($action === 'mark_all_read') {
+                $username = $_SESSION['auth']['username'] ?? 'system';
+                $stmt = $pdo->prepare('UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = :username WHERE is_read = 0');
+                $stmt->execute(['username' => $username]);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Semua notifikasi berhasil ditandai sudah dibaca.'];
+            } elseif ($action === 'delete_alert') {
+                if (!AuthController::isAdminSpmt()) {
+                    throw new RuntimeException('Hanya admin.spmt yang dapat menghapus notifikasi.');
+                }
+                $id = (int) ($_POST['id'] ?? $_GET['id'] ?? 0);
+                if ($id <= 0) {
+                    throw new RuntimeException('ID notifikasi tidak valid.');
+                }
+                $stmt = $pdo->prepare('DELETE FROM alert_notifications WHERE id = :id');
+                $stmt->execute(['id' => $id]);
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Notifikasi berhasil dihapus.'];
+            } else {
+                throw new RuntimeException('Aksi tidak dikenal.');
+            }
+        } catch (Throwable $e) {
+            $_SESSION['flash'] = ['type' => 'error', 'message' => $e->getMessage()];
+        }
+        header('Location: index.php?page=notifikasi-alert');
+        exit;
+    }
+
+    private function buildAlertNotifications(PDO $pdo): array
+    {
+        $this->ensureAlertTable($pdo);
+
+        // 1. KATEGORI: PC
+        try {
+            $stmtDiv = $pdo->query("SELECT division_code, division_label, inventory_db_name FROM master_divisi WHERE is_active = 1");
+            $divisions = $stmtDiv ? $stmtDiv->fetchAll(PDO::FETCH_ASSOC) : [];
+            foreach ($divisions as $division) {
+                $inventoryDb = trim((string) ($division['inventory_db_name'] ?? ''));
+                if (!$this->isSafeIdentifier($inventoryDb)) {
+                    continue;
+                }
+                
+                // Cek apakah tabel pc ada
+                $tableExists = false;
+                try {
+                    $chk = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = :db AND table_name = 'pc'");
+                    $chk->execute(['db' => $inventoryDb]);
+                    $tableExists = ((int)$chk->fetchColumn()) > 0;
+                } catch (Throwable $e) {
+                    $tableExists = false;
+                }
+                
+                if ($tableExists) {
+                    try {
+                        $dbNameQuoted = '`' . str_replace('`', '``', $inventoryDb) . '`';
+                        $countPC = (int) $pdo->query("SELECT COUNT(*) FROM {$dbNameQuoted}.pc WHERE status = 'RUSAK'")->fetchColumn();
+                        if ($countPC > 0) {
+                            $judul = "Ada {$countPC} PC Rusak di " . $division['division_label'];
+                            $keterangan = "{$countPC} unit PC berstatus RUSAK dan belum ditangani.";
+                            $link = "index.php?page=inventaris-detail&division_code=" . urlencode($division['division_code']);
+                            $this->insertAlertIfNotExists($pdo, 'PC', 'KRITIS', $judul, $keterangan, $link);
+                            
+                            // Auto-resolve any older/outdated unread PC alerts for this division
+                            $stmtUpdOther = $pdo->prepare("UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = 'SYSTEM' WHERE kategori = 'PC' AND is_read = 0 AND judul LIKE :divLabel AND judul <> :currentJudul");
+                            $stmtUpdOther->execute([
+                                'divLabel' => '%' . $division['division_label'] . '%',
+                                'currentJudul' => $judul
+                            ]);
+                        } else {
+                            // Auto-resolve PC alerts for this division
+                            $stmtUpd = $pdo->prepare("UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = 'SYSTEM' WHERE kategori = 'PC' AND is_read = 0 AND judul LIKE :divLabel");
+                            $stmtUpd->execute(['divLabel' => '%' . $division['division_label'] . '%']);
+                        }
+                    } catch (Throwable $e) {}
+                }
+            }
+        } catch (Throwable $e) {}
+
+        // 2. KATEGORI: KELUHAN
+        try {
+            $countKeluhan = (int) $pdo->query("SELECT COUNT(*) FROM it_support_request WHERE UPPER(status) = 'NOT YET' AND tanggal <= DATE_SUB(CURDATE(), INTERVAL 3 DAY)")->fetchColumn();
+            if ($countKeluhan > 0) {
+                $judul = "Ada {$countKeluhan} Keluhan Belum Direspon >3 Hari";
+                $keterangan = "{$countKeluhan} tiket IT Support masih belum ditangani lebih dari 3 hari.";
+                $link = "index.php?page=data-keluhan&complaint_status=NOT+YET";
+                $this->insertAlertIfNotExists($pdo, 'KELUHAN', 'PERINGATAN', $judul, $keterangan, $link);
+                
+                // Auto-resolve any older/outdated unread Keluhan alerts
+                $stmtUpdOther = $pdo->prepare("UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = 'SYSTEM' WHERE kategori = 'KELUHAN' AND is_read = 0 AND judul <> :currentJudul");
+                $stmtUpdOther->execute(['currentJudul' => $judul]);
+            } else {
+                // Auto-resolve Keluhan alerts
+                $pdo->exec("UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = 'SYSTEM' WHERE kategori = 'KELUHAN' AND is_read = 0");
+            }
+        } catch (Throwable $e) {}
+
+        // 3. KATEGORI: MONITORING - Item Kondisi BURUK hari ini
+        try {
+            $countBurukToday = (int) $pdo->query("SELECT COUNT(DISTINCT ri.item_name) FROM routine_monitoring rm JOIN routine_monitoring_items ri ON ri.id = rm.item_id WHERE rm.condition_status = 'BURUK' AND DATE(rm.check_date) = CURDATE()")->fetchColumn();
+            if ($countBurukToday > 0) {
+                $judul = "Ada {$countBurukToday} Item Kondisi BURUK Hari Ini";
+                $keterangan = "{$countBurukToday} item pada Routine Monitoring tercatat kondisi BURUK hari ini.";
+                $link = "index.php?page=routine-monitoring";
+                $this->insertAlertIfNotExists($pdo, 'MONITORING', 'KRITIS', $judul, $keterangan, $link);
+                
+                // Auto-resolve any older/outdated unread BURUK alerts
+                $stmtUpdOther = $pdo->prepare("UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = 'SYSTEM' WHERE kategori = 'MONITORING' AND is_read = 0 AND judul LIKE '%Item Kondisi BURUK%' AND judul <> :currentJudul");
+                $stmtUpdOther->execute(['currentJudul' => $judul]);
+            } else {
+                // Auto-resolve Buruk monitoring alert
+                $pdo->exec("UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = 'SYSTEM' WHERE kategori = 'MONITORING' AND is_read = 0 AND judul LIKE '%Item Kondisi BURUK%'");
+            }
+        } catch (Throwable $e) {}
+
+        // 4. KATEGORI: MONITORING - Item Belum Dicek Bulan Ini
+        try {
+            $countNotCheckedMonth = (int) $pdo->query("SELECT COUNT(*) FROM routine_monitoring_items ri WHERE ri.is_active = 1 AND ri.id NOT IN (SELECT DISTINCT item_id FROM routine_monitoring WHERE MONTH(check_date) = MONTH(CURDATE()) AND YEAR(check_date) = YEAR(CURDATE()))")->fetchColumn();
+            if ($countNotCheckedMonth > 0) {
+                $judul = "{$countNotCheckedMonth} Item Belum Dicek Bulan Ini";
+                $keterangan = "{$countNotCheckedMonth} item monitoring belum memiliki data pengecekan di bulan ini.";
+                $link = "index.php?page=routine-monitoring";
+                $this->insertAlertIfNotExists($pdo, 'MONITORING', 'INFO', $judul, $keterangan, $link);
+                
+                // Auto-resolve any older/outdated unread unchecked alerts
+                $stmtUpdOther = $pdo->prepare("UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = 'SYSTEM' WHERE kategori = 'MONITORING' AND is_read = 0 AND judul LIKE '%Belum Dicek%' AND judul <> :currentJudul");
+                $stmtUpdOther->execute(['currentJudul' => $judul]);
+            } else {
+                // Auto-resolve unchecked monitoring alert
+                $pdo->exec("UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = 'SYSTEM' WHERE kategori = 'MONITORING' AND is_read = 0 AND judul LIKE '%Belum Dicek%'");
+            }
+        } catch (Throwable $e) {}
+
+        // 5. KATEGORI: PEMINJAMAN - Peminjaman laptop overdue > 7 hari
+        try {
+            $peminjamanTableExists = false;
+            try {
+                $chk = $pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'peminjaman_laptop'");
+                $peminjamanTableExists = ((int)$chk->fetchColumn()) > 0;
+            } catch (Throwable $e) {}
+
+            if ($peminjamanTableExists) {
+                $countOverdue = (int) $pdo->query("SELECT COUNT(*) FROM peminjaman_laptop WHERE (tanggal_pengembalian IS NULL OR tanggal_pengembalian = '0000-00-00') AND tanggal_peminjaman <= DATE_SUB(CURDATE(), INTERVAL 7 DAY)")->fetchColumn();
+                if ($countOverdue > 0) {
+                    $judul = "Ada {$countOverdue} Peminjaman Laptop Overdue (>7 Hari)";
+                    $keterangan = "{$countOverdue} peminjaman laptop belum dikembalikan lebih dari 7 hari.";
+                    $link = "index.php?page=peminjaman-laptop&pinjam_filter=dipinjam";
+                    $this->insertAlertIfNotExists($pdo, 'PEMINJAMAN', 'PERINGATAN', $judul, $keterangan, $link);
+                    
+                    // Auto-resolve any older/outdated unread PEMINJAMAN alerts
+                    $stmtUpdOther = $pdo->prepare("UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = 'SYSTEM' WHERE kategori = 'PEMINJAMAN' AND is_read = 0 AND judul <> :currentJudul");
+                    $stmtUpdOther->execute(['currentJudul' => $judul]);
+                } else {
+                    // Auto-resolve overdue loans
+                    $pdo->exec("UPDATE alert_notifications SET is_read = 1, dibaca_at = NOW(), dibaca_oleh = 'SYSTEM' WHERE kategori = 'PEMINJAMAN' AND is_read = 0");
+                }
+            }
+        } catch (Throwable $e) {}
+
+        // Ambil data alert dengan filter
+        $filterKategori = trim((string) ($_GET['alert_kategori'] ?? ''));
+        $filterLevel    = trim((string) ($_GET['alert_level'] ?? ''));
+        $filterRead     = trim((string) ($_GET['alert_read'] ?? ''));
+
+        $sql = "SELECT * FROM alert_notifications WHERE 1=1";
+        $params = [];
+        if ($filterKategori !== '') {
+            $sql .= " AND kategori = :kategori";
+            $params['kategori'] = $filterKategori;
+        }
+        if ($filterLevel !== '') {
+            $sql .= " AND level = :level";
+            $params['level'] = $filterLevel;
+        }
+        if ($filterRead !== '') {
+            $sql .= " AND is_read = :is_read";
+            $params['is_read'] = (int) $filterRead;
+        }
+        $sql .= " ORDER BY is_read ASC, created_at DESC LIMIT 200";
+        
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    private function insertAlertIfNotExists(PDO $pdo, string $kategori, string $level, string $judul, string $keterangan, string $link): void
+    {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM alert_notifications WHERE kategori = :kategori AND judul = :judul AND DATE(created_at) = CURDATE()");
+        $stmt->execute(['kategori' => $kategori, 'judul' => $judul]);
+        $exists = ((int)$stmt->fetchColumn()) > 0;
+        
+        if (!$exists) {
+            $stmt = $pdo->prepare("INSERT INTO alert_notifications (kategori, level, judul, keterangan, link_url, is_read, created_at) VALUES (:kategori, :level, :judul, :keterangan, :link, 0, NOW())");
+            $stmt->execute([
+                'kategori' => $kategori,
+                'level' => $level,
+                'judul' => $judul,
+                'keterangan' => $keterangan,
+                'link' => $link
+            ]);
+        }
+    }
+
+    private function buildAlertStats(PDO $pdo): array
+    {
+        try {
+            $total = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications")->fetchColumn();
+            $belum_baca = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE is_read = 0")->fetchColumn();
+            $kritis = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE level = 'KRITIS'")->fetchColumn();
+            $peringatan = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE level = 'PERINGATAN'")->fetchColumn();
+            $info = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE level = 'INFO'")->fetchColumn();
+            return [
+                'total' => $total,
+                'belum_baca' => $belum_baca,
+                'kritis' => $kritis,
+                'peringatan' => $peringatan,
+                'info' => $info,
+            ];
+        } catch (Throwable $e) {
+            return ['total' => 0, 'belum_baca' => 0, 'kritis' => 0, 'peringatan' => 0, 'info' => 0];
+        }
     }
 }

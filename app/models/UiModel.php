@@ -12,6 +12,15 @@ class UiModel
             return $data;
         }
 
+        // Always fetch alert_unread_count
+        try {
+            $data['alert_unread_count'] = (int) ($pdo->query(
+                "SELECT COUNT(*) FROM alert_notifications WHERE is_read = 0"
+            )->fetchColumn() ?? 0);
+        } catch (Throwable $e) {
+            $data['alert_unread_count'] = 0;
+        }
+
         // Selalu fetch pc_chart — tidak bergantung pada resolveContext
         try {
             $data['pc_chart'] = $this->buildPcChartData($pdo);
@@ -160,6 +169,7 @@ class UiModel
                 'data-keluhan' => 'Data Keluhan',
                 'log-barang' => 'Log Barang',
                 'peminjaman-laptop' => 'Peminjaman Inventaris IT',
+                'notifikasi-alert' => 'Riwayat Notifikasi & Alert',
                 'routine-monitoring' => 'Routine Monitoring',
                 'laporan' => 'Laporan',
                 'account-settings' => 'Setting Akun',
@@ -225,6 +235,13 @@ class UiModel
                 'icon' => 'fa-solid fa-laptop',
                 'route' => 'peminjaman-laptop',
                 'match' => ['peminjaman-laptop'],
+                'variant' => 'nav',
+            ],
+            [
+                'label'   => 'NOTIFIKASI',
+                'icon'    => 'fa-solid fa-bell',
+                'route'   => 'notifikasi-alert',
+                'match'   => ['notifikasi-alert'],
                 'variant' => 'nav',
             ],
             [

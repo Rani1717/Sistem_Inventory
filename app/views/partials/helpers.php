@@ -74,6 +74,9 @@ if (!function_exists('renderSidebar')) {
                         <?php if (($menu['route'] ?? '') === 'user-management' && !empty($data['pending_user_count'])): ?>
                             <span class="sidebar__menu-badge"><?= (int) $data['pending_user_count']; ?></span>
                         <?php endif; ?>
+                        <?php if (($menu['route'] ?? '') === 'notifikasi-alert'): ?>
+                            <span class="sidebar__menu-badge js-alert-unread-badge" style="<?= empty($data['alert_unread_count']) ? 'display: none;' : ''; ?>"><?= (int) $data['alert_unread_count']; ?></span>
+                        <?php endif; ?>
                     </a>
                 <?php endforeach; ?>
             </nav>

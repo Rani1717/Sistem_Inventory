@@ -14802,5 +14802,38 @@ button,
     background: none !important;
 }
 
+/* Riwayat Notifikasi & Alert CSS */
+.alert-level-kritis {
+    background: rgba(201, 30, 30, 0.12) !important;
+    color: var(--c-red-deep) !important;
+    border: 1px solid rgba(201, 30, 30, 0.25);
+}
+.alert-level-peringatan {
+    background: rgba(245, 158, 11, 0.14) !important;
+    color: #b45309 !important;
+    border: 1px solid rgba(245, 158, 11, 0.25);
+}
+.alert-level-info {
+    background: rgba(31, 95, 153, 0.12) !important;
+    color: var(--c-primary-2) !important;
+    border: 1px solid rgba(31, 95, 153, 0.25);
+}
+.alert-row {
+    transition: background-color 0.2s ease;
+}
+.alert-row:hover {
+    background-color: rgba(42, 102, 165, 0.05) !important;
+}
+
+@media (max-width: 768px) {
+    .dashboard-summary {
+        flex-direction: column !important;
+        gap: 12px !important;
+    }
+    .metric-card {
+        width: 100% !important;
+    }
+}
+
 
 
