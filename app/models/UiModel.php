@@ -21,6 +21,12 @@ class UiModel
             $data['alert_unread_count'] = 0;
         }
 
+        try {
+            $data['alert_summary'] = $this->buildAlertSummaryForTopbar($pdo);
+        } catch (Throwable $e) {
+            $data['alert_summary'] = ['count' => 0, 'items' => []];
+        }
+
         // Selalu fetch pc_chart — tidak bergantung pada resolveContext
         try {
             $data['pc_chart'] = $this->buildPcChartData($pdo);
@@ -2894,6 +2900,56 @@ SQL);
     private function isSafeIdentifier(string $value): bool
     {
         return $value !== '' && (bool) preg_match('/^[A-Za-z0-9_]+$/', $value);
+    }
+
+    private function ensureAlertTable(PDO $pdo): void
+    {
+        $sql = "CREATE TABLE IF NOT EXISTS `alert_notifications` (
+          `id`          bigint(20)   NOT NULL AUTO_INCREMENT,
+          `kategori`    varchar(50)  NOT NULL COMMENT 'PC / CCTV / KELUHAN / LOG / MONITORING',
+          `level`       varchar(20)  NOT NULL DEFAULT 'INFO' COMMENT 'KRITIS / PERINGATAN / INFO',
+          `judul`       varchar(255) NOT NULL COMMENT 'Judul singkat alert',
+          `keterangan`  text         NOT NULL COMMENT 'Penjelasan detail alert',
+          `link_url`    varchar(500) DEFAULT NULL COMMENT 'URL halaman terkait',
+          `is_read`     tinyint(1)   NOT NULL DEFAULT 0,
+          `dibaca_oleh` varchar(100) DEFAULT NULL COMMENT 'username yang menandai sudah dibaca',
+          `dibaca_at`   datetime     DEFAULT NULL,
+          `created_at`  datetime     NOT NULL DEFAULT current_timestamp(),
+          PRIMARY KEY (`id`),
+          KEY `idx_alert_kategori` (`kategori`),
+          KEY `idx_alert_level` (`level`),
+          KEY `idx_alert_is_read` (`is_read`),
+          KEY `idx_alert_created` (`created_at`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        $pdo->exec($sql);
+        try {
+            $pdo->exec("DELETE FROM alert_notifications WHERE is_read = 1 AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+        } catch (Throwable $e) {}
+    }
+
+    private function buildAlertSummaryForTopbar(PDO $pdo): array
+    {
+        $this->ensureAlertTable($pdo);
+        
+        $count = (int) ($pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE is_read = 0")->fetchColumn() ?? 0);
+        
+        $sql = "SELECT * FROM alert_notifications 
+                WHERE is_read = 0 
+                ORDER BY 
+                  CASE level 
+                    WHEN 'KRITIS' THEN 1 
+                    WHEN 'PERINGATAN' THEN 2 
+                    ELSE 3 
+                  END ASC, 
+                  created_at DESC 
+                LIMIT 5";
+        $stmt = $pdo->query($sql);
+        $items = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        
+        return [
+            'count' => $count,
+            'items' => $items
+        ];
     }
 
     private function normalizeAssetPath(string $path): string

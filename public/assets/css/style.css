@@ -14835,5 +14835,15 @@ button,
     }
 }
 
+.notification-item--level-kritis {
+    border-left: 3px solid #d11a1a;
+}
+.notification-item--level-peringatan {
+    border-left: 3px solid #f59e0b;
+}
+.notification-item--level-info {
+    border-left: 3px solid #2a66a5;
+}
+
 
 

@@ -104,7 +104,10 @@ if (!function_exists('renderTopbar')) {
             : ['count' => 0, 'items' => []];
         $pendingUserCount = (int) ($pendingUserNotif['count'] ?? 0);
 
-        $totalBadgeCount = $notificationCount + $pendingUserCount;
+        $alertSummary = $data['alert_summary'] ?? ['count' => 0, 'items' => []];
+        $alertCount = (int) ($alertSummary['count'] ?? 0);
+
+        $totalBadgeCount = $notificationCount + $pendingUserCount + $alertCount;
         ?>
         <header class="topbar">
             <button type="button" class="topbar__mobile-menu js-sidebar-toggle" aria-label="Buka menu" aria-controls="appSidebar" aria-expanded="false"><i class="fa-solid fa-bars"></i></button>
@@ -114,13 +117,37 @@ if (!function_exists('renderTopbar')) {
                 <div class="topbar__search-results js-global-search-results" hidden></div>
             </div>
             <div class="topbar__icons">
-                <?php if ($canAccessItSupport || $isAdmin): ?>
+                <?php if ($canAccessItSupport || $isAdmin || $alertCount > 0 || true): ?>
                 <div class="topbar__dropdown">
                     <button type="button" class="topbar__icon-btn js-toggle-notifications" aria-label="Notifikasi" aria-expanded="false" data-notification-count="<?= (int) $totalBadgeCount; ?>">
                         <i class="fa-solid fa-bell"></i>
                         <span class="topbar__badge js-notification-badge"<?= $totalBadgeCount > 0 ? "" : " hidden"; ?>><?= $totalBadgeCount > 99 ? "99+" : (int) $totalBadgeCount; ?></span>
                     </button>
                     <div class="topbar__menu topbar__menu--notifications js-notification-menu" hidden>
+
+                        <?php if ($alertCount > 0 || !empty($alertSummary['items'])): ?>
+                        <div class="topbar__menu-header">
+                            <strong><i class="fa-solid fa-triangle-exclamation"></i> Alert Sistem</strong>
+                            <span><?= (int) $alertCount; ?> notifikasi</span>
+                        </div>
+                        <?php if (!empty($alertSummary['items'])): ?>
+                            <?php foreach ($alertSummary['items'] as $alertItem): ?>
+                                <a class="notification-item notification-item--alert notification-item--level-<?= e(strtolower((string) ($alertItem['level'] ?? 'info'))); ?>"
+                                   href="index.php?page=notifikasi-alert&mark_read_id=<?= (int) ($alertItem['id'] ?? 0); ?>">
+                                    <span class="notification-item__ticket"><?= e((string) ($alertItem['kategori'] ?? '-')); ?></span>
+                                    <strong><?= e((string) ($alertItem['judul'] ?? '-')); ?></strong>
+                                    <small><?= e(mb_substr((string) ($alertItem['keterangan'] ?? ''), 0, 80)); ?></small>
+                                    <em><?= e((string) ($alertItem['created_at'] ?? '')); ?></em>
+                                </a>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div class="notification-empty">Tidak ada alert baru.</div>
+                        <?php endif; ?>
+                        <a class="topbar__menu-footer" href="index.php?page=notifikasi-alert">
+                            <i class="fa-solid fa-list-check"></i> Lihat Semua Notifikasi
+                        </a>
+                        <div class="notif-section-divider"></div>
+                        <?php endif; ?>
 
                         <?php if ($canAccessItSupport): ?>
                         <div class="topbar__menu-header"><strong>IT Support baru</strong><span><span class="js-notification-count-text"><?= (int) $notificationCount; ?></span> notifikasi</span></div>

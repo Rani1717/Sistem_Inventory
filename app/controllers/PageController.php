@@ -79,6 +79,29 @@ class PageController
             $this->jsonSaveRoutineMonitoringCell();
             return;
         }
+        if ((string) ($_GET['page'] ?? '') !== '' && isset($_GET['mark_read_id'])) {
+            $markId = (int) $_GET['mark_read_id'];
+            if ($markId > 0) {
+                try {
+                    $pdo = Database::getConnection();
+                    if ($pdo instanceof PDO) {
+                        $stmt = $pdo->prepare(
+                            "UPDATE alert_notifications
+                             SET is_read = 1, dibaca_at = NOW(),
+                                 dibaca_oleh = :username
+                             WHERE id = :id"
+                        );
+                        $stmt->execute([
+                            'username' => $_SESSION['auth']['username'] ?? 'system',
+                            'id' => $markId,
+                        ]);
+                    }
+                } catch (Throwable $e) {
+                    // abaikan, tidak boleh blocking render halaman
+                }
+            }
+        }
+
         if (!isset($this->pageMap[$page])) {
             $page = 'splash';
         }
