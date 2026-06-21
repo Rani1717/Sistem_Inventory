@@ -231,6 +231,10 @@ class AuthController
             return true;
         }
 
+        if ($page === 'notifikasi-alert') {
+            return self::canAccessAlertSystem();
+        }
+
         $role = self::role();
         $inventoryPages = ['inventory-pc', 'inventory-other'];
         $dataInventoryPages = ['data-inventaris', 'data-inventaris-subreg', 'inventaris-detail'];
@@ -272,6 +276,17 @@ class AuthController
     public static function canAccessItSupport(): bool
     {
         return self::canAccessPage('data-keluhan');
+    }
+
+    public static function canAccessAlertSystem(): bool
+    {
+        if (!self::check()) {
+            return false;
+        }
+        $auth = $_SESSION['auth'] ?? [];
+        $role = strtolower(trim((string) ($auth['role'] ?? '')));
+        $unit = strtoupper(trim((string) ($auth['unit_kerja_default'] ?? '')));
+        return in_array($role, ['admin', 'operator'], true) || $unit === 'IT';
     }
 
     public static function accessiblePages(): array

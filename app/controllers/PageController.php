@@ -58,6 +58,13 @@ class PageController
                     $this->setSetting($pdo, 'last_gform_sync_time', (string) time());
                     $this->syncGoogleFormSubmissions($pdo, false, true);
                 }
+
+                // Auto-run alert scanner on page loads (throttled to once every 5 seconds)
+                $lastAlertCheck = (int) $this->getSetting($pdo, 'last_alert_check_time', '0');
+                if (time() - $lastAlertCheck > 5) {
+                    $this->setSetting($pdo, 'last_alert_check_time', (string) time());
+                    $this->buildAlertNotifications($pdo);
+                }
             } catch (Throwable $e) {
                 // Ignore database or curl errors silently to prevent blocking page render
             }
@@ -245,10 +252,20 @@ class PageController
             }
         }
         if ($page === 'notifikasi-alert') {
+            if (!AuthController::canAccessAlertSystem()) {
+                header('Location: index.php?page=dashboard');
+                exit;
+            }
             $pdo = Database::getConnection();
             if ($pdo instanceof PDO) {
                 $data['alert_rows'] = $this->buildAlertNotifications($pdo);
                 $data['alert_stats'] = $this->buildAlertStats($pdo);
+                $data['alert_filters'] = [
+                    'kategori' => trim((string) ($_GET['alert_kategori'] ?? '')),
+                    'level' => trim((string) ($_GET['alert_level'] ?? '')),
+                    'is_read' => trim((string) ($_GET['alert_read'] ?? '')),
+                    'tindak_lanjut' => trim((string) ($_GET['alert_tindak_lanjut'] ?? '')),
+                ];
             }
         }
         if (!empty($_SESSION['flash'])) {
@@ -2964,11 +2981,26 @@ class PageController
             echo json_encode(["count" => 0, "error" => "unauthenticated"]);
             return;
         }
+        if (!AuthController::canAccessAlertSystem()) {
+            http_response_code(403);
+            echo json_encode(["count" => 0, "error" => "forbidden"]);
+            return;
+        }
         $pdo = Database::getConnection();
         if (!$pdo instanceof PDO) {
             echo json_encode(["count" => 0]);
             return;
         }
+        
+        // Auto-run alert scanner on AJAX polling (throttled to once every 5 seconds)
+        try {
+            $lastAlertCheck = (int) $this->getSetting($pdo, 'last_alert_check_time', '0');
+            if (time() - $lastAlertCheck > 5) {
+                $this->setSetting($pdo, 'last_alert_check_time', (string) time());
+                $this->buildAlertNotifications($pdo);
+            }
+        } catch (Throwable $e) {}
+
         $count = 0;
         try {
             $count = (int) ($pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE is_read = 0")->fetchColumn() ?? 0);
@@ -10352,6 +10384,9 @@ SQL);
           `keterangan`  text         NOT NULL COMMENT 'Penjelasan detail alert',
           `link_url`    varchar(500) DEFAULT NULL COMMENT 'URL halaman terkait',
           `is_read`     tinyint(1)   NOT NULL DEFAULT 0,
+          `status_tindak_lanjut` varchar(20) NOT NULL DEFAULT 'BELUM_DITANGANI' COMMENT 'BELUM_DITANGANI / SEDANG_DITANGANI / SELESAI',
+          `ditangani_oleh` varchar(100) DEFAULT NULL,
+          `ditangani_at` datetime     DEFAULT NULL,
           `dibaca_oleh` varchar(100) DEFAULT NULL COMMENT 'username yang menandai sudah dibaca',
           `dibaca_at`   datetime     DEFAULT NULL,
           `created_at`  datetime     NOT NULL DEFAULT current_timestamp(),
@@ -10362,6 +10397,17 @@ SQL);
           KEY `idx_alert_created` (`created_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
         $pdo->exec($sql);
+        
+        try {
+            $pdo->exec("ALTER TABLE `alert_notifications` ADD COLUMN `status_tindak_lanjut` VARCHAR(20) NOT NULL DEFAULT 'BELUM_DITANGANI' COMMENT 'BELUM_DITANGANI / SEDANG_DITANGANI / SELESAI' AFTER `is_read`");
+        } catch (Throwable $e) {}
+        try {
+            $pdo->exec("ALTER TABLE `alert_notifications` ADD COLUMN `ditangani_oleh` VARCHAR(100) DEFAULT NULL AFTER `status_tindak_lanjut`");
+        } catch (Throwable $e) {}
+        try {
+            $pdo->exec("ALTER TABLE `alert_notifications` ADD COLUMN `ditangani_at` DATETIME DEFAULT NULL AFTER `ditangani_oleh`");
+        } catch (Throwable $e) {}
+
         try {
             $pdo->exec("DELETE FROM alert_notifications WHERE is_read = 1 AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
         } catch (Throwable $e) {}
@@ -10369,6 +10415,11 @@ SQL);
 
     private function handleNotifikasiAlertAction(): void
     {
+        if (!AuthController::canAccessAlertSystem()) {
+            header('Location: index.php?page=dashboard');
+            exit;
+        }
+
         $action = trim((string) ($_POST['action'] ?? $_GET['action'] ?? ''));
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') { return; }
         
@@ -10382,7 +10433,28 @@ SQL);
         $this->ensureAlertTable($pdo);
 
         try {
-            if ($action === 'mark_read') {
+            if ($action === 'update_status_tindak_lanjut') {
+                $id = (int) ($_POST['id'] ?? 0);
+                $statusBaru = strtoupper(trim((string) ($_POST['status_tindak_lanjut'] ?? '')));
+                $validStatus = ['BELUM_DITANGANI', 'SEDANG_DITANGANI', 'SELESAI'];
+                if ($id > 0 && in_array($statusBaru, $validStatus, true)) {
+                    $stmt = $pdo->prepare(
+                        "UPDATE alert_notifications
+                         SET status_tindak_lanjut = :status,
+                             ditangani_oleh = :user,
+                             ditangani_at = NOW()
+                         WHERE id = :id"
+                    );
+                    $stmt->execute([
+                        'status' => $statusBaru,
+                        'user' => $_SESSION['auth']['username'] ?? 'system',
+                        'id' => $id,
+                    ]);
+                    $_SESSION['flash'] = ['type' => 'success', 'message' => 'Status tindak lanjut berhasil diperbarui.'];
+                }
+                header('Location: index.php?page=notifikasi-alert');
+                exit;
+            } elseif ($action === 'mark_read') {
                 $id = (int) ($_POST['id'] ?? $_GET['id'] ?? 0);
                 if ($id <= 0) {
                     throw new RuntimeException('ID notifikasi tidak valid.');
@@ -10551,6 +10623,7 @@ SQL);
         $filterKategori = trim((string) ($_GET['alert_kategori'] ?? ''));
         $filterLevel    = trim((string) ($_GET['alert_level'] ?? ''));
         $filterRead     = trim((string) ($_GET['alert_read'] ?? ''));
+        $filterTindakLanjut = strtoupper(trim((string) ($_GET['alert_tindak_lanjut'] ?? '')));
 
         $sql = "SELECT * FROM alert_notifications WHERE 1=1";
         $params = [];
@@ -10565,6 +10638,10 @@ SQL);
         if ($filterRead !== '') {
             $sql .= " AND is_read = :is_read";
             $params['is_read'] = (int) $filterRead;
+        }
+        if ($filterTindakLanjut !== '') {
+            $sql .= " AND status_tindak_lanjut = :tindak_lanjut";
+            $params['tindak_lanjut'] = $filterTindakLanjut;
         }
         $sql .= " ORDER BY is_read ASC, created_at DESC LIMIT 200";
         
@@ -10603,15 +10680,26 @@ SQL);
             $kritis = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE level = 'KRITIS'")->fetchColumn();
             $peringatan = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE level = 'PERINGATAN'")->fetchColumn();
             $info = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE level = 'INFO'")->fetchColumn();
+            
+            $belum_ditangani = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE status_tindak_lanjut = 'BELUM_DITANGANI'")->fetchColumn();
+            $sedang_ditangani = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE status_tindak_lanjut = 'SEDANG_DITANGANI'")->fetchColumn();
+            $selesai = (int) $pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE status_tindak_lanjut = 'SELESAI'")->fetchColumn();
+
             return [
                 'total' => $total,
                 'belum_baca' => $belum_baca,
                 'kritis' => $kritis,
                 'peringatan' => $peringatan,
                 'info' => $info,
+                'belum_ditangani' => $belum_ditangani,
+                'sedang_ditangani' => $sedang_ditangani,
+                'selesai' => $selesai,
             ];
         } catch (Throwable $e) {
-            return ['total' => 0, 'belum_baca' => 0, 'kritis' => 0, 'peringatan' => 0, 'info' => 0];
+            return [
+                'total' => 0, 'belum_baca' => 0, 'kritis' => 0, 'peringatan' => 0, 'info' => 0,
+                'belum_ditangani' => 0, 'sedang_ditangani' => 0, 'selesai' => 0,
+            ];
         }
     }
 }

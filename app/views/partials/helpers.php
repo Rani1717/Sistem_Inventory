@@ -104,7 +104,10 @@ if (!function_exists('renderTopbar')) {
             : ['count' => 0, 'items' => []];
         $pendingUserCount = (int) ($pendingUserNotif['count'] ?? 0);
 
-        $alertSummary = $data['alert_summary'] ?? ['count' => 0, 'items' => []];
+        $canAccessAlertSystem = AuthController::canAccessAlertSystem();
+        $alertSummary = $canAccessAlertSystem
+            ? ($data['alert_summary'] ?? ['count' => 0, 'items' => []])
+            : ['count' => 0, 'items' => []];
         $alertCount = (int) ($alertSummary['count'] ?? 0);
 
         $totalBadgeCount = $notificationCount + $pendingUserCount + $alertCount;
@@ -117,7 +120,7 @@ if (!function_exists('renderTopbar')) {
                 <div class="topbar__search-results js-global-search-results" hidden></div>
             </div>
             <div class="topbar__icons">
-                <?php if ($canAccessItSupport || $isAdmin || $alertCount > 0 || true): ?>
+                <?php if ($canAccessItSupport || $isAdmin || $canAccessAlertSystem): ?>
                 <div class="topbar__dropdown">
                     <button type="button" class="topbar__icon-btn js-toggle-notifications" aria-label="Notifikasi" aria-expanded="false" data-notification-count="<?= (int) $totalBadgeCount; ?>">
                         <i class="fa-solid fa-bell"></i>
@@ -125,7 +128,7 @@ if (!function_exists('renderTopbar')) {
                     </button>
                     <div class="topbar__menu topbar__menu--notifications js-notification-menu" hidden>
 
-                        <?php if ($alertCount > 0 || !empty($alertSummary['items'])): ?>
+                        <?php if ($canAccessAlertSystem && ($alertCount > 0 || !empty($alertSummary['items']))): ?>
                         <div class="topbar__menu-header">
                             <strong><i class="fa-solid fa-triangle-exclamation"></i> Alert Sistem</strong>
                             <span><?= (int) $alertCount; ?> notifikasi</span>

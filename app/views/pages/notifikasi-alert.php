@@ -10,17 +10,25 @@ renderMainHeader($data, 'RIWAYAT NOTIFIKASI & ALERT');
 <style>
 /* Custom filter bar override for Notifikasi & Alert */
 .alert-filter-bar {
-    grid-template-columns: repeat(3, 1fr) auto !important;
+    grid-template-columns: repeat(4, 1fr) auto !important;
     margin-bottom: 24px !important;
+}
+
+/* Custom dashboard summary grid for 5 cards in one row on desktop */
+.alert-dashboard-summary {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
 }
 
 @media (max-width: 1200px) {
     .alert-filter-bar {
-        grid-template-columns: repeat(3, 1fr) !important;
+        grid-template-columns: repeat(4, 1fr) !important;
     }
     .alert-filter-bar__actions-wrapper {
-        grid-column: span 3;
+        grid-column: span 4;
         justify-content: flex-end;
+    }
+    .alert-dashboard-summary {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     }
 }
 
@@ -36,13 +44,22 @@ renderMainHeader($data, 'RIWAYAT NOTIFIKASI & ALERT');
     .alert-filter-bar__actions-wrapper .btn--ghost {
         flex: 1;
     }
+    .alert-dashboard-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .alert-dashboard-summary {
+        grid-template-columns: 1fr !important;
+    }
 }
 </style>
 
-<!-- Stat Cards (4 card horizontal) -->
-<div class="dashboard-summary" style="margin-top: 24px; margin-bottom: 24px;">
+<!-- Stat Cards (5 card horizontal) -->
+<div class="dashboard-summary alert-dashboard-summary" style="margin-top: 24px; margin-bottom: 24px;">
     <!-- Total Alert -->
-    <article class="metric-card" style="flex: 1; min-width: 200px;">
+    <article class="metric-card" style="flex: 1; min-width: 180px;">
         <h3>TOTAL ALERT</h3>
         <div style="font-size: 2.2rem; font-weight: 700; color: var(--c-primary); margin-top: 10px;">
             <?= (int) $stats['total']; ?>
@@ -51,16 +68,16 @@ renderMainHeader($data, 'RIWAYAT NOTIFIKASI & ALERT');
     </article>
 
     <!-- Belum Dibaca -->
-    <article class="metric-card" style="flex: 1; min-width: 200px;">
+    <article class="metric-card" style="flex: 1; min-width: 180px;">
         <h3>BELUM DIBACA</h3>
         <div style="font-size: 2.2rem; font-weight: 700; color: <?= $stats['belum_baca'] > 0 ? 'var(--c-red-deep)' : 'var(--c-primary)'; ?>; margin-top: 10px;">
             <?= (int) $stats['belum_baca']; ?>
         </div>
-        <div style="font-size: 0.8rem; color: var(--c-muted-text); margin-top: 6px;">Butuh perhatian / tindak lanjut</div>
+        <div style="font-size: 0.8rem; color: var(--c-muted-text); margin-top: 6px;">Butuh perhatian / dibaca</div>
     </article>
 
     <!-- Kritis -->
-    <article class="metric-card" style="flex: 1; min-width: 200px;">
+    <article class="metric-card" style="flex: 1; min-width: 180px;">
         <h3>KRITIS</h3>
         <div style="font-size: 2.2rem; font-weight: 700; color: var(--c-red-deep); margin-top: 10px;">
             <?= (int) $stats['kritis']; ?>
@@ -69,12 +86,21 @@ renderMainHeader($data, 'RIWAYAT NOTIFIKASI & ALERT');
     </article>
 
     <!-- Peringatan -->
-    <article class="metric-card" style="flex: 1; min-width: 200px;">
+    <article class="metric-card" style="flex: 1; min-width: 180px;">
         <h3>PERINGATAN</h3>
         <div style="font-size: 2.2rem; font-weight: 700; color: #b45309; margin-top: 10px;">
             <?= (int) $stats['peringatan']; ?>
         </div>
         <div style="font-size: 0.8rem; color: var(--c-muted-text); margin-top: 6px;">Tinjau kembali dalam 24 jam</div>
+    </article>
+
+    <!-- Belum Ditangani -->
+    <article class="metric-card" style="flex: 1; min-width: 180px;">
+        <h3>BELUM DITANGANI</h3>
+        <div style="font-size: 2.2rem; font-weight: 700; color: <?= ($stats['belum_ditangani'] ?? 0) > 0 ? 'var(--c-red-deep)' : 'var(--c-primary)'; ?>; margin-top: 10px;">
+            <?= (int) ($stats['belum_ditangani'] ?? 0); ?>
+        </div>
+        <div style="font-size: 0.8rem; color: var(--c-muted-text); margin-top: 6px;">Alert belum ditindaklanjuti</div>
     </article>
 </div>
 
@@ -108,6 +134,16 @@ renderMainHeader($data, 'RIWAYAT NOTIFIKASI & ALERT');
             <option value="">Semua Status</option>
             <option value="0" <?= ($filters['is_read'] ?? '') === '0' ? 'selected' : ''; ?>>Belum Dibaca</option>
             <option value="1" <?= ($filters['is_read'] ?? '') === '1' ? 'selected' : ''; ?>>Sudah Dibaca</option>
+        </select>
+    </div>
+
+    <div class="complaint-filter-bar__field">
+        <span>Tindak Lanjut</span>
+        <select name="alert_tindak_lanjut">
+            <option value="">Semua</option>
+            <option value="BELUM_DITANGANI" <?= ($filters['tindak_lanjut'] ?? '') === 'BELUM_DITANGANI' ? 'selected' : ''; ?>>Belum Ditangani</option>
+            <option value="SEDANG_DITANGANI" <?= ($filters['tindak_lanjut'] ?? '') === 'SEDANG_DITANGANI' ? 'selected' : ''; ?>>Sedang Ditangani</option>
+            <option value="SELESAI" <?= ($filters['tindak_lanjut'] ?? '') === 'SELESAI' ? 'selected' : ''; ?>>Selesai</option>
         </select>
     </div>
 
@@ -160,7 +196,8 @@ foreach ($rows as $r) {
                         <th style="padding: 14px 16px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 120px;">Level</th>
                         <th style="padding: 14px 16px; text-align: left; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15);">Judul &amp; Keterangan</th>
                         <th style="padding: 14px 16px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 130px;">Status</th>
-                        <th style="padding: 14px 16px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 180px;">Aksi</th>
+                        <th style="padding: 14px 16px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 150px;">Tindak Lanjut</th>
+                        <th style="padding: 14px 16px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 250px;">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -175,6 +212,18 @@ foreach ($rows as $r) {
                             $levelClass = 'alert-level-kritis';
                         } elseif ($level === 'PERINGATAN') {
                             $levelClass = 'alert-level-peringatan';
+                        }
+
+                        $tindakLanjut = $row['status_tindak_lanjut'] ?? 'BELUM_DITANGANI';
+                        if ($tindakLanjut === 'SELESAI') {
+                            $tlText = 'Selesai';
+                            $tlStyle = 'background: rgba(30, 136, 67, 0.12) !important; color: #1e8843 !important; border: 1px solid rgba(30, 136, 67, 0.25);';
+                        } elseif ($tindakLanjut === 'SEDANG_DITANGANI') {
+                            $tlText = 'Sedang Ditangani';
+                            $tlStyle = 'background: rgba(245, 158, 11, 0.14) !important; color: #b45309 !important; border: 1px solid rgba(245, 158, 11, 0.25);';
+                        } else {
+                            $tlText = 'Belum Ditangani';
+                            $tlStyle = 'background: rgba(201, 30, 30, 0.12) !important; color: var(--c-red-deep) !important; border: 1px solid rgba(201, 30, 30, 0.25);';
                         }
                     ?>
                         <tr class="alert-row" style="transition: background 0.2s; <?= $isRead === 0 ? 'background: rgba(27, 62, 111, 0.03);' : ''; ?>">
@@ -207,7 +256,27 @@ foreach ($rows as $r) {
                                 <?php endif; ?>
                             </td>
                             <td style="padding: 16px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
+                                <span class="badge" style="font-weight: 700; padding: 4px 10px; border-radius: 6px; font-size: 11.5px; display: inline-block; <?= $tlStyle; ?>">
+                                    <?= e($tlText); ?>
+                                </span>
+                                <?php if ($tindakLanjut !== 'BELUM_DITANGANI' && !empty($row['ditangani_oleh'])): ?>
+                                    <small style="display: block; margin-top: 6px; font-size: 11px; color: var(--c-muted-text); font-style: italic; text-align: center;">
+                                        Oleh: <?= e($row['ditangani_oleh']); ?><br>pada <?= e(date('d/m/Y H:i', strtotime($row['ditangani_at']))); ?>
+                                    </small>
+                                <?php endif; ?>
+                            </td>
+                            <td style="padding: 16px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
                                 <div style="display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;">
+                                    <form method="post" action="index.php?page=notifikasi-alert" style="margin: 0;">
+                                        <input type="hidden" name="action" value="update_status_tindak_lanjut">
+                                        <input type="hidden" name="id" value="<?= (int) $row['id']; ?>">
+                                        <select name="status_tindak_lanjut" onchange="this.form.submit()" style="height: 32px; border-radius: 6px; font-size: 12px; padding: 0 8px; border: 1px solid rgba(42, 102, 165, 0.25); background: #fff; cursor: pointer; outline: none;" title="Ubah Status Tindak Lanjut">
+                                            <option value="BELUM_DITANGANI" <?= $tindakLanjut === 'BELUM_DITANGANI' ? 'selected' : ''; ?>>Belum Ditangani</option>
+                                            <option value="SEDANG_DITANGANI" <?= $tindakLanjut === 'SEDANG_DITANGANI' ? 'selected' : ''; ?>>Sedang Ditangani</option>
+                                            <option value="SELESAI" <?= $tindakLanjut === 'SELESAI' ? 'selected' : ''; ?>>Selesai</option>
+                                        </select>
+                                    </form>
+
                                     <?php if ($isRead === 0): ?>
                                         <form method="post" action="index.php?page=notifikasi-alert" style="margin: 0;">
                                             <input type="hidden" name="action" value="mark_read">

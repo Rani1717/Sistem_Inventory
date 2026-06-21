@@ -21,8 +21,15 @@ class UiModel
             $data['alert_unread_count'] = 0;
         }
 
+        $auth = $_SESSION['auth'] ?? [];
+        $userRole = strtolower(trim((string) ($auth['role'] ?? '')));
+        $userUnitKerja = strtoupper(trim((string) ($auth['unit_kerja_default'] ?? '')));
+        $canSeeAlert = in_array($userRole, ['admin', 'operator'], true) || $userUnitKerja === 'IT';
+
         try {
-            $data['alert_summary'] = $this->buildAlertSummaryForTopbar($pdo);
+            $data['alert_summary'] = $canSeeAlert
+                ? $this->buildAlertSummaryForTopbar($pdo)
+                : ['count' => 0, 'items' => []];
         } catch (Throwable $e) {
             $data['alert_summary'] = ['count' => 0, 'items' => []];
         }
@@ -2912,6 +2919,9 @@ SQL);
           `keterangan`  text         NOT NULL COMMENT 'Penjelasan detail alert',
           `link_url`    varchar(500) DEFAULT NULL COMMENT 'URL halaman terkait',
           `is_read`     tinyint(1)   NOT NULL DEFAULT 0,
+          `status_tindak_lanjut` varchar(20) NOT NULL DEFAULT 'BELUM_DITANGANI' COMMENT 'BELUM_DITANGANI / SEDANG_DITANGANI / SELESAI',
+          `ditangani_oleh` varchar(100) DEFAULT NULL,
+          `ditangani_at` datetime     DEFAULT NULL,
           `dibaca_oleh` varchar(100) DEFAULT NULL COMMENT 'username yang menandai sudah dibaca',
           `dibaca_at`   datetime     DEFAULT NULL,
           `created_at`  datetime     NOT NULL DEFAULT current_timestamp(),
@@ -2922,6 +2932,17 @@ SQL);
           KEY `idx_alert_created` (`created_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
         $pdo->exec($sql);
+        
+        try {
+            $pdo->exec("ALTER TABLE `alert_notifications` ADD COLUMN `status_tindak_lanjut` VARCHAR(20) NOT NULL DEFAULT 'BELUM_DITANGANI' COMMENT 'BELUM_DITANGANI / SEDANG_DITANGANI / SELESAI' AFTER `is_read`");
+        } catch (Throwable $e) {}
+        try {
+            $pdo->exec("ALTER TABLE `alert_notifications` ADD COLUMN `ditangani_oleh` VARCHAR(100) DEFAULT NULL AFTER `status_tindak_lanjut`");
+        } catch (Throwable $e) {}
+        try {
+            $pdo->exec("ALTER TABLE `alert_notifications` ADD COLUMN `ditangani_at` DATETIME DEFAULT NULL AFTER `ditangani_oleh`");
+        } catch (Throwable $e) {}
+
         try {
             $pdo->exec("DELETE FROM alert_notifications WHERE is_read = 1 AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
         } catch (Throwable $e) {}
