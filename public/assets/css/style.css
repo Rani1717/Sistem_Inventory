@@ -799,6 +799,39 @@ button {
     flex-shrink: 0;
 }
 
+/* ── Sidebar Section Divider ── */
+.sidebar__section-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 2px;
+    margin-top: 4px;
+}
+
+.sidebar__section-divider::before {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(42, 102, 165, 0.28));
+}
+
+.sidebar__section-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(270deg, transparent, rgba(42, 102, 165, 0.28));
+}
+
+.sidebar__section-divider span {
+    font-family: var(--font-head);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: rgba(42, 102, 165, 0.55);
+    white-space: nowrap;
+    text-transform: uppercase;
+}
+
 .app-main {
     min-width: 0;
     height: 100vh;

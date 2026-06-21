@@ -66,6 +66,11 @@ if (!function_exists('renderSidebar')) {
 
             <nav class="sidebar__nav">
                 <?php foreach ($data['menus'] as $menu): ?>
+                    <?php if (($menu['type'] ?? '') === 'divider'): ?>
+                        <div class="sidebar__section-divider">
+                            <span><?= e($menu['label']); ?></span>
+                        </div>
+                    <?php else: ?>
                     <?php if (!empty($menu['admin_only']) && !AuthController::isAdminSpmt()) { continue; } ?>
                     <a href="<?= routeTo($menu['route']); ?>"
                        class="<?= $menu['variant'] === 'pill' ? 'sidebar__pill' : 'sidebar__link'; ?> <?= isMenuActive($page, $menu) ? 'is-active' : ''; ?>">
@@ -78,6 +83,7 @@ if (!function_exists('renderSidebar')) {
                             <span class="sidebar__menu-badge js-alert-unread-badge" style="<?= empty($data['alert_unread_count']) ? 'display: none;' : ''; ?>"><?= (int) $data['alert_unread_count']; ?></span>
                         <?php endif; ?>
                     </a>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </nav>
 
@@ -136,11 +142,10 @@ if (!function_exists('renderTopbar')) {
                         <?php if (!empty($alertSummary['items'])): ?>
                             <?php foreach ($alertSummary['items'] as $alertItem): ?>
                                 <a class="notification-item notification-item--alert notification-item--level-<?= e(strtolower((string) ($alertItem['level'] ?? 'info'))); ?>"
-                                   href="index.php?page=notifikasi-alert&mark_read_id=<?= (int) ($alertItem['id'] ?? 0); ?>">
-                                    <span class="notification-item__ticket"><?= e((string) ($alertItem['kategori'] ?? '-')); ?></span>
-                                    <strong><?= e((string) ($alertItem['judul'] ?? '-')); ?></strong>
-                                    <small><?= e(mb_substr((string) ($alertItem['keterangan'] ?? ''), 0, 80)); ?></small>
-                                    <em><?= e((string) ($alertItem['created_at'] ?? '')); ?></em>
+                                   href="index.php?page=notifikasi-alert&mark_read_id=<?= (int) ($alertItem['id'] ?? 0); ?>" style="padding: 10px 16px;">
+                                    <span class="notification-item__ticket" style="margin-bottom: 2px;"><?= e((string) ($alertItem['kategori'] ?? '-')); ?></span>
+                                    <strong style="font-size: 13px; line-height: 1.3; display: block;"><?= e((string) ($alertItem['judul'] ?? '-')); ?></strong>
+                                    <em style="margin-top: 4px; display: block; font-size: 11px;"><?= e((string) ($alertItem['created_at'] ?? '')); ?></em>
                                 </a>
                             <?php endforeach; ?>
                         <?php else: ?>
@@ -156,11 +161,11 @@ if (!function_exists('renderTopbar')) {
                         <div class="topbar__menu-header"><strong>IT Support baru</strong><span><span class="js-notification-count-text"><?= (int) $notificationCount; ?></span> notifikasi</span></div>
                         <?php if (!empty($notifications['items'])): ?>
                             <?php foreach ($notifications['items'] as $item): ?>
-                                <a class="notification-item" href="index.php?page=data-keluhan&focus_ticket=<?= (int) ($item['id'] ?? 0); ?>&mark_notification_read=<?= (int) ($item['id'] ?? 0); ?>">
-                                    <span class="notification-item__ticket"><?= e((string) ($item['ticket_no'] ?? '-')); ?></span>
-                                    <strong><?= e((string) ($item['nama'] ?? 'Pelapor')); ?></strong>
-                                    <small><?= e((string) ($item['divisi'] ?? '-')); ?> - <?= e((string) ($item['barang'] ?? '-')); ?></small>
-                                    <em><?= e((string) ($item['tanggal_dan_jam'] ?? '')); ?></em>
+                                <a class="notification-item" href="index.php?page=data-keluhan&focus_ticket=<?= (int) ($item['id'] ?? 0); ?>&mark_notification_read=<?= (int) ($item['id'] ?? 0); ?>" style="padding: 10px 16px;">
+                                    <span class="notification-item__ticket" style="margin-bottom: 2px;"><?= e((string) ($item['ticket_no'] ?? '-')); ?></span>
+                                    <strong style="font-size: 13px; line-height: 1.3; display: block;"><?= e((string) ($item['nama'] ?? 'Pelapor')); ?></strong>
+                                    <small style="font-size: 11.5px; opacity: 0.8; display: block; margin-top: 2px;"><?= e((string) ($item['divisi'] ?? '-')); ?> - <?= e((string) ($item['barang'] ?? '-')); ?></small>
+                                    <em style="margin-top: 4px; display: block; font-size: 11px;"><?= e((string) ($item['tanggal_dan_jam'] ?? '')); ?></em>
                                 </a>
                             <?php endforeach; ?>
                             <a class="topbar__menu-footer" href="index.php?page=data-keluhan&complaint_status=NOT+YET&mark_all_notifications=1">Lihat semua tiket baru</a>
@@ -174,11 +179,11 @@ if (!function_exists('renderTopbar')) {
                         <div class="topbar__menu-header topbar__menu-header--user"><strong><i class="fa-solid fa-user-clock"></i> Akun Menunggu Validasi</strong><span class="notif-pending-count"><?= $pendingUserCount; ?></span></div>
                         <?php if (!empty($pendingUserNotif['items'])): ?>
                             <?php foreach ($pendingUserNotif['items'] as $uItem): ?>
-                                <a class="notification-item notification-item--user" href="index.php?page=user-management">
-                                    <strong><?= e((string) ($uItem['nama_lengkap'] ?? '-')); ?></strong>
-                                    <small><?= e((string) ($uItem['email'] ?? '-')); ?></small>
-                                    <small class="notif-user-division"><?= e((string) ($uItem['unit_kerja_default'] ?? '-')); ?></small>
-                                    <em><?= e((string) ($uItem['created_at'] ?? '')); ?></em>
+                                <a class="notification-item notification-item--user" href="index.php?page=user-management" style="padding: 10px 16px;">
+                                    <strong style="font-size: 13px; line-height: 1.3; display: block;"><?= e((string) ($uItem['nama_lengkap'] ?? '-')); ?></strong>
+                                    <small style="font-size: 11.5px; opacity: 0.8; display: block; margin-top: 2px;"><?= e((string) ($uItem['email'] ?? '-')); ?></small>
+                                    <small class="notif-user-division" style="font-size: 11px; opacity: 0.7; display: block; margin-top: 2px;"><?= e((string) ($uItem['unit_kerja_default'] ?? '-')); ?></small>
+                                    <em style="margin-top: 4px; display: block; font-size: 11px;"><?= e((string) ($uItem['created_at'] ?? '')); ?></em>
                                 </a>
                             <?php endforeach; ?>
                             <a class="topbar__menu-footer topbar__menu-footer--user" href="index.php?page=user-management">Kelola semua akun pending</a>

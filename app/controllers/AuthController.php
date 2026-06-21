@@ -286,7 +286,7 @@ class AuthController
         $auth = $_SESSION['auth'] ?? [];
         $role = strtolower(trim((string) ($auth['role'] ?? '')));
         $unit = strtoupper(trim((string) ($auth['unit_kerja_default'] ?? '')));
-        return in_array($role, ['admin', 'operator'], true) || $unit === 'IT';
+        return $role === 'admin' || $unit === 'IT';
     }
 
     public static function accessiblePages(): array

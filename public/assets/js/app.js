@@ -2088,6 +2088,15 @@
             if (detailButton) window.setTimeout(function () { detailButton.click(); }, 350);
         }
     }
+
+    var focusAlertId = params.get('mark_read_id');
+    if (focusAlertId) {
+        var targetAlert = document.querySelector('.alert-row[data-alert-id="' + CSS.escape(focusAlertId) + '"]');
+        if (targetAlert) {
+            targetAlert.classList.add('is-focused-alert');
+            targetAlert.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
 })();
 
 (function () {
@@ -2096,7 +2105,6 @@
     if (!button || !menu || !window.fetch) return;
 
     var badge = document.querySelector('.js-notification-badge');
-    var countText = document.querySelector('.js-notification-count-text');
     var lastCount = parseInt(button.getAttribute('data-notification-count') || '0', 10) || 0;
 
     var allowedPages = (window.SPMT_DATA && Array.isArray(window.SPMT_DATA.accessible_pages)) ? window.SPMT_DATA.accessible_pages : [];
@@ -2109,15 +2117,13 @@
             return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
         });
     }
-    function setNotificationCount(totalCount, itSupportCount) {
+
+    function setNotificationCount(totalCount) {
         totalCount = Math.max(0, parseInt(totalCount || 0, 10) || 0);
         button.setAttribute('data-notification-count', String(totalCount));
         if (badge) {
             badge.textContent = totalCount > 99 ? '99+' : String(totalCount);
             badge.hidden = totalCount <= 0;
-        }
-        if (countText && typeof itSupportCount !== 'undefined') {
-            countText.textContent = String(itSupportCount);
         }
         lastCount = totalCount;
     }
@@ -2129,20 +2135,47 @@
         var pendingItems = payload && Array.isArray(payload.pending_users_items) ? payload.pending_users_items : [];
         var isAdmin = !!(payload && payload.is_admin);
 
+        var alertCount = parseInt(payload && payload.alerts_count ? payload.alerts_count : 0, 10) || 0;
+        var alertItems = payload && Array.isArray(payload.alerts_items) ? payload.alerts_items : [];
+        var canAccessAlerts = !!(payload && payload.can_access_alerts);
+
         var totalCount = count + pendingCount;
+        if (canAccessAlerts) {
+            totalCount += alertCount;
+        }
 
         var html = '';
+
+        // Alert Sistem Section
+        if (canAccessAlerts && (alertCount > 0 || alertItems.length > 0)) {
+            html += '<div class="topbar__menu-header"><strong><i class="fa-solid fa-triangle-exclamation"></i> Alert Sistem</strong><span>' + alertCount + ' notifikasi</span></div>';
+            if (alertItems.length) {
+                html += alertItems.map(function (alertItem) {
+                    var id = encodeURIComponent(alertItem.id || '0');
+                    var level = (alertItem.level || 'info').toLowerCase();
+                    return '<a class="notification-item notification-item--alert notification-item--level-' + level + '" href="index.php?page=notifikasi-alert&mark_read_id=' + id + '" style="padding: 10px 16px;">' +
+                        '<span class="notification-item__ticket" style="margin-bottom: 2px;">' + escapeHtml(alertItem.kategori || '-') + '</span>' +
+                        '<strong style="font-size: 13px; line-height: 1.3; display: block;">' + escapeHtml(alertItem.judul || '-') + '</strong>' +
+                        '<em style="margin-top: 4px; display: block; font-size: 11px;">' + escapeHtml(alertItem.created_at || '') + '</em>' +
+                        '</a>';
+                }).join('');
+            } else {
+                html += '<div class="notification-empty">Tidak ada alert baru.</div>';
+            }
+            html += '<a class="topbar__menu-footer" href="index.php?page=notifikasi-alert"><i class="fa-solid fa-list-check"></i> Lihat Semua Notifikasi</a>' +
+                    '<div class="notif-section-divider"></div>';
+        }
 
         // IT Support Section
         html += '<div class="topbar__menu-header"><strong>IT Support baru</strong><span><span class="js-notification-count-text">' + count + '</span> notifikasi</span></div>';
         if (items.length) {
             html += items.map(function (item) {
                 var id = encodeURIComponent(item.id || '0');
-                return '<a class="notification-item" href="index.php?page=data-keluhan&focus_ticket=' + id + '&mark_notification_read=' + id + '">' +
-                    '<span class="notification-item__ticket">' + escapeHtml(item.ticket_no || '-') + '</span>' +
-                    '<strong>' + escapeHtml(item.nama || 'Pelapor') + '</strong>' +
-                    '<small>' + escapeHtml(item.divisi || '-') + ' - ' + escapeHtml(item.barang || '-') + '</small>' +
-                    '<em>' + escapeHtml(item.tanggal_dan_jam || '') + '</em>' +
+                return '<a class="notification-item" href="index.php?page=data-keluhan&focus_ticket=' + id + '&mark_notification_read=' + id + '" style="padding: 10px 16px;">' +
+                    '<span class="notification-item__ticket" style="margin-bottom: 2px;">' + escapeHtml(item.ticket_no || '-') + '</span>' +
+                    '<strong style="font-size: 13px; line-height: 1.3; display: block;">' + escapeHtml(item.nama || 'Pelapor') + '</strong>' +
+                    '<small style="font-size: 11.5px; opacity: 0.8; display: block; margin-top: 2px;">' + escapeHtml(item.divisi || '-') + ' - ' + escapeHtml(item.barang || '-') + '</small>' +
+                    '<em style="margin-top: 4px; display: block; font-size: 11px;">' + escapeHtml(item.tanggal_dan_jam || '') + '</em>' +
                     '</a>';
             }).join('') + '<a class="topbar__menu-footer" href="index.php?page=data-keluhan&complaint_status=NOT+YET&mark_all_notifications=1">Lihat semua tiket baru</a>';
         } else {
@@ -2155,11 +2188,11 @@
             html += '<div class="topbar__menu-header topbar__menu-header--user"><strong><i class="fa-solid fa-user-clock"></i> Akun Menunggu Validasi</strong><span class="notif-pending-count">' + pendingCount + '</span></div>';
             if (pendingItems.length) {
                 html += pendingItems.map(function (uItem) {
-                    return '<a class="notification-item notification-item--user" href="index.php?page=user-management">' +
-                        '<strong>' + escapeHtml(uItem.nama_lengkap || '-') + '</strong>' +
-                        '<small>' + escapeHtml(uItem.email || '-') + '</small>' +
-                        '<small class="notif-user-division">' + escapeHtml(uItem.unit_kerja_default || '-') + '</small>' +
-                        '<em>' + escapeHtml(uItem.created_at || '') + '</em>' +
+                    return '<a class="notification-item notification-item--user" href="index.php?page=user-management" style="padding: 10px 16px;">' +
+                        '<strong style="font-size: 13px; line-height: 1.3; display: block;">' + escapeHtml(uItem.nama_lengkap || '-') + '</strong>' +
+                        '<small style="font-size: 11.5px; opacity: 0.8; display: block; margin-top: 2px;">' + escapeHtml(uItem.email || '-') + '</small>' +
+                        '<small class="notif-user-division" style="font-size: 11px; opacity: 0.7; display: block; margin-top: 2px;">' + escapeHtml(uItem.unit_kerja_default || '-') + '</small>' +
+                        '<em style="margin-top: 4px; display: block; font-size: 11px;">' + escapeHtml(uItem.created_at || '') + '</em>' +
                         '</a>';
                 }).join('') + '<a class="topbar__menu-footer topbar__menu-footer--user" href="index.php?page=user-management">Kelola semua akun pending</a>';
             } else {
@@ -2168,8 +2201,11 @@
         }
 
         menu.innerHTML = html;
-        countText = document.querySelector('.js-notification-count-text');
-        setNotificationCount(totalCount, count);
+        var countText = document.querySelector('.js-notification-count-text');
+        if (countText) {
+            countText.textContent = String(count);
+        }
+        setNotificationCount(totalCount);
     }
 
     function refreshNotifications() {
@@ -2179,6 +2215,17 @@
             .then(function (payload) {
                 if (payload) {
                     renderNotifications(payload);
+                    if (typeof payload.alerts_count === 'number') {
+                        var sidebarBadge = document.querySelector('.js-alert-unread-badge');
+                        if (sidebarBadge) {
+                            sidebarBadge.textContent = payload.alerts_count;
+                            if (payload.alerts_count > 0) {
+                                sidebarBadge.style.display = '';
+                            } else {
+                                sidebarBadge.style.display = 'none';
+                            }
+                        }
+                    }
                     var table = document.getElementById('complaintTable');
                     var shouldReload = payload.has_new_imports;
                     if (!shouldReload && table && Array.isArray(payload.items)) {

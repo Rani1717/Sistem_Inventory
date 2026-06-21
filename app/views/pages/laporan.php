@@ -1,8 +1,8 @@
 <?php
 $reportCards = [
     ['type' => 'inventory', 'title' => "LAPORAN DATA\nINVENTARIS", 'icon' => 'fa-regular fa-file-lines'],
-    ['type' => 'complaint', 'title' => "LAPORAN\nIT SUPPORT ISSUE", 'icon' => 'fa-regular fa-message'],
-    ['type' => 'log', 'title' => "LAPORAN LOG\nBARANG", 'icon' => 'fa-regular fa-clipboard'],
+    ['type' => 'complaint', 'title' => "LAPORAN\nTIKET KELUHAN", 'icon' => 'fa-regular fa-message'],
+    ['type' => 'log', 'title' => "LAPORAN LOG\nMUTASI ASET", 'icon' => 'fa-regular fa-clipboard'],
     ['type' => 'routine', 'title' => "LAPORAN ROUTINE\nMONITORING", 'icon' => 'fa-solid fa-list-check'],
     ['type' => 'user', 'title' => "LAPORAN\nUSER", 'icon' => 'fa-regular fa-user'],
 ];

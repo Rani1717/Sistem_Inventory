@@ -3053,11 +3053,23 @@ class PageController
                 $pendingItems = $pendingUserNotif['items'] ?? [];
             }
 
+            $canAccessAlert = AuthController::canAccessAlertSystem();
+            $alertCount = 0;
+            $alertItems = [];
+            if ($canAccessAlert) {
+                $alertCount = (int) ($pdo->query("SELECT COUNT(*) FROM alert_notifications WHERE is_read = 0")->fetchColumn() ?? 0);
+                $stmtAlert = $pdo->query("SELECT id, kategori, level, judul, keterangan, created_at FROM alert_notifications WHERE is_read = 0 ORDER BY created_at DESC LIMIT 5");
+                $alertItems = $stmtAlert ? $stmtAlert->fetchAll(PDO::FETCH_ASSOC) : [];
+            }
+
             echo json_encode([
                 "count" => $count,
                 "items" => $items ?: [],
                 "pending_users_count" => $pendingCount,
                 "pending_users_items" => $pendingItems ?: [],
+                "can_access_alerts" => $canAccessAlert,
+                "alerts_count" => $alertCount,
+                "alerts_items" => $alertItems ?: [],
                 "is_admin" => $isAdmin,
                 "has_new_imports" => ($importedCount > 0)
             ]);
@@ -10442,7 +10454,10 @@ SQL);
                         "UPDATE alert_notifications
                          SET status_tindak_lanjut = :status,
                              ditangani_oleh = :user,
-                             ditangani_at = NOW()
+                             ditangani_at = NOW(),
+                             is_read = 1,
+                             dibaca_oleh = COALESCE(dibaca_oleh, :user),
+                             dibaca_at = COALESCE(dibaca_at, NOW())
                          WHERE id = :id"
                     );
                     $stmt->execute([
@@ -10656,7 +10671,7 @@ SQL);
 
     private function insertAlertIfNotExists(PDO $pdo, string $kategori, string $level, string $judul, string $keterangan, string $link): void
     {
-        $stmt = $pdo->prepare("SELECT COUNT(*) FROM alert_notifications WHERE kategori = :kategori AND judul = :judul AND DATE(created_at) = CURDATE()");
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM alert_notifications WHERE kategori = :kategori AND judul = :judul AND (is_read = 0 OR DATE(created_at) = CURDATE())");
         $stmt->execute(['kategori' => $kategori, 'judul' => $judul]);
         $exists = ((int)$stmt->fetchColumn()) > 0;
         

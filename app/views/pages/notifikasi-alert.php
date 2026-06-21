@@ -8,6 +8,24 @@ renderMainHeader($data, 'RIWAYAT NOTIFIKASI & ALERT');
 ?>
 
 <style>
+@keyframes alertFlash {
+    0% { background-color: rgba(245, 158, 11, 0.25) !important; }
+    100% { background-color: transparent; }
+}
+.alert-row.is-focused-alert {
+    animation: alertFlash 3s ease-in-out;
+}
+.alert-row.is-focused-alert td {
+    border-top: 1.5px solid #f59e0b !important;
+    border-bottom: 1.5px solid #f59e0b !important;
+}
+.alert-row.is-focused-alert td:first-child {
+    border-left: 4px solid #f59e0b !important;
+}
+.alert-row.is-focused-alert td:last-child {
+    border-right: 1.5px solid #f59e0b !important;
+}
+
 /* Custom filter bar override for Notifikasi & Alert */
 .alert-filter-bar {
     grid-template-columns: repeat(4, 1fr) auto !important;
@@ -226,7 +244,7 @@ foreach ($rows as $r) {
                             $tlStyle = 'background: rgba(201, 30, 30, 0.12) !important; color: var(--c-red-deep) !important; border: 1px solid rgba(201, 30, 30, 0.25);';
                         }
                     ?>
-                        <tr class="alert-row" style="transition: background 0.2s; <?= $isRead === 0 ? 'background: rgba(27, 62, 111, 0.03);' : ''; ?>">
+                        <tr class="alert-row" data-alert-id="<?= (int) $row['id']; ?>" style="transition: background 0.5s; <?= $isRead === 0 ? 'background: rgba(27, 62, 111, 0.03);' : ''; ?>">
                             <td style="padding: 16px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1); font-weight: 600;"><?= $no++; ?></td>
                             <td style="padding: 16px; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1); white-space: nowrap; font-size: 13.5px; font-weight: 500;">
                                 <?= e(date('d/m/Y H:i', strtotime($row['created_at']))); ?>

@@ -12,19 +12,23 @@ class UiModel
             return $data;
         }
 
-        // Always fetch alert_unread_count
-        try {
-            $data['alert_unread_count'] = (int) ($pdo->query(
-                "SELECT COUNT(*) FROM alert_notifications WHERE is_read = 0"
-            )->fetchColumn() ?? 0);
-        } catch (Throwable $e) {
-            $data['alert_unread_count'] = 0;
-        }
-
         $auth = $_SESSION['auth'] ?? [];
         $userRole = strtolower(trim((string) ($auth['role'] ?? '')));
         $userUnitKerja = strtoupper(trim((string) ($auth['unit_kerja_default'] ?? '')));
-        $canSeeAlert = in_array($userRole, ['admin', 'operator'], true) || $userUnitKerja === 'IT';
+        $canSeeAlert = $userRole === 'admin' || $userUnitKerja === 'IT';
+
+        // Fetch alert_unread_count only if user has access to alerts
+        if ($canSeeAlert) {
+            try {
+                $data['alert_unread_count'] = (int) ($pdo->query(
+                    "SELECT COUNT(*) FROM alert_notifications WHERE is_read = 0"
+                )->fetchColumn() ?? 0);
+            } catch (Throwable $e) {
+                $data['alert_unread_count'] = 0;
+            }
+        } else {
+            $data['alert_unread_count'] = 0;
+        }
 
         try {
             $data['alert_summary'] = $canSeeAlert
@@ -209,45 +213,52 @@ class UiModel
 
         $menus = [
             [
-                'label' => 'INVENTARIS BARU',
-                'icon' => 'fa-regular fa-square-plus',
-                'route' => 'inventory-pc',
-                'match' => ['inventory-pc', 'inventory-other'],
+                'label'   => 'DASHBOARD',
+                'icon'    => 'fa-solid fa-house',
+                'route'   => 'dashboard',
+                'match'   => ['dashboard'],
+                'variant' => 'nav',
+            ],
+            [
+                'label'   => 'DATA INVENTARIS',
+                'icon'    => 'fa-solid fa-database',
+                'route'   => 'data-inventaris',
+                'match'   => ['data-inventaris', 'inventaris-detail'],
+                'variant' => 'nav',
+            ],
+            [
+                'label'   => 'INPUT ASET BARU',
+                'icon'    => 'fa-regular fa-square-plus',
+                'route'   => 'inventory-pc',
+                'match'   => ['inventory-pc', 'inventory-other'],
                 'variant' => 'pill',
             ],
             [
-                'label' => 'DASHBOARD',
-                'icon' => 'fa-solid fa-house',
-                'route' => 'dashboard',
-                'match' => ['dashboard'],
+                'label'   => 'ROUTINE MONITORING',
+                'icon'    => 'fa-solid fa-clipboard-check',
+                'route'   => 'routine-monitoring',
+                'match'   => ['routine-monitoring'],
                 'variant' => 'nav',
             ],
             [
-                'label' => 'DATA INVENTARIS',
-                'icon' => 'fa-solid fa-database',
-                'route' => 'data-inventaris',
-                'match' => ['data-inventaris', 'inventaris-detail'],
+                'label'   => 'LOG MUTASI ASET',
+                'icon'    => 'fa-solid fa-right-from-bracket',
+                'route'   => 'log-barang',
+                'match'   => ['log-barang'],
                 'variant' => 'nav',
             ],
             [
-                'label' => 'IT SUPPORT ISSUE',
-                'icon' => 'fa-solid fa-user-group',
-                'route' => 'data-keluhan',
-                'match' => ['data-keluhan'],
+                'label'   => 'TIKET KELUHAN',
+                'icon'    => 'fa-solid fa-user-group',
+                'route'   => 'data-keluhan',
+                'match'   => ['data-keluhan'],
                 'variant' => 'nav',
             ],
             [
-                'label' => 'LOG BARANG',
-                'icon' => 'fa-solid fa-right-from-bracket',
-                'route' => 'log-barang',
-                'match' => ['log-barang'],
-                'variant' => 'nav',
-            ],
-            [
-                'label' => 'PEMINJAMAN',
-                'icon' => 'fa-solid fa-laptop',
-                'route' => 'peminjaman-laptop',
-                'match' => ['peminjaman-laptop'],
+                'label'   => 'PEMINJAMAN LAPTOP',
+                'icon'    => 'fa-solid fa-laptop',
+                'route'   => 'peminjaman-laptop',
+                'match'   => ['peminjaman-laptop'],
                 'variant' => 'nav',
             ],
             [
@@ -258,26 +269,19 @@ class UiModel
                 'variant' => 'nav',
             ],
             [
-                'label' => 'ROUTINE MONITORING',
-                'icon' => 'fa-solid fa-clipboard-check',
-                'route' => 'routine-monitoring',
-                'match' => ['routine-monitoring'],
+                'label'   => 'LAPORAN',
+                'icon'    => 'fa-regular fa-file-lines',
+                'route'   => 'laporan',
+                'match'   => ['laporan'],
                 'variant' => 'nav',
             ],
             [
-                'label' => 'KELOLA USER',
-                'icon' => 'fa-solid fa-user-shield',
-                'route' => 'user-management',
-                'match' => ['user-management'],
-                'variant' => 'nav',
+                'label'      => 'KELOLA USER',
+                'icon'       => 'fa-solid fa-user-shield',
+                'route'      => 'user-management',
+                'match'      => ['user-management'],
+                'variant'    => 'nav',
                 'admin_only' => true,
-            ],
-            [
-                'label' => 'LAPORAN',
-                'icon' => 'fa-regular fa-file-lines',
-                'route' => 'laporan',
-                'match' => ['laporan'],
-                'variant' => 'nav',
             ],
         ];
 
@@ -285,6 +289,8 @@ class UiModel
             return AuthController::canAccessPage((string) ($menu['route'] ?? ''));
         }));
     }
+
+
 
     private function resolveContext(PDO $pdo, array $filters): array
 {
@@ -1746,7 +1752,7 @@ class UiModel
                   AND UPPER(TRIM(COALESCE(u.username, ""))) NOT IN ("USER", "MONITOR.CCTV")
                   AND (
                         (UPPER(TRIM(COALESCE(d.inventory_db_name, ""))) = "DB_SPMT_TEKNIK_DAN_IT" AND UPPER(TRIM(COALESCE(u.unit_kerja_default, ""))) = "IT")
-                        OR u.role IN ("admin", "operator")
+                        OR u.role = "admin"
                   )
                 ORDER BY
                     CASE WHEN UPPER(TRIM(COALESCE(u.unit_kerja_default, ""))) = "IT" THEN 0 ELSE 1 END,
