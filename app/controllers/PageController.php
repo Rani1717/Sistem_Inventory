@@ -4512,19 +4512,19 @@ SQL);
         try {
             if ($postAction === 'save_log_barang') {
                 $this->insertLogBarang($pdo, $_POST, $_FILES);
-                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Log barang baru berhasil ditambahkan.'];
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Log mutasi aset baru berhasil ditambahkan.'];
             } elseif ($postAction === 'edit_log_barang') {
                 $this->updateLogBarang($pdo, $_POST, $_FILES);
-                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Log barang berhasil diperbarui.'];
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Log mutasi aset berhasil diperbarui.'];
             } elseif ($postAction === 'complete_transfer') {
                 $this->completeTransfer($pdo, $_POST);
                 $_SESSION['flash'] = ['type' => 'success', 'message' => 'Barang berhasil diserahkan ke Divisi Peminta.'];
             } else {
                 $this->deleteLogBarang($pdo, (int) ($_POST['id'] ?? 0));
-                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Log barang berhasil dihapus.'];
+                $_SESSION['flash'] = ['type' => 'success', 'message' => 'Log mutasi aset berhasil dihapus.'];
             }
         } catch (Throwable $e) {
-            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Proses log barang gagal: ' . $e->getMessage()];
+            $_SESSION['flash'] = ['type' => 'error', 'message' => 'Proses log mutasi aset gagal: ' . $e->getMessage()];
         }
 
         header('Location: ' . $this->buildLogBarangUrl($filters));
@@ -4580,7 +4580,7 @@ SQL);
     {
         $id = (int) ($payload['id'] ?? 0);
         if ($id <= 0) {
-            throw new RuntimeException('ID log barang tidak valid.');
+            throw new RuntimeException('ID log mutasi aset tidak valid.');
         }
         $tanggalKeluar = $this->requiredDate((string) ($payload['tanggal_keluar'] ?? ''));
         
@@ -4599,13 +4599,13 @@ SQL);
     {
         $id = (int) ($payload['id'] ?? 0);
         if ($id <= 0) {
-            throw new RuntimeException('ID log barang tidak valid.');
+            throw new RuntimeException('ID log mutasi aset tidak valid.');
         }
         $stmt = $pdo->prepare('SELECT * FROM log_barang WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => $id]);
         $current = $stmt->fetch();
         if (!$current) {
-            throw new RuntimeException('Data log barang tidak ditemukan.');
+            throw new RuntimeException('Data log mutasi aset tidak ditemukan.');
         }
         $pdfPath = trim((string) ($current['dokumen_po'] ?? ''));
         if (!empty($payload['remove_pdf']) && $pdfPath !== '') {
@@ -4691,13 +4691,13 @@ SQL);
     private function deleteLogBarang(PDO $pdo, int $id): void
     {
         if ($id <= 0) {
-            throw new RuntimeException('ID log barang tidak valid.');
+            throw new RuntimeException('ID log mutasi aset tidak valid.');
         }
         $stmt = $pdo->prepare('SELECT dokumen_po FROM log_barang WHERE id = :id LIMIT 1');
         $stmt->execute(['id' => $id]);
         $row = $stmt->fetch();
         if (!$row) {
-            throw new RuntimeException('Data log barang tidak ditemukan.');
+            throw new RuntimeException('Data log mutasi aset tidak ditemukan.');
         }
         $delete = $pdo->prepare('DELETE FROM log_barang WHERE id = :id');
         $delete->execute(['id' => $id]);
@@ -4760,7 +4760,7 @@ SQL);
     {
         $status = strtoupper(trim($status));
         if (!in_array($status, ['MASUK', 'KELUAR'], true)) {
-            throw new RuntimeException('Status log barang tidak valid.');
+            throw new RuntimeException('Status log mutasi aset tidak valid.');
         }
         return $status;
     }
@@ -4779,7 +4779,7 @@ SQL);
         $value = trim($value);
         $dt = DateTimeImmutable::createFromFormat('Y-m-d', $value);
         if (!$dt || $dt->format('Y-m-d') !== $value) {
-            throw new RuntimeException('Tanggal log barang tidak valid.');
+            throw new RuntimeException('Tanggal log mutasi aset tidak valid.');
         }
         return $value;
     }
@@ -4859,7 +4859,7 @@ SQL);
         $status = strtoupper(trim((string) ($filters['log_status'] ?? '')));
         $search = trim((string) ($filters['log_search'] ?? ''));
 
-        $parts = ['Log Barang'];
+        $parts = ['Log Mutasi Aset'];
 
         if ($date !== '') {
             try {
@@ -5140,7 +5140,7 @@ SQL);
             'docProps/app.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Microsoft Excel</Application></Properties>',
             'xl/workbook.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Log Barang" sheetId="1" r:id="rId1"/></sheets></workbook>',
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Log Mutasi Aset" sheetId="1" r:id="rId1"/></sheets></workbook>',
             'xl/_rels/workbook.xml.rels' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
             'xl/styles.xml' => $stylesXml,
@@ -5559,7 +5559,7 @@ endstream";
             return 'Laporan Keluhan';
         }
         if ($normalized === 'log') {
-            return 'Laporan Log Barang';
+            return 'Laporan Log Mutasi Aset';
         }
         if ($normalized === 'routine') {
             return 'Laporan Routine Monitoring';
@@ -6625,7 +6625,7 @@ endstream";
         }
         $rows = $this->fetchAllLogReportRows($pdo, $filters);
         return ['type' => $type, 'title' => $this->laporanTitle($type) . $this->buildLaporanTitleSuffix($filters, $type), 'sections' => [[
-            'title' => 'Seluruh Data Log Barang', 'subtitle' => '',
+            'title' => 'Seluruh Data Log Mutasi Aset', 'subtitle' => '',
             'headers' => ['No', 'Tanggal', 'Nama Barang', 'Qty', 'No. PO', 'Status', 'Divisi', 'Log No', 'Keterangan'],
             'rows' => array_map(function (array $row) {
                 return [(string) ($row['no'] ?? ''), (string) ($row['date'] ?? '-'), (string) ($row['item'] ?? '-'), (string) ($row['qty'] ?? '1'), (string) ($row['no_po'] ?? '-'), (string) ($row['status'] ?? '-'), (string) ($row['division'] ?? '-'), (string) ($row['log_no'] ?? '-'), (string) (($row['keterangan'] ?? '') ?: '-')];
@@ -7881,7 +7881,7 @@ endstream";
             $division = (string) (($sheet['division'] ?? '') ?: ($sheet['name'] ?? 'Data Inventaris'));
             $rows = [
                 ['Laporan Data Inventaris - ' . $division],
-                ['Diexport', date('d-m-Y H:i:s')],
+                ['', 'Diexport:', date('d-m-Y H:i:s')],
                 [],
             ];
             $groups = $this->inventorySheetUserGroups((array) $sheet);
@@ -7893,11 +7893,26 @@ endstream";
                 if ($groupIndex > 0) {
                     $rows[] = [];
                 }
-                $rows[] = ['Computer Name:', (string) (($summary['computer_name'] ?? '') ?: '-'), 'User:', (string) (($summary['user'] ?? '') ?: '-')];
-                $rows[] = ['Processor:', (string) (($summary['processor'] ?? '') ?: '-'), 'RAM:', (string) (($summary['ram'] ?? '') ?: '-')];
-                $rows[] = ['Harddisk:', (string) (($summary['harddisk'] ?? '') ?: '-'), 'IP Address:', (string) (($summary['ip'] ?? '') ?: '-')];
-                $rows[] = ['Sistem Operasi:', (string) (($summary['os'] ?? '') ?: '-'), 'Licensed Windows:', (string) (($summary['license'] ?? '') ?: '-')];
-                $rows[] = ['MS Office:', (string) (($summary['office'] ?? '') ?: '-'), 'Licensed Office:', (string) (($summary['office_license'] ?? '') ?: '-')];
+                $rows[] = [' ', 'Computer Name', 'User', 'Processor', 'RAM', 'Harddisk', ' '];
+                $rows[] = [
+                    ' ',
+                    (string) (($summary['computer_name'] ?? '') ?: '-'),
+                    (string) (($summary['user'] ?? '') ?: '-'),
+                    (string) (($summary['processor'] ?? '') ?: '-'),
+                    (string) (($summary['ram'] ?? '') ?: '-'),
+                    (string) (($summary['harddisk'] ?? '') ?: '-'),
+                    ' ',
+                ];
+                $rows[] = [' ', 'IP Address', 'Sistem Operasi', 'Licensed Windows', 'MS Office', 'Licensed Office', ' '];
+                $rows[] = [
+                    ' ',
+                    (string) (($summary['ip'] ?? '') ?: '-'),
+                    (string) (($summary['os'] ?? '') ?: '-'),
+                    (string) (($summary['license'] ?? '') ?: '-'),
+                    (string) (($summary['office'] ?? '') ?: '-'),
+                    (string) (($summary['office_license'] ?? '') ?: '-'),
+                    ' ',
+                ];
                 $rows[] = [];
                 $rows[] = ['No', 'Gambar', 'ID Inventaris', 'Jenis Perangkat', 'Merk', 'Unit Kerja', 'Status'];
                 $detailRows = $this->mapInventoryRowsForDetailPdf((array) ($group['rows'] ?? []));
@@ -7958,17 +7973,21 @@ endstream";
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="4">
+  <fonts count="6">
     <font><sz val="11"/><name val="Calibri"/></font>
     <font><b/><sz val="11"/><name val="Calibri"/></font>
     <font><b/><sz val="14"/><name val="Calibri"/><color rgb="FF1B3E6F"/></font>
     <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FFFFFFFF"/></font>
+    <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FF006100"/></font>
+    <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FF9C0006"/></font>
   </fonts>
-  <fills count="4">
+  <fills count="6">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FF2A66A5"/><bgColor rgb="FF2A66A5"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FFEAF5FB"/><bgColor rgb="FFEAF5FB"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFC6EFCE"/><bgColor rgb="FFC6EFCE"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFC7CE"/><bgColor rgb="FFFFC7CE"/></patternFill></fill>
   </fills>
   <borders count="2">
     <border><left/><right/><top/><bottom/><diagonal/></border>
@@ -7982,7 +8001,7 @@ endstream";
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
-  <cellXfs count="7">
+  <cellXfs count="9">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>
     <xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
@@ -7990,6 +8009,8 @@ endstream";
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="5" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
   </cellXfs>
   <cellStyles count="1">
     <cellStyle name="Normal" xfId="0" builtinId="0"/>
@@ -8004,7 +8025,28 @@ endstream";
             $cells = [];
             $rowValues = array_values($row);
             $firstCell = (string) ($rowValues[0] ?? '');
-            
+
+            // Check if the current row is a Summary Header
+            $isSummaryHeader = false;
+            $cleanedRow = array_map('trim', array_filter($rowValues));
+            if (in_array('Computer Name', $cleanedRow, true) && in_array('Processor', $cleanedRow, true)) {
+                $isSummaryHeader = true;
+            } else if (in_array('IP Address', $cleanedRow, true) && in_array('Sistem Operasi', $cleanedRow, true)) {
+                $isSummaryHeader = true;
+            }
+
+            // Check if the current row is a Summary Value
+            $isSummaryValue = false;
+            if ($rIndex > 0) {
+                $prevRowValues = array_values($rows[$rIndex - 1]);
+                $prevCleaned = array_map('trim', array_filter($prevRowValues));
+                if (in_array('Computer Name', $prevCleaned, true) && in_array('Processor', $prevCleaned, true)) {
+                    $isSummaryValue = true;
+                } else if (in_array('IP Address', $prevCleaned, true) && in_array('Sistem Operasi', $prevCleaned, true)) {
+                    $isSummaryValue = true;
+                }
+            }
+
             foreach ($rowValues as $cIndex => $value) {
                 $maxCols = max($maxCols, $cIndex + 1);
                 if ($value === null || $value === '') {
@@ -8012,8 +8054,20 @@ endstream";
                 }
                 
                 $style = '';
+                $upperVal = strtoupper(trim((string)$value));
+
                 if ($rIndex === 0 || strpos((string)$value, 'Laporan Data Inventaris') === 0) {
                     $style = ' s="1"'; // Title
+                } else if ($isSummaryHeader) {
+                    $style = ' s="2"'; // Table Header (blue background, white bold text)
+                } else if ($isSummaryValue) {
+                    if ($upperVal === 'LICENSED' || $upperVal === 'AKTIF' || $upperVal === 'OK' || $upperVal === 'BAIK') {
+                        $style = ' s="7"'; // Green license cell
+                    } else if ($upperVal === 'UNLICENSED' || $upperVal === 'RUSAK' || $upperVal === 'TIDAK AKTIF' || $upperVal === 'BURUK') {
+                        $style = ' s="8"'; // Red license cell
+                    } else {
+                        $style = ' s="5"'; // Centered cell
+                    }
                 } else if ($firstCell === 'No' || $value === 'No') {
                     $style = ' s="2"'; // Table Header (blue background, white bold text)
                 } else if ($value !== null && substr(trim((string)$value), -1) === ':') {
@@ -8023,8 +8077,12 @@ endstream";
                 } else if ($rIndex === 1 && $cIndex === 0) {
                     $style = ' s="6"'; // Normal bold (Diexport label)
                 } else {
-                    // Regular data row
-                    if ($cIndex === 0 || in_array($cIndex, $centerCols, true)) {
+                    // Regular data row (highlight status values if they match)
+                    if ($upperVal === 'LICENSED' || $upperVal === 'AKTIF' || $upperVal === 'OK' || $upperVal === 'BAIK') {
+                        $style = ' s="7"';
+                    } else if ($upperVal === 'UNLICENSED' || $upperVal === 'RUSAK' || $upperVal === 'TIDAK AKTIF' || $upperVal === 'BURUK') {
+                        $style = ' s="8"';
+                    } else if ($cIndex === 0 || $cIndex === 1 || $cIndex === 6 || in_array($cIndex, $centerCols, true)) {
                         $style = ' s="5"'; // Centered cell
                     } else {
                         $style = ' s="0"'; // Normal cell
@@ -9073,13 +9131,28 @@ endstream";
     {
         $sheetRows = [
             [$division],
-            ['Last Updated', $updated],
+            ['', 'Last Updated:', $updated],
             [],
-            ['Computer Name', (string) ($summary['computer_name'] ?? '-'), 'User', (string) (($summary['user'] ?? '') !== '' ? $summary['user'] : $userName)],
-            ['Processor', (string) ($summary['processor'] ?? '-'), 'RAM', (string) ($summary['ram'] ?? '-')],
-            ['Harddisk', (string) ($summary['harddisk'] ?? '-'), 'IP Address', (string) ($summary['ip'] ?? '-')],
-            ['Sistem Operasi', (string) ($summary['os'] ?? '-'), 'Licensed Windows', (string) ($summary['license'] ?? '-')],
-            ['MS Office', (string) ($summary['office'] ?? '-'), 'Licensed Office', (string) ($summary['office_license'] ?? '-')],
+            [' ', 'Computer Name', 'User', 'Processor', 'RAM', 'Harddisk', ' '],
+            [
+                ' ',
+                (string) ($summary['computer_name'] ?? '-'),
+                (string) (($summary['user'] ?? '') !== '' ? $summary['user'] : $userName),
+                (string) ($summary['processor'] ?? '-'),
+                (string) ($summary['ram'] ?? '-'),
+                (string) ($summary['harddisk'] ?? '-'),
+                ' ',
+            ],
+            [' ', 'IP Address', 'Sistem Operasi', 'Licensed Windows', 'MS Office', 'Licensed Office', ' '],
+            [
+                ' ',
+                (string) ($summary['ip'] ?? '-'),
+                (string) ($summary['os'] ?? '-'),
+                (string) ($summary['license'] ?? '-'),
+                (string) ($summary['office'] ?? '-'),
+                (string) ($summary['office_license'] ?? '-'),
+                ' ',
+            ],
             [],
             ['No', 'Gambar', 'ID Inventaris', 'Jenis Perangkat', 'Merk Perangkat', 'Unit Kerja', 'Status'],
         ];
@@ -9167,14 +9240,47 @@ endstream";
             $rowValues = array_values($row);
             $firstCell = (string) ($rowValues[0] ?? '');
             
+            // Check if the current row is a Summary Header
+            $isSummaryHeader = false;
+            $cleanedRow = array_map('trim', array_filter($rowValues));
+            if (in_array('Computer Name', $cleanedRow, true) && in_array('Processor', $cleanedRow, true)) {
+                $isSummaryHeader = true;
+            } else if (in_array('IP Address', $cleanedRow, true) && in_array('Sistem Operasi', $cleanedRow, true)) {
+                $isSummaryHeader = true;
+            }
+
+            // Check if the current row is a Summary Value
+            $isSummaryValue = false;
+            if ($rowIndex > 0) {
+                $prevRowValues = array_values($rows[$rowIndex - 1]);
+                $prevCleaned = array_map('trim', array_filter($prevRowValues));
+                if (in_array('Computer Name', $prevCleaned, true) && in_array('Processor', $prevCleaned, true)) {
+                    $isSummaryValue = true;
+                } else if (in_array('IP Address', $prevCleaned, true) && in_array('Sistem Operasi', $prevCleaned, true)) {
+                    $isSummaryValue = true;
+                }
+            }
+
             foreach ($rowValues as $columnIndex => $value) {
                 if ($value === null || $value === '') {
                     continue;
                 }
                 
                 $style = '';
+                $upperVal = strtoupper(trim((string)$value));
+
                 if ($rowIndex === 0 || strpos((string)$value, 'Laporan Data Inventaris') === 0) {
                     $style = ' s="1"'; // Title
+                } else if ($isSummaryHeader) {
+                    $style = ' s="2"'; // Table Header (blue background, white bold text)
+                } else if ($isSummaryValue) {
+                    if ($upperVal === 'LICENSED' || $upperVal === 'AKTIF' || $upperVal === 'OK' || $upperVal === 'BAIK') {
+                        $style = ' s="7"'; // Green license cell
+                    } else if ($upperVal === 'UNLICENSED' || $upperVal === 'RUSAK' || $upperVal === 'TIDAK AKTIF' || $upperVal === 'BURUK') {
+                        $style = ' s="8"'; // Red license cell
+                    } else {
+                        $style = ' s="5"'; // Centered cell
+                    }
                 } else if ($firstCell === 'No' || $value === 'No') {
                     $style = ' s="2"'; // Table Header (blue background, white bold text)
                 } else if ($value !== null && substr(trim((string)$value), -1) === ':') {
@@ -9184,8 +9290,12 @@ endstream";
                 } else if ($rowIndex === 1 && $columnIndex === 0) {
                     $style = ' s="6"'; // Normal bold (Diexport label)
                 } else {
-                    // Regular data row
-                    if ($columnIndex === 0 || $columnIndex === 1 || $columnIndex === 6) {
+                    // Regular data row (highlight status values if they match)
+                    if ($upperVal === 'LICENSED' || $upperVal === 'AKTIF' || $upperVal === 'OK' || $upperVal === 'BAIK') {
+                        $style = ' s="7"';
+                    } else if ($upperVal === 'UNLICENSED' || $upperVal === 'RUSAK' || $upperVal === 'TIDAK AKTIF' || $upperVal === 'BURUK') {
+                        $style = ' s="8"';
+                    } else if ($columnIndex === 0 || $columnIndex === 1 || $columnIndex === 6) {
                         $style = ' s="5"'; // Centered cell
                     } else {
                         $style = ' s="0"'; // Normal cell
@@ -9208,7 +9318,7 @@ endstream";
             . '<dimension ref="A1:G' . max(1, count($rows)) . '"/>'
             . '<sheetViews><sheetView workbookViewId="0"/></sheetViews>'
             . '<sheetFormatPr defaultRowHeight="18"/>'
-            . '<cols><col min="1" max="1" width="8" customWidth="1"/><col min="2" max="2" width="18" customWidth="1"/><col min="3" max="3" width="18" customWidth="1"/><col min="4" max="4" width="22" customWidth="1"/><col min="5" max="5" width="22" customWidth="1"/><col min="6" max="6" width="24" customWidth="1"/><col min="7" max="7" width="14" customWidth="1"/></cols>'
+            . '<cols><col min="1" max="1" width="8" customWidth="1"/><col min="2" max="2" width="22" customWidth="1"/><col min="3" max="3" width="24" customWidth="1"/><col min="4" max="4" width="26" customWidth="1"/><col min="5" max="5" width="22" customWidth="1"/><col min="6" max="6" width="32" customWidth="1"/><col min="7" max="7" width="16" customWidth="1"/></cols>'
             . '<sheetData>' . implode('', $xmlRows) . '</sheetData>';
         if ($hasDrawing) {
             $xml .= '<drawing r:id="rId1"/>';

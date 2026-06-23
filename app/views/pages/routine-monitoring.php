@@ -72,8 +72,8 @@ $monthExcelUrl = 'index.php?' . http_build_query([
 // Build week options for dropdown (only pivot PDF per minggu)
 $weekDropdownOptions = [];
 if (!empty($days)) {
-    $firstDate = new DateTimeImmutable((string) ($days[0]['date'] ?? date('Y-m-01')));
-    $lastDate = new DateTimeImmutable((string) ($days[count($days) - 1]['date'] ?? date('Y-m-t')));
+    $firstDate = new DateTimeImmutable((string) ($days[0]['date'] ?? sprintf('%04d-%02d-01', $yearValue, $monthValue)));
+    $lastDate = new DateTimeImmutable((string) ($days[count($days) - 1]['date'] ?? date('Y-m-t', strtotime(sprintf('%04d-%02d-01', $yearValue, $monthValue)))));
     $weekStart = $firstDate;
     $weekNo = 1;
     while ($weekStart <= $lastDate) {

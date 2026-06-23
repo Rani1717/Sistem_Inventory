@@ -401,7 +401,7 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
 <?php endif; ?>
 
 <div class="detail-header detail-header--single-title">
-    <h1>LOG BARANG</h1>
+    <h1>LOG MUTASI ASET</h1>
 </div>
 
 <div class="log-layout" style="display: block;">
@@ -509,7 +509,7 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
 
         <label class="routine-filter-search">
             <span>SEARCH</span>
-            <input type="text" id="logLocalSearch" name="log_search" placeholder="Cari data log barang..." value="<?= e((string) ($selected['search'] ?? '')); ?>">
+            <input type="text" id="logLocalSearch" name="log_search" placeholder="Cari data log mutasi aset..." value="<?= e((string) ($selected['search'] ?? '')); ?>">
         </label>
     </form>
 
@@ -657,7 +657,7 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
                                             title="Edit Log">
                                         <i class="fa-solid fa-pencil" style="font-size: 12px;"></i>
                                     </button>
-                                    <form method="post" action="index.php?page=log-barang" class="js-confirm-delete" data-confirm-message="Hapus log barang ini?" style="margin: 0;">
+                                    <form method="post" action="index.php?page=log-barang" class="js-confirm-delete" data-confirm-message="Hapus log mutasi aset ini?" style="margin: 0;">
                                         <input type="hidden" name="action" value="delete_log_barang">
                                         <input type="hidden" name="id" value="<?= e((string) $row['id']); ?>">
                                         <button type="submit" class="btn-action btn-action--delete"
@@ -678,7 +678,7 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
                     </tr>
                 <?php else: ?>
                     <tr>
-                        <td colspan="13" class="empty-state">Data log barang tidak ditemukan.</td>
+                        <td colspan="13" class="empty-state">Data log mutasi aset tidak ditemukan.</td>
                     </tr>
                 <?php endif; ?>
                 </tbody>
@@ -701,7 +701,7 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
 <div class="log-modal" id="logBarangModal" <?= $shouldOpenModal ? "" : "hidden"; ?> data-auto-open="<?= $shouldOpenModal ? "1" : "0"; ?>" aria-hidden="<?= $shouldOpenModal ? "false" : "true"; ?>">
     <div class="log-modal__dialog">
         <div class="log-modal__header">
-            <h3 id="logModalTitle">Tambah Log Barang</h3>
+            <h3 id="logModalTitle">Tambah Log Mutasi Aset</h3>
             <button type="button" class="icon-round js-close-log-modal"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <form method="post" action="index.php?page=log-barang" enctype="multipart/form-data" class="log-modal__form">

@@ -1548,7 +1548,7 @@
     function resetForm() {
         if (!formAction) return;
         formAction.value = 'save_log_barang';
-        if (modalTitle) modalTitle.textContent = 'Tambah Log Barang';
+        if (modalTitle) modalTitle.textContent = 'Tambah Log Mutasi Aset';
         if (idInput) idInput.value = '';
         if (tanggalMasukInput) tanggalMasukInput.value = new Date().toISOString().slice(0, 10);
         if (tanggalKeluarField) tanggalKeluarField.hidden = true;
@@ -1600,7 +1600,7 @@
         btn.addEventListener('click', function () {
             if (!formAction) return;
             formAction.value = 'edit_log_barang';
-            if (modalTitle) modalTitle.textContent = 'Edit Log Barang';
+            if (modalTitle) modalTitle.textContent = 'Edit Log Mutasi Aset';
             if (idInput) idInput.value = btn.getAttribute('data-id') || '';
             if (tanggalMasukInput) tanggalMasukInput.value = btn.getAttribute('data-tanggal-masuk') || '';
             if (tanggalKeluarField) tanggalKeluarField.hidden = false;

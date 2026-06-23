@@ -170,7 +170,7 @@ class UiModel
             'report_cards' => [
                 ['title' => "LAPORAN DATA\nINVENTARIS", 'pdf' => 'EXPORT PDF', 'excel' => 'EXPORT EXCEL'],
                 ['title' => "LAPORAN\nKELUHAN", 'pdf' => 'EXPORT PDF', 'excel' => 'EXPORT EXCEL'],
-                ['title' => "LAPORAN LOG\nBARANG", 'pdf' => 'EXPORT PDF', 'excel' => 'EXPORT EXCEL'],
+                ['title' => "LAPORAN LOG\nMUTASI ASET", 'pdf' => 'EXPORT PDF', 'excel' => 'EXPORT EXCEL'],
             ],
             'page_titles' => [
                 'splash' => 'Splash Screen',
@@ -184,7 +184,7 @@ class UiModel
                 'data-inventaris-subreg' => 'Data Inventaris Subreg',
                 'inventaris-detail' => 'Detail Inventaris',
                 'data-keluhan' => 'Data Keluhan',
-                'log-barang' => 'Log Barang',
+                'log-barang' => 'Log Mutasi Aset',
                 'peminjaman-laptop' => 'Peminjaman Inventaris IT',
                 'notifikasi-alert' => 'Riwayat Notifikasi & Alert',
                 'routine-monitoring' => 'Routine Monitoring',
