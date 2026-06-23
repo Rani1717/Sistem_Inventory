@@ -2359,7 +2359,7 @@ SQL);
                 $params['year'] = $state['year'];
             }
 
-            if ($state['month'] > 0 && $state['year'] > 0) {
+            if ($state['month'] > 0) {
                 $where[] = 'MONTH(l.tanggal_masuk) = :month';
                 $params['month'] = $state['month'];
             }
@@ -2375,7 +2375,7 @@ SQL);
                 }
             }
             if ($state['division'] !== '') {
-                $where[] = 'l.divisi_pengelola = :division';
+                $where[] = 'l.divisi_peminta = :division';
                 $params['division'] = $state['division'];
             }
             if ($state['search'] !== '') {
@@ -2608,7 +2608,7 @@ SQL);
     public function fetchDistinctLogDivisions(PDO $pdo): array
     {
         try {
-            $stmt = $pdo->query('SELECT DISTINCT divisi_pengelola FROM log_barang WHERE divisi_pengelola IS NOT NULL AND TRIM(divisi_pengelola) <> "" ORDER BY divisi_pengelola ASC');
+            $stmt = $pdo->query('SELECT DISTINCT divisi_peminta FROM log_barang WHERE divisi_peminta IS NOT NULL AND TRIM(divisi_peminta) <> "" ORDER BY divisi_peminta ASC');
             return $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
         } catch (Throwable $e) {
             return [];

@@ -34,13 +34,22 @@ class PeminjamanModel
         $params = [];
 
         if ($filter === 'dipinjam') {
-            $where[] = '(tanggal_pengembalian IS NULL OR tanggal_pengembalian = "0000-00-00")';
+            $where[] = '(tanggal_pengembalian IS NULL OR tanggal_pengembalian = "0000-00-00" OR TRIM(tanggal_pengembalian) = "")';
         } elseif ($filter === 'dikembalikan') {
-            $where[] = 'tanggal_pengembalian IS NOT NULL AND tanggal_pengembalian <> "0000-00-00"';
+            $where[] = '(tanggal_pengembalian IS NOT NULL AND tanggal_pengembalian <> "0000-00-00" AND TRIM(tanggal_pengembalian) <> "")';
         }
 
         if ($search !== '') {
-            $where[] = '(nama_barang LIKE :search OR merk_barang LIKE :search OR nama_peminjam LIKE :search)';
+            $searchLower = strtolower($search);
+            $statusCond = '';
+            if (str_contains('dipinjam', $searchLower)) {
+                $statusCond = ' OR (tanggal_pengembalian IS NULL OR tanggal_pengembalian = "0000-00-00" OR TRIM(tanggal_pengembalian) = "")';
+            }
+            if (str_contains('dikembalikan', $searchLower)) {
+                $statusCond .= ' OR (tanggal_pengembalian IS NOT NULL AND tanggal_pengembalian <> "0000-00-00" AND TRIM(tanggal_pengembalian) <> "")';
+            }
+
+            $where[] = '(nama_barang LIKE :search OR merk_barang LIKE :search OR nama_peminjam LIKE :search OR tanggal_peminjaman LIKE :search OR COALESCE(tanggal_pengembalian, "") LIKE :search' . $statusCond . ')';
             $params['search'] = '%' . $search . '%';
         }
 
@@ -60,7 +69,7 @@ class PeminjamanModel
     {
         $stmt = $pdo->query(
             'SELECT id, nama_barang, merk_barang, nama_peminjam FROM `' . self::TABLE . '`
-             WHERE tanggal_pengembalian IS NULL OR tanggal_pengembalian = "0000-00-00"
+             WHERE tanggal_pengembalian IS NULL OR tanggal_pengembalian = "0000-00-00" OR TRIM(tanggal_pengembalian) = ""
              ORDER BY tanggal_peminjaman DESC'
         );
         return $stmt ? $stmt->fetchAll() : [];
@@ -71,7 +80,7 @@ class PeminjamanModel
     {
         try {
             $total     = (int) $pdo->query('SELECT COUNT(*) FROM `' . self::TABLE . '`')->fetchColumn();
-            $dipinjam  = (int) $pdo->query('SELECT COUNT(*) FROM `' . self::TABLE . '` WHERE tanggal_pengembalian IS NULL OR tanggal_pengembalian = "0000-00-00"')->fetchColumn();
+            $dipinjam  = (int) $pdo->query('SELECT COUNT(*) FROM `' . self::TABLE . '` WHERE tanggal_pengembalian IS NULL OR tanggal_pengembalian = "0000-00-00" OR TRIM(tanggal_pengembalian) = ""')->fetchColumn();
             $kembali   = $total - $dipinjam;
             return ['total' => $total, 'dipinjam' => $dipinjam, 'kembali' => $kembali];
         } catch (Throwable $e) {

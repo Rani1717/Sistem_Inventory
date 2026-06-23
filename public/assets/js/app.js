@@ -1860,18 +1860,6 @@
         });
     }
 
-    if (filterInputs.length) {
-        Array.prototype.forEach.call(filterInputs, function (input) {
-            input.addEventListener('input', function () {
-                syncHiddenFilters();
-                applyLiveFilter();
-            });
-            input.addEventListener('change', function () {
-                syncHiddenFilters();
-                applyLiveFilter();
-            });
-        });
-    }
 
     if (filterForm) {
         filterForm.addEventListener('submit', function () {

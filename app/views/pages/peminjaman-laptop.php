@@ -9,6 +9,7 @@ $filterSearch   = $data['peminjaman_search'] ?? '';
 $uploadBase     = 'peminjaman_laptop/uploads/';
 ?>
 
+
 <?php if (!empty($flash['message'])): ?>
 <div class="log-toast log-toast--<?= e($flash['type'] ?? 'success'); ?> js-log-toast" role="status" aria-live="polite">
     <div class="log-toast__content">
@@ -202,7 +203,6 @@ $uploadBase     = 'peminjaman_laptop/uploads/';
                     <option value="dipinjam"    <?= $filterStatus === 'dipinjam' ? 'selected' : ''; ?>>Sedang Dipinjam</option>
                     <option value="dikembalikan" <?= $filterStatus === 'dikembalikan' ? 'selected' : ''; ?>>Sudah Dikembalikan</option>
                 </select>
-                <button type="submit" class="pinjam-btn pinjam-btn--ghost">Terapkan</button>
             </form>
             <a href="index.php?page=peminjaman-laptop&action=export_peminjaman"
                class="pinjam-btn pinjam-btn--export"
@@ -450,12 +450,18 @@ function validateFormKembali() {
 }
 
 /* ─── SEARCH LIVE ─── */
-document.getElementById('pinjamSearch')?.addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('.pinjam-table tbody tr').forEach(tr => {
-        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
-    });
-});
+const searchInput = document.getElementById('pinjamSearch');
+if (searchInput) {
+    const filterSearch = () => {
+        const q = searchInput.value.toLowerCase();
+        document.querySelectorAll('.pinjam-table tbody tr').forEach(tr => {
+            if (tr.querySelector('.empty-state')) return;
+            tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+    };
+    searchInput.addEventListener('input', filterSearch);
+    filterSearch();
+}
 
 /* ─── MODAL EDIT ─── */
 document.querySelectorAll('.js-pinjam-edit-btn').forEach(btn => {

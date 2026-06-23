@@ -31,16 +31,23 @@ $complaintEmailColumnWidth = max(160, min(260, ($complaintEmailMaxLength * 7) + 
 }
 
 /* Custom layout fixes for alignment consistency */
-@media (min-width: 769px) {
-    .complaint-toolbar__actions {
-        flex-wrap: nowrap !important;
-    }
-    .mini-search--complaint {
-        flex: 1 1 200px !important;
-        width: auto !important;
-        max-width: 360px !important;
-        min-width: 180px !important;
-    }
+.complaint-toolbar__actions {
+    flex-wrap: wrap !important;
+    max-width: 100% !important;
+}
+.mini-search--complaint {
+    flex: 1 1 280px !important;
+    width: 100% !important;
+    max-width: 360px !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+.mini-search--complaint input {
+    min-width: 0 !important;
+    width: 100% !important;
+}
+.complaint-filter-bar__actions {
+    justify-content: flex-start !important;
 }
 
 /* Ensure the status column width fits the content without squishing */
