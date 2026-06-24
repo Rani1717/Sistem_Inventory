@@ -10568,16 +10568,18 @@ SQL);
                     $stmt = $pdo->prepare(
                         "UPDATE alert_notifications
                          SET status_tindak_lanjut = :status,
-                             ditangani_oleh = :user,
+                             ditangani_oleh = :user_tindak,
                              ditangani_at = NOW(),
                              is_read = 1,
-                             dibaca_oleh = COALESCE(dibaca_oleh, :user),
+                             dibaca_oleh = COALESCE(dibaca_oleh, :user_baca),
                              dibaca_at = COALESCE(dibaca_at, NOW())
                          WHERE id = :id"
                     );
+                    $currentUser = $_SESSION['auth']['username'] ?? 'system';
                     $stmt->execute([
                         'status' => $statusBaru,
-                        'user' => $_SESSION['auth']['username'] ?? 'system',
+                        'user_tindak' => $currentUser,
+                        'user_baca' => $currentUser,
                         'id' => $id,
                     ]);
                     $_SESSION['flash'] = ['type' => 'success', 'message' => 'Status tindak lanjut berhasil diperbarui.'];

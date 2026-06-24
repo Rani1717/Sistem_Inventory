@@ -29,12 +29,112 @@ renderMainHeader($data, 'RIWAYAT NOTIFIKASI & ALERT');
 /* Custom filter bar override for Notifikasi & Alert */
 .alert-filter-bar {
     grid-template-columns: repeat(4, 1fr) auto !important;
-    margin-bottom: 24px !important;
+    margin-bottom: 1.5rem !important;
 }
 
 /* Custom dashboard summary grid for 5 cards in one row on desktop */
 .alert-dashboard-summary {
     grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+}
+
+/* ===== ZOOM-SAFE RESPONSIVE TABLE ===== */
+.alert-table-outer {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-xl, 16px);
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: var(--shadow-soft, 0 2px 12px rgba(0,0,0,0.06));
+    border: 1px solid rgba(42, 102, 165, 0.12);
+    margin-bottom: 1.5rem;
+}
+.alert-table-outer table.data-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    min-width: 900px;
+    border: none;
+    table-layout: auto;
+}
+.alert-table-outer th,
+.alert-table-outer td {
+    white-space: nowrap;
+}
+.alert-table-outer td.alert-td-judul {
+    white-space: normal;
+    min-width: 200px;
+    max-width: 320px;
+    word-break: break-word;
+}
+
+/* ===== ACTION CELL: compact layout ===== */
+.alert-aksi-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    justify-content: center;
+    align-items: center;
+}
+.alert-aksi-row {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: nowrap;
+}
+.alert-aksi-wrap select {
+    height: 24px !important;
+    max-height: 24px !important;
+    min-height: 0 !important;
+    border-radius: 5px !important;
+    font-size: 9.5px !important;
+    font-family: var(--font-head), sans-serif !important;
+    font-weight: 600 !important;
+    padding: 0 14px 0 6px !important;
+    margin: 0 !important;
+    border: 1px solid rgba(42, 102, 165, 0.25) !important;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23666'/%3E%3C/svg%3E") no-repeat right 4px center !important;
+    cursor: pointer;
+    outline: none;
+    min-width: 0;
+    max-width: 130px;
+    width: 12.5em !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important;
+    line-height: 22px !important;
+    box-sizing: border-box !important;
+}
+.alert-aksi-wrap .btn--sm,
+.alert-aksi-wrap .btn-action {
+    height: 24px !important;
+    min-height: 0 !important;
+    font-size: 10px !important;
+    padding: 0 6px !important;
+    border-radius: 5px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+    box-sizing: border-box !important;
+}
+.alert-aksi-wrap .btn-action--delete {
+    width: 24px !important;
+    height: 24px !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    justify-content: center !important;
+}
+
+/* ===== MARK ALL READ BUTTON: sized to match filter bar ===== */
+.alert-mark-all-btn {
+    height: 34px;
+    border-radius: 8px;
+    font-weight: 600;
+    padding: 0 14px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 @media (max-width: 1200px) {
@@ -189,7 +289,7 @@ foreach ($rows as $r) {
     <div style="margin-bottom: 16px; display: flex; justify-content: flex-end;">
         <form method="post" action="index.php?page=notifikasi-alert" style="margin: 0;">
             <input type="hidden" name="action" value="mark_all_read">
-            <button type="submit" class="btn btn--primary" style="height: 38px; border-radius: 8px; font-weight: 600; padding: 0 16px; font-size: 14px; display: inline-flex; align-items: center; gap: 6px;">
+            <button type="submit" class="btn btn--primary alert-mark-all-btn">
                 <i class="fa-solid fa-check-double"></i> Tandai Semua Sudah Dibaca
             </button>
         </form>
@@ -203,19 +303,18 @@ foreach ($rows as $r) {
         <p style="font-size: 16px; color: var(--c-primary); font-weight: 600; margin: 0;">Tidak ada notifikasi saat ini. Sistem berjalan normal.</p>
     </div>
 <?php else: ?>
-    <div class="table-wrap" style="background: rgba(255, 255, 255, 0.95); border-radius: var(--radius-xl); box-shadow: var(--shadow-soft); border: 1px solid rgba(42, 102, 165, 0.12); margin-bottom: 24px;">
-        <div style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
-            <table class="data-table" style="border-collapse: separate; border-spacing: 0; width: 100%; border: none;">
+    <div class="alert-table-outer">
+            <table class="data-table">
                 <thead>
                     <tr>
-                        <th style="padding: 14px 16px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 60px;">No</th>
-                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 140px;">Waktu</th>
-                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 120px;">Kategori</th>
-                        <th style="padding: 14px 16px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 120px;">Level</th>
-                        <th style="padding: 14px 16px; text-align: left; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15);">Judul &amp; Keterangan</th>
-                        <th style="padding: 14px 16px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 130px;">Status</th>
-                        <th style="padding: 14px 16px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 150px;">Tindak Lanjut</th>
-                        <th style="padding: 14px 16px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15); width: 250px;">Aksi</th>
+                        <th style="padding: 12px 10px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15);">No</th>
+                        <th style="padding: 12px 10px; text-align: left; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15);">Waktu</th>
+                        <th style="padding: 12px 10px; text-align: left; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15);">Kategori</th>
+                        <th style="padding: 12px 10px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15);">Level</th>
+                        <th style="padding: 12px 10px; text-align: left; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15);">Judul &amp; Keterangan</th>
+                        <th style="padding: 12px 10px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15);">Status</th>
+                        <th style="padding: 12px 10px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15);">Tindak Lanjut</th>
+                        <th style="padding: 12px 10px; text-align: center; font-weight: 600; border-bottom: 1.5px solid rgba(42, 102, 165, 0.15);">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -245,80 +344,88 @@ foreach ($rows as $r) {
                         }
                     ?>
                         <tr class="alert-row" data-alert-id="<?= (int) $row['id']; ?>" style="transition: background 0.5s; <?= $isRead === 0 ? 'background: rgba(27, 62, 111, 0.03);' : ''; ?>">
-                            <td style="padding: 16px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1); font-weight: 600;"><?= $no++; ?></td>
-                            <td style="padding: 16px; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1); white-space: nowrap; font-size: 13.5px; font-weight: 500;">
+                            <td style="padding: 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1); font-weight: 600;"><?= $no++; ?></td>
+                            <td style="padding: 10px; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1); font-size: 13px; font-weight: 500;">
                                 <?= e(date('d/m/Y H:i', strtotime($row['created_at']))); ?>
                             </td>
-                            <td style="padding: 16px; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1); font-weight: 600; font-size: 13.5px;">
+                            <td style="padding: 10px; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1); font-weight: 600; font-size: 13px;">
                                 <?= e($row['kategori']); ?>
                             </td>
-                            <td style="padding: 16px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
-                                <span class="badge <?= $levelClass; ?>" style="font-weight: 700; padding: 4px 10px; border-radius: 6px; font-size: 11.5px; display: inline-block;">
+                            <td style="padding: 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
+                                <span class="badge <?= $levelClass; ?>" style="font-weight: 700; padding: 4px 8px; border-radius: 6px; font-size: 11px; display: inline-block;">
                                     <?= e($level); ?>
                                 </span>
                             </td>
-                            <td style="padding: 16px; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
-                                <strong style="display: block; font-size: 14.5px; color: var(--c-primary); margin-bottom: 4px;"><?= e($row['judul']); ?></strong>
-                                <span style="font-size: 13px; color: var(--c-primary); display: block; opacity: 0.85; line-height: 1.4;"><?= e($row['keterangan']); ?></span>
+                            <td class="alert-td-judul" style="padding: 10px; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
+                                <strong style="display: block; font-size: 13.5px; color: var(--c-primary); margin-bottom: 3px;"><?= e($row['judul']); ?></strong>
+                                <span style="font-size: 12.5px; color: var(--c-primary); display: block; opacity: 0.85; line-height: 1.4;"><?= e($row['keterangan']); ?></span>
                                 <?php if ($isRead === 1 && !empty($row['dibaca_oleh'])): ?>
-                                    <small style="display: block; margin-top: 6px; font-size: 11px; color: var(--c-muted-text); font-style: italic;">
+                                    <small style="display: block; margin-top: 4px; font-size: 10.5px; color: var(--c-muted-text); font-style: italic;">
                                         Dibaca oleh: <?= e($row['dibaca_oleh']); ?> pada <?= e(date('d/m/Y H:i', strtotime($row['dibaca_at']))); ?>
                                     </small>
                                 <?php endif; ?>
                             </td>
-                            <td style="padding: 16px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
+                            <td style="padding: 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
                                 <?php if ($isRead === 0): ?>
-                                    <span class="badge badge--bad" style="font-weight: 700; padding: 4px 10px; border-radius: 6px; font-size: 11.5px; display: inline-block;">Belum Dibaca</span>
+                                    <span class="badge badge--bad" style="font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block;">Belum Dibaca</span>
                                 <?php else: ?>
-                                    <span class="badge badge--good" style="font-weight: 700; padding: 4px 10px; border-radius: 6px; font-size: 11.5px; display: inline-block;">Sudah Dibaca</span>
+                                    <span class="badge badge--good" style="font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block;">Sudah Dibaca</span>
                                 <?php endif; ?>
                             </td>
-                            <td style="padding: 16px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
-                                <span class="badge" style="font-weight: 700; padding: 4px 10px; border-radius: 6px; font-size: 11.5px; display: inline-block; <?= $tlStyle; ?>">
+                            <td style="padding: 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
+                                <span class="badge" style="font-weight: 700; padding: 3px 8px; border-radius: 6px; font-size: 11px; display: inline-block; <?= $tlStyle; ?>">
                                     <?= e($tlText); ?>
                                 </span>
                                 <?php if ($tindakLanjut !== 'BELUM_DITANGANI' && !empty($row['ditangani_oleh'])): ?>
-                                    <small style="display: block; margin-top: 6px; font-size: 11px; color: var(--c-muted-text); font-style: italic; text-align: center;">
+                                    <small style="display: block; margin-top: 4px; font-size: 10.5px; color: var(--c-muted-text); font-style: italic; text-align: center;">
                                         Oleh: <?= e($row['ditangani_oleh']); ?><br>pada <?= e(date('d/m/Y H:i', strtotime($row['ditangani_at']))); ?>
                                     </small>
                                 <?php endif; ?>
                             </td>
-                            <td style="padding: 16px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
-                                <div style="display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;">
-                                    <form method="post" action="index.php?page=notifikasi-alert" style="margin: 0;">
-                                        <input type="hidden" name="action" value="update_status_tindak_lanjut">
-                                        <input type="hidden" name="id" value="<?= (int) $row['id']; ?>">
-                                        <select name="status_tindak_lanjut" onchange="this.form.submit()" style="height: 32px; border-radius: 6px; font-size: 12px; padding: 0 8px; border: 1px solid rgba(42, 102, 165, 0.25); background: #fff; cursor: pointer; outline: none;" title="Ubah Status Tindak Lanjut">
-                                            <option value="BELUM_DITANGANI" <?= $tindakLanjut === 'BELUM_DITANGANI' ? 'selected' : ''; ?>>Belum Ditangani</option>
-                                            <option value="SEDANG_DITANGANI" <?= $tindakLanjut === 'SEDANG_DITANGANI' ? 'selected' : ''; ?>>Sedang Ditangani</option>
-                                            <option value="SELESAI" <?= $tindakLanjut === 'SELESAI' ? 'selected' : ''; ?>>Selesai</option>
-                                        </select>
-                                    </form>
-
-                                    <?php if ($isRead === 0): ?>
+                            <td style="padding: 10px; text-align: center; vertical-align: middle; border-bottom: 1px solid rgba(42, 102, 165, 0.1);">
+                                <div class="alert-aksi-wrap">
+                                    <!-- Top Row: Select Dropdown & Dibaca Button -->
+                                    <div class="alert-aksi-row alert-aksi-row--top">
                                         <form method="post" action="index.php?page=notifikasi-alert" style="margin: 0;">
-                                            <input type="hidden" name="action" value="mark_read">
+                                            <input type="hidden" name="action" value="update_status_tindak_lanjut">
                                             <input type="hidden" name="id" value="<?= (int) $row['id']; ?>">
-                                            <button type="submit" class="btn btn--primary btn--sm" style="height: 32px; border-radius: 6px; font-size: 12px; padding: 0 12px; display: inline-flex; align-items: center; gap: 4px;" title="Tandai Dibaca">
-                                                <i class="fa-solid fa-check"></i> Dibaca
-                                            </button>
+                                            <select name="status_tindak_lanjut" onchange="this.form.submit()" title="Ubah Status Tindak Lanjut">
+                                                <option value="BELUM_DITANGANI" <?= $tindakLanjut === 'BELUM_DITANGANI' ? 'selected' : ''; ?>>Belum Ditangani</option>
+                                                <option value="SEDANG_DITANGANI" <?= $tindakLanjut === 'SEDANG_DITANGANI' ? 'selected' : ''; ?>>Sedang Ditangani</option>
+                                                <option value="SELESAI" <?= $tindakLanjut === 'SELESAI' ? 'selected' : ''; ?>>Selesai</option>
+                                            </select>
                                         </form>
-                                    <?php endif; ?>
+
+                                        <?php if ($isRead === 0): ?>
+                                            <form method="post" action="index.php?page=notifikasi-alert" style="margin: 0;">
+                                                <input type="hidden" name="action" value="mark_read">
+                                                <input type="hidden" name="id" value="<?= (int) $row['id']; ?>">
+                                                <button type="submit" class="btn btn--primary btn--sm" title="Tandai Dibaca">
+                                                    <i class="fa-solid fa-check"></i> Dibaca
+                                                </button>
+                                            </form>
+                                        <?php endif; ?>
+                                    </div>
                                     
-                                    <?php if (!empty($row['link_url'])): ?>
-                                        <a href="<?= e($row['link_url']); ?>" class="btn btn--ghost btn--sm" style="height: 32px; border-radius: 6px; font-size: 12px; padding: 0 12px; display: inline-flex; align-items: center; gap: 4px;" title="Lihat Detail Halaman Terkait">
-                                            <i class="fa-solid fa-eye"></i> Lihat
-                                        </a>
-                                    <?php endif; ?>
-                                    
-                                    <?php if (AuthController::isAdminSpmt()): ?>
-                                        <form method="post" action="index.php?page=notifikasi-alert" class="js-confirm-delete" data-confirm-message="Apakah Anda yakin ingin menghapus alert ini?" style="margin: 0;">
-                                            <input type="hidden" name="action" value="delete_alert">
-                                            <input type="hidden" name="id" value="<?= (int) $row['id']; ?>">
-                                            <button type="submit" class="btn-action btn-action--delete" style="border: none; background: #fce8e6; color: #c5221f; width: 32px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s;" title="Hapus Notifikasi">
-                                                <i class="fa-solid fa-trash-can" style="font-size: 12px;"></i>
-                                            </button>
-                                        </form>
+                                    <!-- Bottom Row: Lihat & Hapus Buttons -->
+                                    <?php if (!empty($row['link_url']) || AuthController::isAdminSpmt()): ?>
+                                        <div class="alert-aksi-row alert-aksi-row--bottom">
+                                            <?php if (!empty($row['link_url'])): ?>
+                                                <a href="<?= e($row['link_url']); ?>" class="btn btn--ghost btn--sm" title="Lihat Detail Halaman Terkait">
+                                                    <i class="fa-solid fa-eye"></i> Lihat
+                                                </a>
+                                            <?php endif; ?>
+                                            
+                                            <?php if (AuthController::isAdminSpmt()): ?>
+                                                <form method="post" action="index.php?page=notifikasi-alert" class="js-confirm-delete" data-confirm-message="Apakah Anda yakin ingin menghapus alert ini?" style="margin: 0;">
+                                                    <input type="hidden" name="action" value="delete_alert">
+                                                    <input type="hidden" name="id" value="<?= (int) $row['id']; ?>">
+                                                    <button type="submit" class="btn-action btn-action--delete" style="border: none; background: #fce8e6; color: #c5221f; cursor: pointer; transition: background 0.2s;" title="Hapus Notifikasi">
+                                                        <i class="fa-solid fa-trash-can" style="font-size: 11px;"></i>
+                                                    </button>
+                                                </form>
+                                            <?php endif; ?>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
                             </td>
@@ -326,6 +433,5 @@ foreach ($rows as $r) {
                     <?php endforeach; ?>
                 </tbody>
             </table>
-        </div>
     </div>
 <?php endif; ?>

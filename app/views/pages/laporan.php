@@ -39,6 +39,44 @@ $renderReportCell = static function ($cell): void {
     echo e((string) $cell);
 };
 ?>
+<style>
+/* Centering report cards on bottom rows */
+@media (min-width: 1281px) {
+    .report-card-grid--actions {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+        gap: 20px !important;
+    }
+    .report-card-grid--actions .report-card {
+        flex: 0 1 calc(33.333% - 14px) !important;
+        box-sizing: border-box !important;
+    }
+}
+@media (max-width: 1280px) and (min-width: 1025px) {
+    .report-card-grid--actions {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+        gap: 20px !important;
+    }
+    .report-card-grid--actions .report-card {
+        flex: 0 1 calc(50% - 10px) !important;
+        box-sizing: border-box !important;
+    }
+}
+@media (max-width: 1024px) {
+    .report-card-grid--actions {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 20px !important;
+    }
+    .report-card-grid--actions .report-card {
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+}
+</style>
 <div class="detail-header detail-header--single-title report-main-header">
     <h1>LAPORAN IT ASSET MANAGEMENT</h1>
     <span class="detail-header__updated detail-header__updated--center">LAST UPDATED : <span data-report-live-updated><?= e($data['updated']); ?></span></span>
