@@ -4487,6 +4487,25 @@ SQL);
         $this->ensureLogBarangSchema($pdo);
 
         $action = (string) ($_GET['action'] ?? '');
+        if ($action === 'get_log_details') {
+            $id = (int) ($_GET['id'] ?? 0);
+            header('Content-Type: application/json');
+            try {
+                $stmt = $pdo->prepare('SELECT l.*, COALESCE(u.nama_lengkap, u.username, l.pic_nama_manual, \'-\') AS pic_nama FROM log_barang l LEFT JOIN users u ON u.id = l.pic_id WHERE l.id = :id LIMIT 1');
+                $stmt->execute(['id' => $id]);
+                $log = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$log) {
+                    echo json_encode(['status' => 'error', 'message' => 'Data tidak ditemukan']);
+                    exit;
+                }
+                $uiModel = new UiModel();
+                $items = $uiModel->fetchLogItems($pdo, $id);
+                echo json_encode(['status' => 'success', 'data' => $log, 'items' => $items]);
+            } catch (Throwable $e) {
+                echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+            }
+            exit;
+        }
         if ($action === 'export') {
             $this->streamLogBarangExport($pdo, $filters, (string) ($_GET['format'] ?? 'pdf'));
         }
@@ -4538,14 +4557,41 @@ SQL);
 
     private function insertLogBarang(PDO $pdo, array $payload, array $files): void
     {
+        $items = $payload['items'] ?? [];
+        if (empty($items)) {
+            throw new RuntimeException('Minimal harus menginputkan 1 rincian item barang.');
+        }
+        if (!isset($payload['nama_barang']) || trim((string)$payload['nama_barang']) === '') {
+            $payload['nama_barang'] = $items[0]['deskripsi'] ?? '';
+        }
+        if (!isset($payload['qty']) || trim((string)$payload['qty']) === '') {
+            $payload['qty'] = $items[0]['qty'] ?? 1;
+        }
+        if (!isset($payload['satuan']) || trim((string)$payload['satuan']) === '') {
+            $payload['satuan'] = $items[0]['satuan'] ?? '';
+        }
+        if (!isset($payload['harga']) || trim((string)$payload['harga']) === '') {
+            $payload['harga'] = $items[0]['harga_satuan'] ?? '';
+        }
+
         $satuan = trim((string) ($payload['satuan'] ?? ''));
         if ($satuan === '') {
             throw new RuntimeException('Satuan wajib diisi.');
         }
         $currUserId = (int) ($_SESSION['auth']['id'] ?? $_SESSION['auth']['user_id'] ?? 1);
-        $picId = (int) ($payload['pic_id'] ?? $currUserId);
-        if ($picId <= 0) {
-            throw new RuntimeException('PIC wajib dipilih.');
+        $picNameInput = trim((string) ($payload['pic'] ?? ''));
+        if ($picNameInput === '') {
+            throw new RuntimeException('PIC wajib diisi.');
+        }
+        
+        $picId = null;
+        $picNamaManual = $picNameInput;
+        $userCheckStmt = $pdo->prepare("SELECT id FROM users WHERE nama_lengkap = :name OR username = :username LIMIT 1");
+        $userCheckStmt->execute(['name' => $picNameInput, 'username' => $picNameInput]);
+        $matchedUser = $userCheckStmt->fetch();
+        if ($matchedUser) {
+            $picId = (int) $matchedUser['id'];
+            $picNamaManual = null;
         }
         
         $hargaInput = trim((string) ($payload['harga'] ?? ''));
@@ -4557,23 +4603,60 @@ SQL);
             throw new RuntimeException('Harga tidak boleh negatif.');
         }
 
-        $stmt = $pdo->prepare('INSERT INTO log_barang (log_no, tanggal_masuk, waktu_input_masuk, tanggal_keluar, waktu_input_keluar, nama_barang, qty, satuan, harga, pic_id, no_po, dokumen_po, divisi_pengelola, divisi_peminta, keterangan, dibuat_oleh_user_id, created_at) VALUES (:log_no, :tanggal_masuk, :waktu_input_masuk, NULL, NULL, :nama_barang, :qty, :satuan, :harga, :pic_id, :no_po, :pdf, :divisi_pengelola, :divisi_peminta, :keterangan, :user_id, NOW())');
+        $tanggalSpbInput = trim((string) ($payload['tanggal_spb'] ?? ''));
+        $tanggalSpb = ($tanggalSpbInput !== '') ? $tanggalSpbInput : null;
+
+        $stmt = $pdo->prepare('INSERT INTO log_barang (
+            log_no, tanggal_masuk, waktu_input_masuk, tanggal_keluar, waktu_input_keluar, 
+            nama_barang, qty, satuan, harga, pic_id, pic_nama_manual, no_po, dokumen_po, divisi_pengelola, 
+            divisi_peminta, keterangan, dibuat_oleh_user_id, created_at,
+            nama_vendor, alamat_vendor, telepon_vendor, email_vendor,
+            freight, diskon, ppn_persen, ppn_nominal, pbbkb, nilai_kontrak,
+            nomor_spb, versi_spb, tanggal_spb, metode_pengadaan, judul_spb
+        ) VALUES (
+            :log_no, :tanggal_masuk, :waktu_input_masuk, NULL, NULL, 
+            :nama_barang, :qty, :satuan, :harga, :pic_id, :pic_nama_manual, :no_po, :pdf, :divisi_pengelola, 
+            :divisi_peminta, :keterangan, :user_id, NOW(),
+            :nama_vendor, :alamat_vendor, :telepon_vendor, :email_vendor,
+            :freight, :diskon, :ppn_persen, :ppn_nominal, :pbbkb, :nilai_kontrak,
+            :nomor_spb, :versi_spb, :tanggal_spb, :metode_pengadaan, :judul_spb
+        )');
+        
         $stmt->execute([
             'log_no' => $this->generateLogNo($pdo),
-            'tanggal_masuk' => $this->requiredDate((string) ($payload['tanggal'] ?? '')),
+            'tanggal_masuk' => $this->requiredDate((string) ($payload['tanggal_masuk'] ?? $payload['tanggal'] ?? '')),
             'waktu_input_masuk' => date('H:i:s'),
             'nama_barang' => $this->requiredText((string) ($payload['nama_barang'] ?? ''), 'Nama barang wajib diisi.'),
             'qty' => max(1, (int) ($payload['qty'] ?? 1)),
             'satuan' => $satuan,
             'harga' => $harga,
             'pic_id' => $picId,
+            'pic_nama_manual' => $picNamaManual,
             'no_po' => $this->clean((string) ($payload['no_po'] ?? '')),
             'pdf' => $this->handleLogPdfUpload($files, 'surat_pemesanan_pdf'),
             'divisi_pengelola' => $this->clean((string) ($payload['divisi'] ?? '')),
             'divisi_peminta' => $this->clean((string) ($payload['divisi_terkait'] ?? '')),
             'keterangan' => $this->clean((string) ($payload['keterangan'] ?? '')),
             'user_id' => $currUserId ?: null,
+            'nama_vendor' => $this->clean((string) ($payload['nama_vendor'] ?? '')),
+            'alamat_vendor' => $this->clean((string) ($payload['alamat_vendor'] ?? '')),
+            'telepon_vendor' => $this->clean((string) ($payload['telepon_vendor'] ?? '')),
+            'email_vendor' => $this->clean((string) ($payload['email_vendor'] ?? '')),
+            'freight' => (double) ($payload['freight'] ?? 0.00),
+            'diskon' => (double) ($payload['diskon'] ?? 0.00),
+            'ppn_persen' => (int) ($payload['ppn_persen'] ?? 0),
+            'ppn_nominal' => (double) ($payload['ppn_nominal'] ?? 0.00),
+            'pbbkb' => (double) ($payload['pbbkb'] ?? 0.00),
+            'nilai_kontrak' => (double) ($payload['nilai_kontrak'] ?? 0.00),
+            'nomor_spb' => $this->clean((string) ($payload['nomor_spb'] ?? '')),
+            'versi_spb' => $this->clean((string) ($payload['versi_spb'] ?? '')),
+            'tanggal_spb' => $tanggalSpb,
+            'metode_pengadaan' => $this->clean((string) ($payload['metode_pengadaan'] ?? '')),
+            'judul_spb' => $this->clean((string) ($payload['judul_spb'] ?? '')),
         ]);
+
+        $logId = (int) $pdo->lastInsertId();
+        $this->saveLogItems($pdo, $logId, $payload['items'] ?? []);
     }
 
     private function completeTransfer(PDO $pdo, array $payload): void
@@ -4620,14 +4703,41 @@ SQL);
             $pdfPath = $newPdfPath;
         }
 
+        $items = $payload['items'] ?? [];
+        if (empty($items)) {
+            throw new RuntimeException('Minimal harus menginputkan 1 rincian item barang.');
+        }
+        if (!isset($payload['nama_barang']) || trim((string)$payload['nama_barang']) === '') {
+            $payload['nama_barang'] = $items[0]['deskripsi'] ?? '';
+        }
+        if (!isset($payload['qty']) || trim((string)$payload['qty']) === '') {
+            $payload['qty'] = $items[0]['qty'] ?? 1;
+        }
+        if (!isset($payload['satuan']) || trim((string)$payload['satuan']) === '') {
+            $payload['satuan'] = $items[0]['satuan'] ?? '';
+        }
+        if (!isset($payload['harga']) || trim((string)$payload['harga']) === '') {
+            $payload['harga'] = $items[0]['harga_satuan'] ?? '';
+        }
+
         $satuan = trim((string) ($payload['satuan'] ?? ''));
         if ($satuan === '') {
             throw new RuntimeException('Satuan wajib diisi.');
         }
         $currUserId = (int) ($_SESSION['auth']['id'] ?? $_SESSION['auth']['user_id'] ?? 1);
-        $picId = (int) ($payload['pic_id'] ?? $currUserId);
-        if ($picId <= 0) {
-            throw new RuntimeException('PIC wajib dipilih.');
+        $picNameInput = trim((string) ($payload['pic'] ?? ''));
+        if ($picNameInput === '') {
+            throw new RuntimeException('PIC wajib diisi.');
+        }
+        
+        $picId = null;
+        $picNamaManual = $picNameInput;
+        $userCheckStmt = $pdo->prepare("SELECT id FROM users WHERE nama_lengkap = :name OR username = :username LIMIT 1");
+        $userCheckStmt->execute(['name' => $picNameInput, 'username' => $picNameInput]);
+        $matchedUser = $userCheckStmt->fetch();
+        if ($matchedUser) {
+            $picId = (int) $matchedUser['id'];
+            $picNamaManual = null;
         }
         
         $hargaInput = trim((string) ($payload['harga'] ?? ''));
@@ -4653,6 +4763,9 @@ SQL);
             $waktuKeluar = null;
         }
 
+        $tanggalSpbInput = trim((string) ($payload['tanggal_spb'] ?? ''));
+        $tanggalSpb = ($tanggalSpbInput !== '') ? $tanggalSpbInput : null;
+
         $update = $pdo->prepare('UPDATE log_barang SET 
             tanggal_masuk = :tanggal_masuk, 
             waktu_input_masuk = :waktu_input_masuk,
@@ -4663,11 +4776,27 @@ SQL);
             satuan = :satuan, 
             harga = :harga, 
             pic_id = :pic_id, 
+            pic_nama_manual = :pic_nama_manual, 
             no_po = :no_po, 
             dokumen_po = :pdf, 
             divisi_pengelola = :divisi_pengelola, 
             divisi_peminta = :divisi_peminta, 
-            keterangan = :keterangan 
+            keterangan = :keterangan,
+            nama_vendor = :nama_vendor,
+            alamat_vendor = :alamat_vendor,
+            telepon_vendor = :telepon_vendor,
+            email_vendor = :email_vendor,
+            freight = :freight,
+            diskon = :diskon,
+            ppn_persen = :ppn_persen,
+            ppn_nominal = :ppn_nominal,
+            pbbkb = :pbbkb,
+            nilai_kontrak = :nilai_kontrak,
+            nomor_spb = :nomor_spb,
+            versi_spb = :versi_spb,
+            tanggal_spb = :tanggal_spb,
+            metode_pengadaan = :metode_pengadaan,
+            judul_spb = :judul_spb
             WHERE id = :id');
         $update->execute([
             'id' => $id,
@@ -4680,12 +4809,70 @@ SQL);
             'satuan' => $satuan,
             'harga' => $harga,
             'pic_id' => $picId,
+            'pic_nama_manual' => $picNamaManual,
             'no_po' => $this->clean((string) ($payload['no_po'] ?? '')),
             'pdf' => $pdfPath !== '' ? $pdfPath : null,
             'divisi_pengelola' => $this->clean((string) ($payload['divisi'] ?? '')),
             'divisi_peminta' => $this->clean((string) ($payload['divisi_terkait'] ?? '')),
             'keterangan' => $this->clean((string) ($payload['keterangan'] ?? '')),
+            'nama_vendor' => $this->clean((string) ($payload['nama_vendor'] ?? '')),
+            'alamat_vendor' => $this->clean((string) ($payload['alamat_vendor'] ?? '')),
+            'telepon_vendor' => $this->clean((string) ($payload['telepon_vendor'] ?? '')),
+            'email_vendor' => $this->clean((string) ($payload['email_vendor'] ?? '')),
+            'freight' => (double) ($payload['freight'] ?? 0.00),
+            'diskon' => (double) ($payload['diskon'] ?? 0.00),
+            'ppn_persen' => (int) ($payload['ppn_persen'] ?? 0),
+            'ppn_nominal' => (double) ($payload['ppn_nominal'] ?? 0.00),
+            'pbbkb' => (double) ($payload['pbbkb'] ?? 0.00),
+            'nilai_kontrak' => (double) ($payload['nilai_kontrak'] ?? 0.00),
+            'nomor_spb' => $this->clean((string) ($payload['nomor_spb'] ?? '')),
+            'versi_spb' => $this->clean((string) ($payload['versi_spb'] ?? '')),
+            'tanggal_spb' => $tanggalSpb,
+            'metode_pengadaan' => $this->clean((string) ($payload['metode_pengadaan'] ?? '')),
+            'judul_spb' => $this->clean((string) ($payload['judul_spb'] ?? '')),
         ]);
+
+        $this->saveLogItems($pdo, $id, $payload['items'] ?? []);
+    }
+
+    private function saveLogItems(PDO $pdo, int $logId, array $items): void
+    {
+        $del = $pdo->prepare('DELETE FROM log_barang_items WHERE log_id = :log_id');
+        $del->execute(['log_id' => $logId]);
+
+        if (empty($items)) {
+            return;
+        }
+
+        $stmt = $pdo->prepare('INSERT INTO log_barang_items (
+            log_id, no_item, deskripsi, qty, satuan, lokasi_penerima, 
+            unit_kerja_peminta, harga_satuan, tax_code, harga_total
+        ) VALUES (
+            :log_id, :no_item, :deskripsi, :qty, :satuan, :lokasi_penerima, 
+            :unit_kerja_peminta, :harga_satuan, :tax_code, :harga_total
+        )');
+        foreach ($items as $item) {
+            $deskripsi = trim((string) ($item['deskripsi'] ?? ''));
+            if ($deskripsi === '') {
+                continue;
+            }
+            $qty = max(1, (int) ($item['qty'] ?? 1));
+            $hargaSatuan = (double) ($item['harga_satuan'] ?? 0.00);
+            $hargaTotal = $qty * $hargaSatuan;
+
+            $stmt->execute([
+                'log_id' => $logId,
+                'no_item' => trim((string) ($item['no_item'] ?? '')),
+                'deskripsi' => $deskripsi,
+                'qty' => $qty,
+                'satuan' => trim((string) ($item['satuan'] ?? 'Unit')) ?: 'Unit',
+                'lokasi_penerima' => trim((string) ($item['lokasi_penerima'] ?? '')),
+                'unit_kerja_peminta' => trim((string) ($item['unit_kerja_peminta'] ?? '')),
+                'harga_satuan' => $hargaSatuan,
+                'tax_code' => trim((string) ($item['tax_code'] ?? '')),
+                'harga_total' => $hargaTotal,
+            ]);
+        }
     }
 
     private function deleteLogBarang(PDO $pdo, int $id): void

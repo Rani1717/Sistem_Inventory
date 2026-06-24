@@ -1517,10 +1517,7 @@
     var tanggalMasukInput = document.getElementById('logTanggalMasuk');
     var tanggalKeluarField = document.getElementById('logTanggalKeluarField');
     var tanggalKeluarInput = document.getElementById('logTanggalKeluar');
-    var namaInput = document.getElementById('logNamaBarang');
-    var qtyInput = document.getElementById('logQty');
-    var satuanInput = document.getElementById('logSatuan');
-    var hargaInput = document.getElementById('logHarga');
+
     var picInput = document.getElementById('logPic');
     var noPoInput = document.getElementById('logNoPo');
     var divisiInput = document.getElementById('logDivisi');
@@ -1545,6 +1542,7 @@
         document.body.classList.remove('has-modal-open');
         resetForm();
     }
+
     function resetForm() {
         if (!formAction) return;
         formAction.value = 'save_log_barang';
@@ -1553,18 +1551,27 @@
         if (tanggalMasukInput) tanggalMasukInput.value = new Date().toISOString().slice(0, 10);
         if (tanggalKeluarField) tanggalKeluarField.hidden = true;
         if (tanggalKeluarInput) tanggalKeluarInput.value = '';
-        if (namaInput) namaInput.value = '';
-        if (qtyInput) qtyInput.value = '1';
-        if (satuanInput) satuanInput.value = '';
-        if (hargaInput) hargaInput.value = '';
-        if (picInput) picInput.value = picInput.getAttribute('data-default-user-id') || '';
+
+        if (picInput) picInput.value = picInput.getAttribute('data-default-user-name') || '';
         if (noPoInput) noPoInput.value = '';
-        if (divisiInput) divisiInput.value = '';
+        if (divisiInput) divisiInput.value = 'Teknologi Informasi';
         if (divisiTerkaitInput) divisiTerkaitInput.value = '';
         if (keteranganInput) keteranganInput.value = '';
         if (pdfInput) pdfInput.value = '';
         if (pdfHint) pdfHint.textContent = 'Upload PDF jika ada.';
+
+        // New fields
+        var fVendorNama = document.getElementById('logNamaVendor'); if (fVendorNama) fVendorNama.value = '';
+        var fVendorTelp = document.getElementById('logTeleponVendor'); if (fVendorTelp) fVendorTelp.value = '';
+        var fPpn = document.getElementById('logPpnNominal'); if (fPpn) fPpn.value = '0';
+
+        
+
+
+        var formItemsTbody = document.getElementById('formItemsTbody');
+        if (formItemsTbody) formItemsTbody.innerHTML = '';
     }
+
 
     if (modal) {
         var shouldAutoOpen = modal.getAttribute('data-auto-open') === '1';
@@ -1596,33 +1603,97 @@
         });
     }
 
+    var itemRowIndex = 0;
+    function formatNumberWithDots(val) {
+        if (val === null || val === undefined) return 'Rp 0';
+        var str = String(val).trim();
+        if (str.indexOf('.') !== -1 && (str.match(/\./g) || []).length === 1) {
+            var parts = str.split('.');
+            if (parts[1].length === 2) {
+                str = parts[0];
+            }
+        }
+        var clean = str.replace(/\D/g, '');
+        if (clean === '' || clean === '0') return 'Rp 0';
+        return 'Rp ' + Number(clean).toLocaleString('id-ID');
+    }
+
+    function createItemRow(data) {
+        data = data || {};
+        var index = itemRowIndex++;
+        var row = document.createElement('tr');
+        row.className = 'js-item-row';
+        row.innerHTML = '<td><input type="text" name="items[' + index + '][no_item]" class="form-control" style="width: 100%; font-size: 11px;" value="' + (data.no_item || '') + '" placeholder="10"></td>' +
+            '<td><input type="text" name="items[' + index + '][deskripsi]" class="form-control" style="width: 100%; font-size: 11px;" value="' + (data.deskripsi || '') + '" placeholder="Kabel HDMI..." required></td>' +
+            '<td><input type="number" min="1" name="items[' + index + '][qty]" class="form-control js-item-qty" style="width: 100%; font-size: 11px;" value="' + (data.qty || 1) + '" required></td>' +
+            '<td><input type="text" name="items[' + index + '][satuan]" class="form-control" style="width: 100%; font-size: 11px;" value="' + (data.satuan || 'Unit') + '" placeholder="Pcs" required></td>' +
+            '<td><input type="text" name="items[' + index + '][harga_satuan]" class="form-control js-item-harga js-number-format" style="width: 100%; font-size: 11px;" value="' + formatNumberWithDots(String(data.harga_satuan || 0)) + '" required></td>' +
+            '<td><input type="text" class="form-control js-item-total-display" style="width: 100%; font-weight: 600; text-align: right; font-size: 11px;" value="' + formatRupiah((data.qty || 1) * (data.harga_satuan || 0)) + '" readonly>' +
+            '<input type="hidden" name="items[' + index + '][tax_code]" value="' + (data.tax_code || '') + '">' +
+            '<input type="hidden" name="items[' + index + '][lokasi_penerima]" value="' + (data.lokasi_penerima || '') + '">' +
+            '<input type="hidden" name="items[' + index + '][unit_kerja_peminta]" value="' + (data.unit_kerja_peminta || '') + '"></td>' +
+            '<td><button type="button" class="btn btn-action--delete js-remove-item-row" style="border: none; background: #fce8e6; color: #c5221f; width: 28px; height: 28px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;"><i class="fa-solid fa-trash-can" style="font-size: 11px;"></i></button></td>';
+        return row;
+    }
+
     document.querySelectorAll('.js-edit-log-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             if (!formAction) return;
+            var logId = btn.getAttribute('data-id') || '';
+            if (!logId) return;
+
+            resetForm();
             formAction.value = 'edit_log_barang';
             if (modalTitle) modalTitle.textContent = 'Edit Log Mutasi Aset';
-            if (idInput) idInput.value = btn.getAttribute('data-id') || '';
-            if (tanggalMasukInput) tanggalMasukInput.value = btn.getAttribute('data-tanggal-masuk') || '';
-            if (tanggalKeluarField) tanggalKeluarField.hidden = false;
-            if (tanggalKeluarInput) tanggalKeluarInput.value = btn.getAttribute('data-tanggal-keluar') || '';
-            if (namaInput) namaInput.value = btn.getAttribute('data-nama') || '';
-            if (qtyInput) qtyInput.value = btn.getAttribute('data-qty') || '1';
-            if (satuanInput) satuanInput.value = btn.getAttribute('data-satuan') || '';
-            if (hargaInput) {
-                var rawHarga = btn.getAttribute('data-harga') || '';
-                hargaInput.value = (rawHarga !== '' && parseFloat(rawHarga) > 0) ? parseFloat(rawHarga) : '';
-            }
-            if (picInput) picInput.value = btn.getAttribute('data-pic') || '';
-            if (noPoInput) noPoInput.value = btn.getAttribute('data-no-po') || '';
-            if (divisiInput) divisiInput.value = btn.getAttribute('data-divisi') || '';
-            if (divisiTerkaitInput) divisiTerkaitInput.value = btn.getAttribute('data-divisi-terkait') || '';
-            if (keteranganInput) keteranganInput.value = btn.getAttribute('data-keterangan') || '';
-            if (pdfInput) pdfInput.value = '';
-            if (pdfHint) {
-                var pdfName = btn.getAttribute('data-pdf-name') || '';
-                pdfHint.textContent = pdfName ? 'File saat ini: ' + pdfName : 'Upload PDF jika ingin menambahkan file.';
-            }
-            openModal();
+            
+            fetch('index.php?page=log-barang&action=get_log_details&id=' + logId)
+                .then(function (response) { return response.json(); })
+                .then(function (res) {
+                    if (res.status === 'success' && res.data) {
+                        var log = res.data;
+                        var items = res.items || [];
+
+                        if (idInput) idInput.value = log.id;
+                        if (tanggalMasukInput) tanggalMasukInput.value = log.tanggal_masuk || '';
+                        if (tanggalKeluarField) tanggalKeluarField.hidden = false;
+                        if (tanggalKeluarInput) tanggalKeluarInput.value = (log.tanggal_keluar && log.tanggal_keluar !== '0000-00-00') ? log.tanggal_keluar : '';
+
+                        if (picInput) picInput.value = log.pic_nama || '';
+                        if (noPoInput) noPoInput.value = log.no_po || '';
+                        if (divisiInput) divisiInput.value = log.divisi_pengelola || '';
+                        if (divisiTerkaitInput) divisiTerkaitInput.value = log.divisi_peminta || '';
+                        if (keteranganInput) keteranganInput.value = log.keterangan || '';
+                        if (pdfInput) pdfInput.value = '';
+                        if (pdfHint) {
+                            pdfHint.textContent = log.dokumen_po ? 'File saat ini: ' + log.dokumen_po.split('/').pop() : 'Upload PDF jika ingin mengganti/menambahkan file.';
+                        }
+
+                        // Populate new fields
+                        var fVendorNama = document.getElementById('logNamaVendor'); if (fVendorNama) fVendorNama.value = log.nama_vendor || '';
+                        var fVendorTelp = document.getElementById('logTeleponVendor'); if (fVendorTelp) fVendorTelp.value = log.telepon_vendor || '';
+                        var fPpn = document.getElementById('logPpnNominal'); if (fPpn) fPpn.value = formatNumberWithDots(String(log.ppn_nominal || 0));
+
+
+
+
+                        // Populate items table
+                        var formItemsTbody = document.getElementById('formItemsTbody');
+                        if (formItemsTbody) {
+                            formItemsTbody.innerHTML = '';
+                            items.forEach(function (item) {
+                                formItemsTbody.appendChild(createItemRow(item));
+                            });
+                        }
+
+                        openModal();
+                    } else {
+                        alert('Gagal mengambil detail mutasi.');
+                    }
+                })
+                .catch(function (err) {
+                    console.error(err);
+                    alert('Koneksi gagal saat memuat data.');
+                });
         });
     });
 
@@ -1674,10 +1745,175 @@
         });
     }
 
+    // Form Items Row Management (Add Row)
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('.js-add-item-row')) {
+            e.preventDefault();
+            var tbody = document.getElementById('formItemsTbody');
+            if (tbody) {
+                var newRow = createItemRow();
+                tbody.appendChild(newRow);
+                setTimeout(function () {
+                    newRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    var firstInput = newRow.querySelector('input');
+                    if (firstInput) firstInput.focus();
+                }, 50);
+            }
+        }
+        if (e.target.closest('.js-remove-item-row')) {
+            e.preventDefault();
+            var row = e.target.closest('tr');
+            if (row) row.remove();
+        }
+    });
+
+    // Dynamic Harga Total calculation in Form & Numeric Formatting
+    document.addEventListener('input', function (e) {
+        if (e.target.classList.contains('js-number-format')) {
+            var cursorPosition = e.target.selectionStart;
+            var originalLength = e.target.value.length;
+            var formatted = formatNumberWithDots(e.target.value);
+            e.target.value = formatted;
+            var newLength = formatted.length;
+            if (e.target.setSelectionRange) {
+                var newCursor = cursorPosition + (newLength - originalLength);
+                e.target.setSelectionRange(newCursor, newCursor);
+            }
+        }
+
+        if (e.target.classList.contains('js-item-qty') || e.target.classList.contains('js-item-harga')) {
+            var row = e.target.closest('tr');
+            if (row) {
+                var qtyInput = row.querySelector('.js-item-qty');
+                var hargaInput = row.querySelector('.js-item-harga');
+                var totalInput = row.querySelector('.js-item-total-display');
+                if (qtyInput && hargaInput && totalInput) {
+                    var qty = parseInt(qtyInput.value) || 0;
+                    var harga = parseFloat(hargaInput.value.replace(/Rp\s?/g, '').replace(/\./g, '')) || 0;
+                    totalInput.value = formatRupiah(qty * harga);
+                }
+            }
+        }
+    });
+
+    document.addEventListener('submit', function (e) {
+        var form = e.target.closest('.log-modal__form');
+        if (form) {
+            form.querySelectorAll('.js-number-format').forEach(function (input) {
+                input.value = input.value.replace(/Rp\s?/g, '').replace(/\./g, '');
+            });
+        }
+    });
+
+    // Detail PO Modal Open via AJAX
+    var poModal = document.getElementById('poDetailModal');
+    var poCloseBtn = document.querySelectorAll('.js-close-po-detail-modal');
+    
+    function formatRupiah(value) {
+        return 'Rp ' + Number(value || 0).toLocaleString('id-ID');
+    }
+
+    document.addEventListener('click', function (e) {
+        var detailLink = e.target.closest('.js-open-po-detail');
+        if (!detailLink) return;
+        e.preventDefault();
+        var logId = detailLink.getAttribute('data-id');
+        if (!logId) return;
+
+        fetch('index.php?page=log-barang&action=get_log_details&id=' + logId)
+            .then(function (response) { return response.json(); })
+            .then(function (res) {
+                if (res.status === 'success' && res.data) {
+                    var log = res.data;
+                    var items = res.items || [];
+
+                    var pemberiTugas = document.getElementById('detailPemberiTugasDivisi'); if (pemberiTugas) pemberiTugas.textContent = log.divisi_pengelola || '-';
+                    var vNama = document.getElementById('detailVendorNama'); if (vNama) vNama.textContent = log.nama_vendor || '-';
+                    var vTelp = document.getElementById('detailVendorTelepon'); if (vTelp) vTelp.textContent = log.telepon_vendor ? 'Telp: ' + log.telepon_vendor : '-';
+
+
+                    var nPo = document.getElementById('detailNoPo'); if (nPo) nPo.textContent = log.no_po || '-';
+
+                    var tbody = document.getElementById('detailPoItemsBody');
+                    if (tbody) {
+                        tbody.innerHTML = '';
+                        if (items.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="6" class="empty-state" style="text-align: center; padding: 16px;">Tidak ada rincian item.</td></tr>';
+                        } else {
+                            items.forEach(function (item) {
+                                var tr = document.createElement('tr');
+                                tr.innerHTML = '<td>' + (item.no_item || '-') + '</td>' +
+                                    '<td>' + (item.deskripsi || '-') + '</td>' +
+                                    '<td>' + item.qty + '</td>' +
+                                    '<td>' + (item.satuan || 'Unit') + '</td>' +
+                                    '<td style="text-align:right;">' + formatRupiah(item.harga_satuan) + '</td>' +
+                                    '<td style="text-align:right; font-weight: 600;">' + formatRupiah(item.harga_total) + '</td>';
+                                tbody.appendChild(tr);
+                            });
+                        }
+                    }
+
+                    var itemsSum = items.reduce(function (acc, val) { return acc + Number(val.harga_total || 0); }, 0);
+                    var ppnAmount = parseFloat(log.ppn_nominal) || 0;
+                    var totalAkhir = itemsSum + ppnAmount;
+
+                    var fSubtotal = document.getElementById('detailPoSubtotal'); if (fSubtotal) fSubtotal.textContent = formatRupiah(itemsSum);
+                    var fPpnLabel = document.getElementById('detailPoPpnLabel'); if (fPpnLabel) fPpnLabel.textContent = 'PPN';
+                    var fPpnAmount = document.getElementById('detailPoPpnAmount'); if (fPpnAmount) fPpnAmount.textContent = formatRupiah(ppnAmount);
+                    var fTotal = document.getElementById('detailPoTotal'); if (fTotal) fTotal.textContent = formatRupiah(totalAkhir);
+
+                    var attachmentContainer = document.getElementById('detailPoAttachmentContainer');
+                    var attachmentLink = document.getElementById('detailPoAttachmentLink');
+                    if (log.dokumen_po && attachmentContainer && attachmentLink) {
+                        attachmentLink.href = 'index.php?page=log-barang&action=download_po&file=' + encodeURIComponent(log.dokumen_po);
+                        attachmentContainer.style.display = 'block';
+                    } else if (attachmentContainer) {
+                        attachmentContainer.style.display = 'none';
+                    }
+
+                    if (poModal) {
+                        poModal.hidden = false;
+                        poModal.setAttribute('aria-hidden', 'false');
+                        document.body.classList.add('modal-open');
+                        document.body.classList.add('has-modal-open');
+                    }
+                } else {
+                    alert(res.message || 'Gagal memuat rincian PO.');
+                }
+            })
+            .catch(function (err) {
+                console.error(err);
+                alert('Koneksi bermasalah.');
+            });
+    });
+
+    function closePoModal() {
+        if (poModal) {
+            poModal.hidden = true;
+            poModal.setAttribute('aria-hidden', 'true');
+        }
+        document.body.classList.remove('modal-open');
+        document.body.classList.remove('has-modal-open');
+    }
+
+    poCloseBtn.forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            closePoModal();
+        });
+    });
+
+    if (poModal) {
+        poModal.addEventListener('click', function (event) {
+            if (event.target === poModal) closePoModal();
+        });
+    }
+
     document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') {
             if (modal && !modal.hidden) closeModal();
             if (deliverModal && !deliverModal.hidden) closeDeliverModal();
+            if (poModal && !poModal.hidden) closePoModal();
         }
     });
 

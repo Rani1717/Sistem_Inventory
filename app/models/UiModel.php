@@ -2392,7 +2392,7 @@ SQL);
             }
 
             $orderSql = $state['sort'] === 'oldest' ? 'ASC' : 'DESC';
-            $sql = 'SELECT l.id, l.log_no, l.tanggal_masuk, l.waktu_input_masuk, l.tanggal_keluar, l.waktu_input_keluar, l.created_at, l.nama_barang, l.qty, l.satuan, l.harga, l.pic_id, l.no_po, l.dokumen_po, l.divisi_pengelola, l.divisi_peminta, l.keterangan, u.nama_lengkap AS pic_nama, u.username AS pic_username FROM log_barang l LEFT JOIN users u ON u.id = l.pic_id WHERE '
+            $sql = 'SELECT l.id, l.log_no, l.tanggal_masuk, l.waktu_input_masuk, l.tanggal_keluar, l.waktu_input_keluar, l.created_at, l.nama_barang, l.qty, l.satuan, l.harga, l.pic_id, l.pic_nama_manual, l.no_po, l.dokumen_po, l.divisi_pengelola, l.divisi_peminta, l.keterangan, l.nama_vendor, l.alamat_vendor, l.telepon_vendor, l.email_vendor, l.freight, l.diskon, l.ppn_persen, l.ppn_nominal, l.pbbkb, l.nilai_kontrak, l.nomor_spb, l.versi_spb, l.tanggal_spb, l.metode_pengadaan, l.judul_spb, (SELECT COALESCE(SUM(qty * harga_satuan), 0) FROM log_barang_items WHERE log_id = l.id) AS total_harga_log, (SELECT COALESCE(SUM(qty), 0) FROM log_barang_items WHERE log_id = l.id) AS total_qty_log, COALESCE(u.nama_lengkap, u.username, l.pic_nama_manual, \'-\') AS pic_nama, u.username AS pic_username FROM log_barang l LEFT JOIN users u ON u.id = l.pic_id WHERE '
                 . implode(' AND ', $where)
                 . ' ORDER BY l.tanggal_masuk ' . $orderSql . ', l.created_at ' . $orderSql . ', l.id ' . $orderSql . ' LIMIT 500';
             $stmt = $pdo->prepare($sql);
@@ -2408,6 +2408,9 @@ SQL);
                 $isSelesai = (!empty($row['tanggal_keluar']) && $row['tanggal_keluar'] !== '0000-00-00');
                 $status = $isSelesai ? 'SELESAI' : 'MASUK';
                 $pdf = trim((string) ($row['dokumen_po'] ?? ''));
+                $subtotal = ($row['total_harga_log'] > 0) ? (double)$row['total_harga_log'] : ((int)($row['qty'] ?? 1)) * ((double)($row['harga'] ?? 0.00));
+                $totalHarga = $subtotal + (double)($row['ppn_nominal'] ?? 0.00);
+                $totalQty = ($row['total_qty_log'] > 0) ? (int)$row['total_qty_log'] : (int)($row['qty'] ?? 1);
                 $result[] = [
                     'id' => (int) ($row['id'] ?? 0),
                     'no' => $number++,
@@ -2420,10 +2423,13 @@ SQL);
                     'status' => $status,
                     'status_class' => $isSelesai ? 'selesai' : 'in',
                     'qty' => (int) ($row['qty'] ?? 1),
+                    'total_qty' => $totalQty,
                     'satuan' => (string) ($row['satuan'] ?? 'Unit'),
                     'harga' => (double) ($row['harga'] ?? 0.00),
+                    'total_harga' => $totalHarga,
                     'pic_id' => (int) ($row['pic_id'] ?? 0),
                     'pic_nama' => (string) ($row['pic_nama'] ?? $row['pic_username'] ?? '-'),
+                    'pic_nama_manual' => (string) ($row['pic_nama_manual'] ?? ''),
                     'no_po' => (string) ($row['no_po'] ?? '-'),
                     'pdf' => $pdf,
                     'pdf_name' => $pdf !== '' ? basename($pdf) : '',
@@ -2433,10 +2439,36 @@ SQL);
                     'keterangan' => (string) ($row['keterangan'] ?? ''),
                     'created_time' => $row['waktu_input_masuk'] ? $this->formatCreatedTime((string)($row['tanggal_masuk'] . ' ' . $row['waktu_input_masuk'])) : '-',
                     'waktu_input_keluar' => $row['waktu_input_keluar'] ? $this->formatCreatedTime((string)($row['tanggal_keluar'] . ' ' . $row['waktu_input_keluar'])) : '-',
+                    'nama_vendor' => (string) ($row['nama_vendor'] ?? ''),
+                    'alamat_vendor' => (string) ($row['alamat_vendor'] ?? ''),
+                    'telepon_vendor' => (string) ($row['telepon_vendor'] ?? ''),
+                    'email_vendor' => (string) ($row['email_vendor'] ?? ''),
+                    'freight' => (double) ($row['freight'] ?? 0.00),
+                    'diskon' => (double) ($row['diskon'] ?? 0.00),
+                    'ppn_persen' => (int) ($row['ppn_persen'] ?? 0),
+                    'ppn_nominal' => (double) ($row['ppn_nominal'] ?? 0.00),
+                    'pbbkb' => (double) ($row['pbbkb'] ?? 0.00),
+                    'nilai_kontrak' => (double) ($row['nilai_kontrak'] ?? 0.00),
+                    'nomor_spb' => (string) ($row['nomor_spb'] ?? ''),
+                    'versi_spb' => (string) ($row['versi_spb'] ?? ''),
+                    'tanggal_spb' => (string) ($row['tanggal_spb'] ?? ''),
+                    'metode_pengadaan' => (string) ($row['metode_pengadaan'] ?? ''),
+                    'judul_spb' => (string) ($row['judul_spb'] ?? ''),
                 ];
             }
 
             return $result;
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    public function fetchLogItems(PDO $pdo, int $logId): array
+    {
+        try {
+            $stmt = $pdo->prepare('SELECT id, log_id, no_item, deskripsi, qty, satuan, lokasi_penerima, unit_kerja_peminta, harga_satuan, tax_code, harga_total FROM log_barang_items WHERE log_id = :log_id ORDER BY id ASC');
+            $stmt->execute(['log_id' => $logId]);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
         } catch (Throwable $e) {
             return [];
         }
@@ -2588,17 +2620,30 @@ SQL);
             // 3. Total Transaksi = MASUK + SELESAI = semua record
             $stats['total_transaksi'] = $stats['masuk_count'] + $stats['keluar_count'];
 
-            // 4. Barang Masuk Qty (Global — semua qty yang masuk)
-            $stmt = $pdo->query('SELECT SUM(qty) FROM log_barang');
-            $stats['barang_masuk_qty'] = (int) ($stmt ? $stmt->fetchColumn() : 0);
+            // 4. Barang Masuk Qty (Global — total qty dari semua item rincian)
+            $stmt = $pdo->query('SELECT COALESCE(SUM(i.qty), 0) FROM log_barang_items i');
+            $itemsQtyTotal = (int) ($stmt ? $stmt->fetchColumn() : 0);
+            // fallback: jika tidak ada items, gunakan qty dari log_barang
+            if ($itemsQtyTotal === 0) {
+                $stmt = $pdo->query('SELECT SUM(qty) FROM log_barang');
+                $itemsQtyTotal = (int) ($stmt ? $stmt->fetchColumn() : 0);
+            }
+            $stats['barang_masuk_qty'] = $itemsQtyTotal;
 
             // 5. Barang Keluar Qty (Global — qty yang sudah diserahkan)
             $stmt = $pdo->query("SELECT SUM(qty) FROM log_barang WHERE tanggal_keluar IS NOT NULL AND tanggal_keluar <> '0000-00-00'");
             $stats['barang_keluar_qty'] = (int) ($stmt ? $stmt->fetchColumn() : 0);
 
             // 6. Total Nilai Masuk (Global)
-            $stmt = $pdo->query('SELECT SUM(qty * harga) FROM log_barang');
-            $stats['total_nilai_masuk'] = (double) ($stmt ? $stmt->fetchColumn() : 0.00);
+            $stmt = $pdo->query("SELECT l.qty, l.harga, l.ppn_nominal, (SELECT COALESCE(SUM(qty * harga_satuan), 0) FROM log_barang_items WHERE log_id = l.id) AS total_items FROM log_barang l");
+            $totalNilai = 0.00;
+            if ($stmt) {
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $subtotal = ($row['total_items'] > 0) ? (double)$row['total_items'] : ((int)$row['qty']) * ((double)$row['harga']);
+                    $totalNilai += $subtotal + (double)($row['ppn_nominal'] ?? 0.00);
+                }
+            }
+            $stats['total_nilai_masuk'] = $totalNilai;
         } catch (Throwable $e) {
         }
         
