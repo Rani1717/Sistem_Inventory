@@ -5023,7 +5023,7 @@ SQL);
         }
 
         if (strtolower($format) === 'xlsx') {
-            $xlsx = $this->buildLogBarangExcelXlsx($title, $rows);
+            $xlsx = $this->buildLogBarangExcelXlsx($pdo, $title, $rows, $filters);
             header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             header('Content-Disposition: attachment; filename="' . $base . '.xlsx"');
             header('Content-Length: ' . strlen($xlsx));
@@ -5039,29 +5039,60 @@ SQL);
         exit;
     }
 
-    private function buildLogBarangExportTitle(array $filters): string
+    private function buildPeriodText(array $filters): string
     {
-        $year = (int) ($filters['log_year'] ?? date('Y'));
-        $month = (int) ($filters['log_month'] ?? 0);
         $date = trim((string) ($filters['log_date'] ?? ''));
-        $status = strtoupper(trim((string) ($filters['log_status'] ?? '')));
-        $search = trim((string) ($filters['log_search'] ?? ''));
-        $division = trim((string) ($filters['log_division'] ?? ''));
-
-        $parts = ['Log Mutasi Aset'];
-
         if ($date !== '') {
             try {
                 $dt = new DateTimeImmutable($date);
-                $parts[] = $dt->format('d-m-Y');
+                return $dt->format('d-m-Y');
             } catch (Throwable $e) {
-                $parts[] = $date;
+                return $date;
             }
-        } elseif ($month > 0) {
-            $parts[] = $this->monthName($month) . ' ' . $year;
-        } else {
-            $parts[] = 'Semua Bulan ' . $year;
         }
+
+        $month = 0;
+        $year = 0;
+        
+        $hasLogMonth = isset($filters['log_month']) && trim((string)$filters['log_month']) !== '';
+        if ($hasLogMonth) {
+            $monthVal = trim((string)$filters['log_month']);
+            if ($monthVal !== 'all' && $monthVal !== '0') {
+                $month = (int)$monthVal;
+            }
+            if (isset($filters['log_year']) && trim((string)$filters['log_year']) !== 'all' && trim((string)$filters['log_year']) !== '0' && trim((string)$filters['log_year']) !== '') {
+                $year = (int)$filters['log_year'];
+            }
+        } else {
+            $selectedMonthYear = trim((string) ($filters['log_month_year'] ?? ''));
+            if ($selectedMonthYear !== 'all' && $selectedMonthYear !== '') {
+                $parts = explode('-', $selectedMonthYear);
+                if (count($parts) === 2) {
+                    $year = (int) $parts[0];
+                    $month = (int) $parts[1];
+                }
+            }
+        }
+
+        if ($month === 0 && $year === 0) {
+            return 'Semua Data';
+        } elseif ($month > 0 && $year > 0) {
+            return $this->monthName($month) . ' ' . $year;
+        } elseif ($month === 0 && $year > 0) {
+            return 'Semua Bulan ' . $year;
+        } else {
+            return $this->monthName($month) . ' - Semua Tahun';
+        }
+    }
+
+    private function buildLogBarangExportTitle(array $filters): string
+    {
+        $status = strtoupper(trim((string) ($filters['log_status'] ?? '')));
+        $division = trim((string) ($filters['log_division'] ?? ''));
+        $search = trim((string) ($filters['log_search'] ?? ''));
+
+        $parts = ['Log Mutasi Aset'];
+        $parts[] = $this->buildPeriodText($filters);
 
         if ($division !== '') {
             $parts[] = $division;
@@ -5096,7 +5127,7 @@ SQL);
         return $months[$month] ?? (string) $month;
     }
 
-    private function buildLogBarangExcelXlsx(string $title, array $rows): string
+    private function buildLogBarangExcelXlsx(PDO $pdo, string $title, array $rows, array $filters = []): string
     {
         $configFile = __DIR__ . '/../config/config.php';
         if (is_file($configFile)) {
@@ -5105,157 +5136,242 @@ SQL);
         $baseUrl = defined('BASE_URL') ? BASE_URL : 'http://localhost/Sistem_Inventory/';
         $baseUrl = rtrim($baseUrl, '/\\') . '/';
 
+        $periode = $this->buildPeriodText($filters);
+        
+        $statusFilter = strtoupper(trim((string) ($filters['log_status'] ?? '')));
+        $statusText = ($statusFilter === '') ? 'Semua Status' : $statusFilter;
+        
+        $periodeText = $periode . ' | Status: ' . $statusText;
+        if (!empty($filters['log_division'])) {
+            $periodeText .= ' | Divisi: ' . $filters['log_division'];
+        }
+
         $sheetRows = [
             [$title],
-            ['Diexport: ' . date('d-m-Y H:i:s')],
+            ['Diexport: ' . date('d-m-Y H:i:s') . ' | Periode: ' . $periodeText],
             [],
-            ['No', 'Tanggal Masuk', 'Tanggal Keluar', 'Nama Barang', 'Qty', 'Satuan', 'Harga', 'Status', 'Divisi Pengelola', 'Divisi Peminta', 'No. PO', 'Dokumen', 'PIC', 'Log No', 'Keterangan'],
+            ['Nomor SPB/PO', 'Tgl Masuk', 'Tgl Keluar', 'Vendor', 'Deskripsi/Keterangan', 'No Item', 'Qty', 'Satuan', 'Harga Satuan', 'Harga Total', 'Divisi Pengelola', 'Divisi Peminta', 'PIC', 'Status'],
         ];
 
-        $number = 1;
+        $sheetRowMetadata = [
+            0 => ['type' => 'TITLE'],
+            1 => ['type' => 'SUBTITLE'],
+            2 => ['type' => 'SPACER'],
+            3 => ['type' => 'HEADER'],
+        ];
+
+        $grandTotalQty = 0;
+        $grandTotalPrice = 0.0;
+        $totalPpn = 0.0;
+        $mergeCells = [
+            'A1:N1',
+            'A2:N2'
+        ];
+
         foreach ($rows as $row) {
-            $priceVal = (double) ($row['harga'] ?? 0);
-            $priceStr = $priceVal > 0 ? 'Rp ' . number_format($priceVal, 0, ',', '.') : '-';
-
-            $divisionStr = trim((string) ($row['division'] ?? ''));
-            if ($divisionStr === '' || $divisionStr === '-') {
-                $divisionStr = '-';
+            $logId = (int) ($row['id'] ?? 0);
+            $items = $this->model->fetchLogItems($pdo, $logId);
+            if (empty($items)) {
+                $items = [[
+                    'no_item' => '10',
+                    'deskripsi' => $row['item'] ?? '-',
+                    'qty' => $row['qty'] ?? 1,
+                    'satuan' => $row['satuan'] ?? 'Unit',
+                    'harga_satuan' => $row['harga'] ?? 0.00,
+                    'harga_total' => ($row['qty'] ?? 1) * ($row['harga'] ?? 0.00)
+                ]];
             }
 
-            $divTerkaitStr = trim((string) ($row['divisi_terkait'] ?? ''));
-            if ($divTerkaitStr === '' || $divTerkaitStr === '-') {
-                $divTerkaitStr = '-';
+            $poQtySum = 0;
+            $poPriceSum = 0.0;
+            foreach ($items as &$item) {
+                $itemQty = (int) ($item['qty'] ?? 0);
+                $itemPrice = (double) ($item['harga_satuan'] ?? 0.00);
+                $item['harga_total'] = $itemQty * $itemPrice;
+                $poQtySum += $itemQty;
+                $poPriceSum += $item['harga_total'];
             }
+            unset($item);
 
-            $noPo = trim((string) ($row['no_po'] ?? ''));
-            if ($noPo === '' || $noPo === '-') {
-                $noPo = '-';
+            $grandTotalQty += $poQtySum;
+            $grandTotalPrice += $poPriceSum;
+            $totalPpn += (double) ($row['ppn_nominal'] ?? 0.00);
+
+            $noPoVal = trim((string) ($row['no_po'] ?? ''));
+            if ($noPoVal === '' || $noPoVal === '-') {
+                $noPoVal = '-';
             }
-
-            $docStr = '-';
             $pdfPath = trim((string) ($row['pdf'] ?? ''));
+            $noPoCell = $noPoVal;
             if ($pdfPath !== '') {
                 $poUrl = $baseUrl . 'index.php?page=log-barang&action=download_po&file=' . rawurlencode($pdfPath);
-                $docStr = '=HYPERLINK("' . $poUrl . '", "Lihat Dokumen")';
-                if ($noPo !== '-') {
-                    $noPo = '=HYPERLINK("' . $poUrl . '", "' . $noPo . '")';
+                if ($noPoVal !== '-') {
+                    $noPoCell = '=HYPERLINK("' . $poUrl . '", "' . $noPoVal . '")';
                 }
             }
 
-            $keteranganStr = trim((string) ($row['keterangan'] ?? ''));
-            if ($keteranganStr === '' || $keteranganStr === '-') {
-                $keteranganStr = '-';
+            $dateKeluarStr = '-';
+            if (!empty($row['tanggal_keluar']) && $row['tanggal_keluar'] !== '0000-00-00') {
+                $dateKeluarStr = (string) $row['date_keluar'];
             }
 
-            $satuanStr = trim((string) ($row['satuan'] ?? ''));
-            if ($satuanStr === '' || $satuanStr === '-') {
-                $satuanStr = '-';
-            }
-
-            $picStr = trim((string) ($row['pic_nama'] ?? ''));
-            if ($picStr === '' || $picStr === '-') {
-                $picStr = '-';
-            }
+            $rowKeterangan = trim((string) ($row['keterangan'] ?? '')) ?: '-';
 
             $sheetRows[] = [
-                (string) $number++,
+                $noPoCell,
                 (string) ($row['date'] ?? '-'),
-                (string) ($row['date_keluar'] ?? '-'),
-                (string) ($row['item'] ?? '-'),
-                (string) ($row['qty'] ?? '0'),
-                $satuanStr,
-                $priceStr,
+                $dateKeluarStr,
+                trim((string) ($row['nama_vendor'] ?? '')) ?: '-',
+                $rowKeterangan,
+                '',
+                '',
+                '-',
+                '-',
+                '-',
+                trim((string) ($row['division'] ?? '')) ?: '-',
+                trim((string) ($row['divisi_terkait'] ?? '')) ?: '-',
+                trim((string) ($row['pic_nama'] ?? '')) ?: '-',
                 (string) ($row['status'] ?? '-'),
-                $divisionStr,
-                $divTerkaitStr,
-                $noPo,
-                $docStr,
-                $picStr,
-                (string) ($row['log_no'] ?? '-'),
-                $keteranganStr,
             ];
+            $sheetRowMetadata[] = [
+                'type' => 'PO',
+                'status' => $row['status'] ?? '-',
+                'no_po' => $noPoVal
+            ];
+
+            foreach ($items as $item) {
+                $sheetRows[] = [
+                    '', '', '', '', 
+                    '↳ ' . ($item['deskripsi'] ?? '-'),
+                    (string) ($item['no_item'] ?? ''),
+                    (int) ($item['qty'] ?? 0),
+                    (string) ($item['satuan'] ?? 'Unit'),
+                    (double) ($item['harga_satuan'] ?? 0.00),
+                    (double) ($item['harga_total'] ?? 0.00),
+                    '', '', '', '', 
+                ];
+                $sheetRowMetadata[] = ['type' => 'ITEM'];
+            }
+
+            $subtotalRowIdx = count($sheetRows) + 1;
+            $mergeCells[] = 'A' . $subtotalRowIdx . ':E' . $subtotalRowIdx;
+
+            $sheetRows[] = [
+                '', '', '', '', 
+                'Subtotal PO ' . $noPoVal, 
+                count($items) . ' item', 
+                $poQtySum, 
+                '', '', 
+                $poPriceSum, 
+                '', '', '', '',
+            ];
+            $sheetRowMetadata[] = ['type' => 'SUBTOTAL', 'no_po' => $noPoVal];
         }
 
+        $ppnRowIdx = count($sheetRows) + 1;
+        $mergeCells[] = 'A' . $ppnRowIdx . ':I' . $ppnRowIdx;
+
+        $sheetRows[] = [
+            'Total PPN', '', '', '', '', '', '', '', '', 
+            $totalPpn, 
+            '', '', '', ''
+        ];
+        $sheetRowMetadata[] = ['type' => 'PPN'];
+
+        $grandTotalRowIdx = count($sheetRows) + 1;
+        $mergeCells[] = 'A' . $grandTotalRowIdx . ':F' . $grandTotalRowIdx;
+
+        $sheetRows[] = [
+            'TOTAL KESELURUHAN (termasuk PPN)', '', '', '', '', '', 
+            $grandTotalQty, 
+            '', '', 
+            $grandTotalPrice + $totalPpn, 
+            '', '', '', ''
+        ];
+        $sheetRowMetadata[] = ['type' => 'GRANDTOTAL'];
+
         $colWidths = [];
-        $minWidths = [6, 14, 14, 25, 8, 10, 16, 12, 18, 18, 16, 16, 18, 20, 25];
-        for ($i = 0; $i < 15; $i++) {
+        $minWidths = [18, 14, 14, 20, 30, 12, 10, 10, 15, 18, 18, 18, 18, 14];
+        for ($i = 0; $i < 14; $i++) {
             $colWidths[$i] = $minWidths[$i];
         }
 
         foreach ($sheetRows as $rIndex => $row) {
             if ($rIndex < 3) continue;
             foreach (array_values($row) as $cIndex => $val) {
-                if (str_starts_with((string)$val, '=HYPERLINK')) {
-                    if (preg_match('/",\s*"([^"]+)"/', (string)$val, $matches)) {
-                        $len = strlen($matches[1]);
-                    } else {
-                        $len = strlen((string)$val);
-                    }
-                } else {
+                if ($cIndex === 4) {
                     $len = strlen((string)$val);
-                }
-                if ($len > $colWidths[$cIndex]) {
-                    $colWidths[$cIndex] = min(50, $len + 4);
+                    if ($len > $colWidths[$cIndex]) {
+                        $colWidths[$cIndex] = min(30, max(15, $len + 4));
+                    }
+                    continue;
                 }
             }
         }
 
         $xmlRows = [];
         foreach ($sheetRows as $rIndex => $row) {
+            $meta = $sheetRowMetadata[$rIndex] ?? [];
+            $rowType = $meta['type'] ?? 'DATA';
             $cells = [];
             foreach (array_values($row) as $cIndex => $value) {
                 $ref = $this->excelColumnName($cIndex + 1) . ($rIndex + 1);
-
-                if ($rIndex === 0) {
-                    $style = ' s="6"';
+                if ($rowType === 'TITLE') {
+                    $style = ' s="2"';
                     $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
-                } elseif ($rIndex === 1) {
-                    $style = ' s="7"';
+                } elseif ($rowType === 'SUBTITLE') {
+                    $style = ' s="3"';
                     $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
-                } elseif ($rIndex === 2) {
+                } elseif ($rowType === 'SPACER') {
                     continue;
-                } elseif ($rIndex === 3) {
+                } elseif ($rowType === 'HEADER') {
                     $style = ' s="1"';
                     $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
                 } else {
-                    if ($cIndex === 0 || $cIndex === 1 || $cIndex === 2 || $cIndex === 13) {
-                        $style = ' s="8"';
-                    } elseif ($cIndex === 4) {
-                        $style = ' s="4"';
-                    } elseif ($cIndex === 6) {
-                        $style = ' s="5"';
-                    } elseif ($cIndex === 7) {
-                        $statusVal = strtoupper(trim((string) $value));
-                        if ($statusVal === 'MASUK') {
-                            $style = ' s="2"';
+                    if ($rowType === 'PO') {
+                        if ($cIndex === 13) {
+                            $style = (strtoupper(trim((string)$value)) === 'MASUK' ? '7' : '8');
+                        } elseif (in_array($cIndex, [1, 2, 5, 6], true)) {
+                            $style = '5';
+                        } elseif ($cIndex === 9) {
+                            $style = '6';
                         } else {
-                            $style = ' s="0"';
+                            $style = '4';
                         }
+                    } elseif ($rowType === 'ITEM') {
+                        if (in_array($cIndex, [5, 6, 7], true)) {
+                            $style = '10';
+                        } elseif (in_array($cIndex, [8, 9], true)) {
+                            $style = '11';
+                        } else {
+                            $style = '9';
+                        }
+                    } elseif ($rowType === 'SUBTOTAL') {
+                        $style = ($cIndex === 4) ? '13' : (($cIndex === 9) ? '14' : '12');
+                    } elseif ($rowType === 'PPN') {
+                        $style = ($cIndex === 0) ? '13' : (($cIndex === 9) ? '14' : '12');
+                    } elseif ($rowType === 'GRANDTOTAL') {
+                        $style = ($cIndex === 6) ? '16' : (($cIndex === 9) ? '17' : '15');
                     } else {
-                        $style = ' s="0"';
+                        $style = '0';
                     }
-
-                    if ($value === null || $value === '') {
-                        continue;
-                    }
-
-                    if (str_starts_with((string)$value, '=HYPERLINK')) {
+                    if ($value === '' || $value === null) {
+                        $cells[] = '<c r="' . $ref . '" s="' . $style . '"/>';
+                    } elseif (is_numeric($value) && !in_array($cIndex, [0, 1, 2, 5, 7, 10, 11, 12, 13], true)) {
+                        $cells[] = '<c r="' . $ref . '" s="' . $style . '"><v>' . $value . '</v></c>';
+                    } elseif (str_starts_with((string)$value, '=')) {
                         $formula = substr((string)$value, 1);
                         $label = $value;
                         if (preg_match('/",\s*"([^"]+)"/', $formula, $matches)) {
                             $label = $matches[1];
                         }
-                        $cells[] = '<c r="' . $ref . '" t="str"' . $style . '><f>' . $this->xml($formula) . '</f><v>' . $this->xml($label) . '</v></c>';
+                        $cells[] = '<c r="' . $ref . '" t="str" s="' . $style . '"><f>' . $this->xml($formula) . '</f><v>' . $this->xml($label) . '</v></c>';
                     } else {
-                        $cells[] = '<c r="' . $ref . '" t="inlineStr"' . $style . '><is><t>' . $this->xml((string) $value) . '</t></is></c>';
+                        $cells[] = '<c r="' . $ref . '" t="inlineStr" s="' . $style . '"><is><t>' . $this->xml((string) $value) . '</t></is></c>';
                     }
                 }
             }
-            if ($rIndex === 2) {
-                $xmlRows[] = '<row r="' . ($rIndex + 1) . '"/>';
-            } else {
-                $xmlRows[] = '<row r="' . ($rIndex + 1) . '">' . implode('', $cells) . '</row>';
-            }
+            $xmlRows[] = ($rowType === 'SPACER') ? '<row r="' . ($rIndex + 1) . '"/>' : '<row r="' . ($rIndex + 1) . '">' . implode('', $cells) . '</row>';
         }
 
         $cols = '';
@@ -5263,61 +5379,69 @@ SQL);
             $cols .= '<col min="' . ($i + 1) . '" max="' . ($i + 1) . '" width="' . $colWidths[$i] . '" customWidth="1"/>';
         }
 
+        $mergeXml = '';
+        if (!empty($mergeCells)) {
+            $mergeXml = '<mergeCells count="' . count($mergeCells) . '">';
+            foreach ($mergeCells as $range) {
+                $mergeXml .= '<mergeCell ref="' . $range . '"/>';
+            }
+            $mergeXml .= '</mergeCells>';
+        }
+
         $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            . '<dimension ref="A1:O' . max(4, count($sheetRows)) . '"/>'
-            . '<sheetViews>'
-            . '<sheetView workbookViewId="0">'
-            . '<pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/>'
-            . '</sheetView>'
-            . '</sheetViews>'
+            . '<dimension ref="A1:N' . max(4, count($sheetRows)) . '"/>'
+            . '<sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
             . '<sheetFormatPr defaultRowHeight="18"/>'
             . '<cols>' . $cols . '</cols>'
             . '<sheetData>' . implode('', $xmlRows) . '</sheetData>'
-            . '<mergeCells count="2">'
-            . '<mergeCell ref="A1:O1"/>'
-            . '<mergeCell ref="A2:O2"/>'
-            . '</mergeCells>'
+            . $mergeXml
             . '</worksheet>';
 
         $stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-    <fonts count="4">
+    <numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;Rp &quot;#,##0;[Red](&quot;Rp &quot;#,##0);&quot;-&quot;"/></numFmts>
+    <fonts count="9">
         <font><sz val="11"/><name val="Calibri"/></font>
         <font><b/><sz val="11"/><name val="Calibri"/></font>
         <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FFFFFFFF"/></font>
-        <font><b/><sz val="14"/><name val="Calibri"/></font>
+        <font><b/><sz val="16"/><name val="Calibri"/><color rgb="FF1A3A6B"/></font>
+        <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FF1A3A6B"/></font>
+        <font><sz val="9"/><name val="Calibri"/><color rgb="FF555555"/></font>
+        <font><sz val="9"/><name val="Calibri"/><color rgb="FF888888"/></font>
+        <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FF1A7A3A"/></font>
+        <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FF1A3A8A"/></font>
     </fonts>
-    <fills count="5">
-        <fill><patternFill patternType="none"/></fill>
-        <fill><patternFill patternType="gray125"/></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFFFD965"/><bgColor indexed="64"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FF00B050"/><bgColor indexed="64"/></patternFill></fill>
-        <fill><patternFill patternType="solid"><fgColor rgb="FFFF0000"/><bgColor indexed="64"/></patternFill></fill>
+    <fills count="8">
+        <fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FF1A3A6B"/><bgColor indexed="64"/></patternFill></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FFD6E4F7"/><bgColor indexed="64"/></patternFill></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FFEEF4FC"/><bgColor indexed="64"/></patternFill></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FFF8FBFF"/><bgColor indexed="64"/></patternFill></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FFE6F4EA"/><bgColor indexed="64"/></patternFill></fill>
+        <fill><patternFill patternType="solid"><fgColor rgb="FFE8F0FE"/><bgColor indexed="64"/></patternFill></fill>
     </fills>
-    <borders count="2">
-        <border><left/><right/><top/><bottom/><diagonal/></border>
-        <border>
-            <left style="thin"><color rgb="FFD3D3D3"/></left>
-            <right style="thin"><color rgb="FFD3D3D3"/></right>
-            <top style="thin"><color rgb="FFD3D3D3"/></top>
-            <bottom style="thin"><color rgb="FFD3D3D3"/></bottom>
-            <diagonal/>
-        </border>
-    </borders>
-    <cellStyleXfs count="1">
-        <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
-    </cellStyleXfs>
-    <cellXfs count="9">
+    <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD3D3D3"/></left><right style="thin"><color rgb="FFD3D3D3"/></right><top style="thin"><color rgb="FFD3D3D3"/></top><bottom style="thin"><color rgb="FFD3D3D3"/></bottom><diagonal/></border></borders>
+    <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+    <cellXfs count="18">
         <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyAlignment="1" applyBorder="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
-        <xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-        <xf numFmtId="0" fontId="2" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="2" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
         <xf numFmtId="0" fontId="3" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="0" fillId="0" borderId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
-        <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="6" fillId="0" borderId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="4" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+        <xf numFmtId="0" fontId="4" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+        <xf numFmtId="164" fontId="4" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="7" fillId="6" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="8" fillId="7" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="5" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>
+        <xf numFmtId="0" fontId="5" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+        <xf numFmtId="164" fontId="5" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="4" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="4" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+        <xf numFmtId="164" fontId="4" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+        <xf numFmtId="0" fontId="2" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+        <xf numFmtId="164" fontId="2" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
     </cellXfs>
     <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>';
@@ -5328,7 +5452,7 @@ SQL);
             '_rels/.rels' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>',
             'docProps/core.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>' . $this->xml($title) . '</dc:title><dc:creator>Admin</dc:creator><cp:lastModifiedBy>Admin</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">' . gmdate('Y-m-d\TH:i:s\Z') . '</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">' . gmdate('Y-m-d\TH:i:s\Z') . '</dcterms:modified></cp:coreProperties>',
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>' . $this->xml($title) . '</dc:title><dc:creator>Admin</dc:creator><cp:lastModifiedBy>Admin</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">' . gmdate('Y-m-d\TH:i:s\Z') . '</dcterms:created><dcterms:modified>' . gmdate('Y-m-d\TH:i:s\Z') . '</dcterms:modified></cp:coreProperties>',
             'docProps/app.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Microsoft Excel</Application></Properties>',
             'xl/workbook.xml' => '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -5345,39 +5469,37 @@ SQL);
     private function buildLogBarangPdf(string $title, array $rows, array $filters = []): string
     {
         $columns = [
-            ['title' => 'No', 'key' => 'no', 'width' => 20, 'align' => 'C'],
-            ['title' => 'Tanggal Masuk', 'key' => 'date', 'width' => 42, 'align' => 'C'],
-            ['title' => 'Tanggal Keluar', 'key' => 'time', 'width' => 42, 'align' => 'C'],
-            ['title' => 'Nama Barang', 'key' => 'item', 'width' => 85, 'align' => 'L'],
+            ['title' => 'Nomor SPB/PO', 'key' => 'no_po', 'width' => 70, 'align' => 'L'],
+            ['title' => 'Tgl Masuk', 'key' => 'date_masuk', 'width' => 42, 'align' => 'C'],
+            ['title' => 'Tgl Keluar', 'key' => 'date_keluar', 'width' => 42, 'align' => 'C'],
+            ['title' => 'Vendor', 'key' => 'vendor', 'width' => 65, 'align' => 'L'],
+            ['title' => 'Deskripsi/Keterangan', 'key' => 'deskripsi', 'width' => 175, 'align' => 'L'],
+            ['title' => 'No Item', 'key' => 'no_item', 'width' => 28, 'align' => 'C'],
             ['title' => 'Qty', 'key' => 'qty', 'width' => 20, 'align' => 'C'],
-            ['title' => 'Satuan', 'key' => 'satuan', 'width' => 32, 'align' => 'L'],
-            ['title' => 'Harga', 'key' => 'harga', 'width' => 60, 'align' => 'R'],
-            ['title' => 'Status', 'key' => 'status', 'width' => 38, 'align' => 'C'],
-            ['title' => 'Divisi Pengelola', 'key' => 'division', 'width' => 55, 'align' => 'L'],
-            ['title' => 'Divisi Peminta', 'key' => 'divisi_terkait', 'width' => 55, 'align' => 'L'],
-            ['title' => 'No. PO', 'key' => 'no_po', 'width' => 55, 'align' => 'L'],
-            ['title' => 'Dokumen', 'key' => 'doc', 'width' => 38, 'align' => 'C'],
-            ['title' => 'PIC', 'key' => 'pic', 'width' => 62, 'align' => 'L'],
-            ['title' => 'Log No', 'key' => 'log_no', 'width' => 68, 'align' => 'C'],
-            ['title' => 'Keterangan', 'key' => 'keterangan', 'width' => 104, 'align' => 'L'],
+            ['title' => 'Satuan', 'key' => 'satuan', 'width' => 28, 'align' => 'L'],
+            ['title' => 'Harga Satuan', 'key' => 'harga_satuan', 'width' => 55, 'align' => 'R'],
+            ['title' => 'Harga Total', 'key' => 'harga_total', 'width' => 58, 'align' => 'R'],
+            ['title' => 'Divisi Pengelola', 'key' => 'divisi_pengelola', 'width' => 60, 'align' => 'L'],
+            ['title' => 'Divisi Peminta', 'key' => 'divisi_peminta', 'width' => 60, 'align' => 'L'],
+            ['title' => 'PIC', 'key' => 'pic', 'width' => 60, 'align' => 'L'],
+            ['title' => 'Status', 'key' => 'status', 'width' => 45, 'align' => 'C'],
         ];
 
         $charMap = [
-            'no' => 4,
-            'date' => 10,
-            'time' => 10,
-            'item' => 18,
-            'qty' => 4,
+            'no_po' => 16,
+            'date_masuk' => 10,
+            'date_keluar' => 10,
+            'vendor' => 15,
+            'deskripsi' => 44,
+            'no_item' => 7,
+            'qty' => 5,
             'satuan' => 7,
-            'harga' => 12,
-            'status' => 8,
-            'division' => 11,
-            'divisi_terkait' => 11,
-            'no_po' => 11,
-            'doc' => 8,
-            'pic' => 12,
-            'log_no' => 14,
-            'keterangan' => 20,
+            'harga_satuan' => 13,
+            'harga_total' => 14,
+            'divisi_pengelola' => 14,
+            'divisi_peminta' => 14,
+            'pic' => 14,
+            'status' => 10,
         ];
 
         $normalizeText = function (string $text): string {
@@ -5448,27 +5570,158 @@ SQL);
             $maxHeaderLines = max($maxHeaderLines, count($wrappedHeaders[$key]));
         }
 
-        $year = (int) ($filters['log_year'] ?? date('Y'));
-        $month = (int) ($filters['log_month'] ?? 0);
-        $dateVal = trim((string) ($filters['log_date'] ?? ''));
-        if ($dateVal !== '') {
-            $periode = $dateVal;
-        } elseif ($month > 0) {
-            $periode = $this->monthName($month) . ' ' . $year;
-        } else {
-            $periode = 'Semua Bulan ' . $year;
+        $pdfRows = [];
+        $grandTotalQty = 0;
+        $grandTotalPrice = 0.0;
+        $totalPpn = 0.0;
+        $totalPoCount = count($rows);
+
+        $pdo = Database::getConnection();
+
+        foreach ($rows as $row) {
+            $logId = (int) ($row['id'] ?? 0);
+            $items = $this->model->fetchLogItems($pdo, $logId);
+            if (empty($items)) {
+                $items = [[
+                    'no_item' => '10',
+                    'deskripsi' => $row['item'] ?? '-',
+                    'qty' => $row['qty'] ?? 1,
+                    'satuan' => $row['satuan'] ?? 'Unit',
+                    'harga_satuan' => $row['harga'] ?? 0.00,
+                    'harga_total' => ($row['qty'] ?? 1) * ($row['harga'] ?? 0.00)
+                ]];
+            }
+
+            // Calculate PO aggregation
+            $poQtySum = 0;
+            $poPriceSum = 0.0;
+            foreach ($items as &$item) {
+                $itemQty = (int) ($item['qty'] ?? 0);
+                $itemPrice = (double) ($item['harga_satuan'] ?? 0.00);
+                $item['harga_total'] = $itemQty * $itemPrice;
+                $poQtySum += $itemQty;
+                $poPriceSum += $item['harga_total'];
+            }
+            unset($item);
+
+            $grandTotalQty += $poQtySum;
+            $grandTotalPrice += $poPriceSum;
+            $totalPpn += (double) ($row['ppn_nominal'] ?? 0.00);
+
+            $noPoVal = trim((string) ($row['no_po'] ?? ''));
+            if ($noPoVal === '' || $noPoVal === '-') {
+                $noPoVal = '-';
+            }
+
+            $dateKeluarStr = '-';
+            if (!empty($row['tanggal_keluar']) && $row['tanggal_keluar'] !== '0000-00-00') {
+                $dateKeluarStr = (string) $row['date_keluar'];
+            }
+
+            $rowKeterangan = trim((string) ($row['keterangan'] ?? '')) ?: '-';
+
+            $pdfRows[] = [
+                'type' => 'PO',
+                'no_po' => $noPoVal,
+                'date_masuk' => (string) ($row['date'] ?? '-'),
+                'date_keluar' => $dateKeluarStr,
+                'vendor' => trim((string) ($row['nama_vendor'] ?? '')) ?: '-',
+                'deskripsi' => $rowKeterangan,
+                'no_item' => '',
+                'qty' => '',
+                'satuan' => '-',
+                'harga_satuan' => '-',
+                'harga_total' => '-',
+                'divisi_pengelola' => trim((string) ($row['division'] ?? '')) ?: '-',
+                'divisi_peminta' => trim((string) ($row['divisi_terkait'] ?? '')) ?: '-',
+                'pic' => trim((string) ($row['pic_nama'] ?? '')) ?: '-',
+                'status' => (string) ($row['status'] ?? '-'),
+            ];
+
+            // 2. Item Rows
+            foreach ($items as $item) {
+                $itemPrice = (double) ($item['harga_satuan'] ?? 0.00);
+                $itemPriceTotal = (double) ($item['harga_total'] ?? 0.00);
+                $pdfRows[] = [
+                    'type' => 'ITEM',
+                    'no_po' => '',
+                    'date_masuk' => '',
+                    'date_keluar' => '',
+                    'vendor' => '',
+                    'deskripsi' => '↳ ' . ($item['deskripsi'] ?? '-'),
+                    'no_item' => (string) ($item['no_item'] ?? ''),
+                    'qty' => (string) ($item['qty'] ?? 0),
+                    'satuan' => (string) ($item['satuan'] ?? 'Unit'),
+                    'harga_satuan' => $itemPrice > 0 ? 'Rp ' . number_format($itemPrice, 0, ',', '.') : '-',
+                    'harga_total' => $itemPriceTotal > 0 ? 'Rp ' . number_format($itemPriceTotal, 0, ',', '.') : '-',
+                    'divisi_pengelola' => '',
+                    'divisi_peminta' => '',
+                    'pic' => '',
+                    'status' => '',
+                ];
+            }
+
+            // 3. Subtotal Row
+            $pdfRows[] = [
+                'type' => 'SUBTOTAL',
+                'no_po' => $noPoVal,
+                'date_masuk' => '',
+                'date_keluar' => '',
+                'vendor' => '',
+                'deskripsi' => 'Subtotal PO ' . $noPoVal,
+                'no_item' => count($items) . ' item',
+                'qty' => (string) $poQtySum,
+                'satuan' => '',
+                'harga_satuan' => '',
+                'harga_total' => $poPriceSum > 0 ? 'Rp ' . number_format($poPriceSum, 0, ',', '.') : '-',
+                'divisi_pengelola' => '',
+                'divisi_peminta' => '',
+                'pic' => '',
+                'status' => '',
+            ];
         }
-        $periodeText = 'Periode: ' . $periode;
-        if (!empty($filters['log_status'])) {
-            $periodeText .= ' | Status: ' . $filters['log_status'];
-        }
-        if (!empty($filters['log_division'])) {
-            $periodeText .= ' | Divisi: ' . $filters['log_division'];
-        }
+
+        // 4. PPN Row
+        $pdfRows[] = [
+            'type' => 'PPN',
+            'no_po' => '',
+            'date_masuk' => '',
+            'date_keluar' => '',
+            'vendor' => '',
+            'deskripsi' => 'Total PPN',
+            'no_item' => '',
+            'qty' => '',
+            'satuan' => '',
+            'harga_satuan' => '',
+            'harga_total' => $totalPpn > 0 ? 'Rp ' . number_format($totalPpn, 0, ',', '.') : '-',
+            'divisi_pengelola' => '',
+            'divisi_peminta' => '',
+            'pic' => '',
+            'status' => '',
+        ];
+
+        // 5. Grand Total Row
+        $pdfRows[] = [
+            'type' => 'GRANDTOTAL',
+            'no_po' => '',
+            'date_masuk' => '',
+            'date_keluar' => '',
+            'vendor' => '',
+            'deskripsi' => 'TOTAL KESELURUHAN (termasuk PPN)',
+            'no_item' => '',
+            'qty' => (string) $grandTotalQty,
+            'satuan' => '',
+            'harga_satuan' => '',
+            'harga_total' => ($grandTotalPrice + $totalPpn) > 0 ? 'Rp ' . number_format($grandTotalPrice + $totalPpn, 0, ',', '.') : '-',
+            'divisi_pengelola' => '',
+            'divisi_peminta' => '',
+            'pic' => '',
+            'status' => '',
+        ];
 
         $pageWidth = 842;
         $pageHeight = 595;
-        $margin = 33;
+        $margin = 17;
         $top = $pageHeight - $margin;
         $bottomMargin = 40;
         $tableX = $margin;
@@ -5477,10 +5730,10 @@ SQL);
         $cellPaddingY = 3;
         $rowGap = 2;
 
-        $blue = '0.18 0.41 0.67';
-        $lightBlue = '0.90 0.95 0.99';
+        $blue = '0.10 0.23 0.42'; // #1A3A6B
+        $lightBlue = '0.91 0.94 0.98'; // #E8F0FA
         $textColor = '0.12 0.18 0.25';
-        $borderColor = '0.75 0.81 0.89';
+        $borderColor = '0.79 0.83 0.88'; // #cbd5e1
         $altFill = '0.96 0.97 0.99';
 
         $objects = [];
@@ -5511,20 +5764,24 @@ SQL);
             $current[] = sprintf('%.2f %.2f %.2f %.2f re %s', $x, $yPos, $w, $h, ($fill !== null && $stroke !== null) ? 'B' : ($fill !== null ? 'f' : 'S'));
         };
 
-        $startPage = function () use (&$current, &$y, $top, $title, $margin, $pageWidth, $addRect, $addText, $blue, $lightBlue, $textColor, $borderColor, $periodeText) {
+        $startPage = function () use (&$current, &$y, $top, $title, $margin, $pageWidth, $addRect, $addText, $blue, $lightBlue, $textColor, $borderColor, $filters, $totalPoCount) {
             $current = [];
             $y = $top;
             
             // Render Header Banner
             $addRect($margin, $y - 44, $pageWidth - ($margin * 2), 44, $blue, null, 0);
-            $addText($margin + 12, $y - 18, strtoupper($title), 2, 14, '1 1 1');
-            $addText($margin + 12, $y - 32, 'Sistem Inventory & Monitoring', 1, 8.5, '1 1 1');
+            $addText($margin + 12, $y - 18, 'LOG MUTASI ASET', 2, 13.0, '1 1 1');
+            $addText($margin + 12, $y - 32, 'Sistem Inventory & Monitoring - PT Pelindo Multi Terminal', 1, 8.0, '1 1 1');
             $y -= 60;
- 
+  
             // Render Info Bar
-            $infoText = 'Diexport: ' . date('d-m-Y H:i:s') . '   |   ' . $periodeText;
+            $periode = $this->buildPeriodText($filters);
+            $statusVal = strtoupper(trim((string) ($filters['log_status'] ?? '')));
+            $statusText = $statusVal === '' ? 'Semua Status' : $statusVal;
+            $infoText = 'Diexport: ' . date('d-m-Y H:i:s') . '   |   Periode: ' . $periode . '   |   Status: ' . $statusText . '   |   Total PO: ' . $totalPoCount . ' data';
+            
             $addRect($margin, $y - 18, $pageWidth - ($margin * 2), 18, $lightBlue, $borderColor, 0.8);
-            $addText($margin + 10, $y - 12, $infoText, 1, 8, $textColor);
+            $addText($margin + 10, $y - 12, $infoText, 1, 7.5, $textColor);
             $y -= 28;
         };
 
@@ -5541,7 +5798,7 @@ SQL);
                 $lineY = $rowY + ($headerHeight / 2) + (($lineCount - 1) * 4.5) - 3;
                 foreach ($lines as $line) {
                     $lineWidth = strlen($line) * 3.5;
-                    $textX = $x + ($column['width'] / 2) - ($lineWidth / 2);
+                    $textX = $x + max(2, ($column['width'] - $lineWidth) / 2);
                     $addText($textX, $lineY, $line, 2, 7.0, '1 1 1');
                     $lineY -= 9;
                 }
@@ -5560,62 +5817,26 @@ SQL);
         $startPage();
         $drawHeader();
 
-        $number = 1;
-        foreach ($rows as $index => $row) {
-            $priceVal = (double) ($row['harga'] ?? 0);
-            $priceStr = $priceVal > 0 ? 'Rp ' . number_format($priceVal, 0, ',', '.') : '-';
-
-            $noPoVal = trim((string) ($row['no_po'] ?? ''));
-            if ($noPoVal === '' || $noPoVal === '-') {
-                $noPoStr = '-';
-            } else {
-                $noPoStr = $noPoVal;
-            }
-
-            $docStr = '-';
-            $pdfPath = trim((string) ($row['pdf'] ?? ''));
-            if ($pdfPath !== '') {
-                $docStr = 'Ada';
-            }
-
-            $divisionStr = trim((string) ($row['division'] ?? ''));
-            if ($divisionStr === '') $divisionStr = '-';
-            $divTerkaitStr = trim((string) ($row['divisi_terkait'] ?? ''));
-            if ($divTerkaitStr === '') $divTerkaitStr = '-';
-
-            $keteranganStr = trim((string) ($row['keterangan'] ?? ''));
-            if ($keteranganStr === '') $keteranganStr = '-';
-
-            $satuanStr = trim((string) ($row['satuan'] ?? ''));
-            if ($satuanStr === '') $satuanStr = '-';
-
-            $picStr = trim((string) ($row['pic_nama'] ?? ''));
-            if ($picStr === '') $picStr = '-';
-
-            $cells = [
-                'no' => (string) $number++,
-                'date' => (string) ($row['date'] ?? '-'),
-                'time' => (string) ($row['date_keluar'] ?? '-'),
-                'item' => (string) ($row['item'] ?? '-'),
-                'qty' => (string) ($row['qty'] ?? '0'),
-                'satuan' => $satuanStr,
-                'harga' => $priceStr,
-                'status' => (string) ($row['status'] ?? '-'),
-                'division' => $divisionStr,
-                'divisi_terkait' => $divTerkaitStr,
-                'no_po' => $noPoStr,
-                'doc' => $docStr,
-                'pic' => $picStr,
-                'log_no' => (string) ($row['log_no'] ?? '-'),
-                'keterangan' => $keteranganStr,
-            ];
-
+        foreach ($pdfRows as $index => $rowPayload) {
             $wrapped = [];
             $maxLines = 1;
-            foreach ($columns as $column) {
-                $key = $column['key'];
-                $wrapped[$key] = $wrapText($cells[$key], $charMap[$key] ?? 12);
-                $maxLines = max($maxLines, count($wrapped[$key]));
+            
+            if ($rowPayload['type'] === 'PO' || $rowPayload['type'] === 'ITEM') {
+                foreach ($columns as $column) {
+                    $key = $column['key'];
+                    $val = (string) ($rowPayload[$key] ?? '');
+                    $wrapped[$key] = $wrapText($val, $charMap[$key] ?? 12);
+                    $maxLines = max($maxLines, count($wrapped[$key]));
+                }
+            } elseif ($rowPayload['type'] === 'SUBTOTAL') {
+                $wrappedMerged = $wrapText($rowPayload['deskripsi'], 80);
+                $maxLines = count($wrappedMerged);
+            } elseif ($rowPayload['type'] === 'PPN') {
+                $wrappedMerged = $wrapText($rowPayload['deskripsi'], 80);
+                $maxLines = count($wrappedMerged);
+            } elseif ($rowPayload['type'] === 'GRANDTOTAL') {
+                $wrappedMerged = $wrapText($rowPayload['deskripsi'], 80);
+                $maxLines = count($wrappedMerged);
             }
 
             $rowHeight = max(16, ($maxLines * $lineHeight) + ($cellPaddingY * 2));
@@ -5626,55 +5847,196 @@ SQL);
             }
 
             $rowY = $y - $rowHeight;
-            $x = $tableX;
-            foreach ($columns as $column) {
-                $key = $column['key'];
-                
-                $cellFill = $index % 2 === 0 ? $altFill : '1 1 1';
-                $fontColor = $textColor;
-                $fontId = 1;
-                
-                if ($key === 'status') {
-                    $statusVal = strtoupper(trim((string)$cells[$key]));
-                    if ($statusVal === 'MASUK') {
-                        $cellFill = '0.0 0.69 0.31';
-                        $fontColor = '1 1 1';
-                        $fontId = 2;
-                    } elseif ($statusVal === 'SELESAI') {
-                        $cellFill = '0.1 0.45 0.9';
-                        $fontColor = '1 1 1';
-                        $fontId = 2;
-                    }
-                }
+            
+            if ($rowPayload['type'] === 'PO') {
+                $x = $tableX;
+                foreach ($columns as $column) {
+                    $key = $column['key'];
+                    $cellFill = '0.84 0.89 0.97'; // #D6E4F7
+                    $fontColor = '0.10 0.23 0.42'; // #1A3A6B
+                    $fontId = 2; // Helvetica-Bold
 
-                $addRect($x, $rowY, $column['width'], $rowHeight, $cellFill, $borderColor, 0.5);
-                
-                $lineY = $rowY + $rowHeight - 10;
-                foreach ($wrapped[$key] as $line) {
-                    $lineWidth = strlen($line) * 3.5;
-                    $textX = $x + $cellPaddingX;
-                    if (($column['align'] ?? 'L') === 'C') {
-                        $textX = $x + max(2, ($column['width'] - $lineWidth) / 2);
-                    } elseif (($column['align'] ?? 'L') === 'R') {
-                        $textX = $x + $column['width'] - $lineWidth - $cellPaddingX;
+                    if ($key === 'status') {
+                        $addRect($x, $rowY, $column['width'], $rowHeight, $cellFill, $borderColor, 0.5);
+                        
+                        $statusVal = strtoupper(trim((string)$rowPayload[$key]));
+                        if ($statusVal === 'MASUK') {
+                            $badgeFill = '0.90 0.96 0.92'; // #E6F4EA
+                            $badgeTextClr = '0.10 0.48 0.23'; // #1A7A3A
+                            $badgeText = 'MASUK';
+                        } elseif ($statusVal === 'SELESAI') {
+                            $badgeFill = '0.91 0.94 1.00'; // #E8F0FE
+                            $badgeTextClr = '0.10 0.23 0.54'; // #1A3A8A
+                            $badgeText = 'SELESAI';
+                        } else {
+                            $badgeFill = null;
+                            $badgeText = $statusVal;
+                            $badgeTextClr = $fontColor;
+                        }
+
+                        if ($badgeFill !== null && $badgeText !== '-' && $badgeText !== '') {
+                            $badgeW = 38.0;
+                            $badgeH = 11.0;
+                            $badgeX = $x + (($column['width'] - $badgeW) / 2);
+                            $badgeY = $rowY + (($rowHeight - $badgeH) / 2);
+                            $addRect($badgeX, $badgeY, $badgeW, $badgeH, $badgeFill, null, 0);
+                            
+                            $badgeTextWidth = strlen($badgeText) * 3.5;
+                            $badgeTextX = $badgeX + (($badgeW - $badgeTextWidth) / 2);
+                            $badgeTextY = $badgeY + (($badgeH - 7) / 2) - 0.5;
+                            $addText($badgeTextX, $badgeTextY, $badgeText, 2, 6.0, $badgeTextClr);
+                        } else {
+                            $lineWidth = strlen($badgeText) * 3.5;
+                            $textX = $x + max(2, ($column['width'] - $lineWidth) / 2);
+                            $textY = $rowY + (($rowHeight - 7) / 2);
+                            $addText($textX, $textY, $badgeText, 1, 7.0, $badgeTextClr);
+                        }
+                    } else {
+                        $addRect($x, $rowY, $column['width'], $rowHeight, $cellFill, $borderColor, 0.5);
+                        $lineY = $rowY + $rowHeight - 10;
+                        foreach ($wrapped[$key] as $line) {
+                            $lineWidth = strlen($line) * 3.5;
+                            $textX = $x + $cellPaddingX;
+                            if (($column['align'] ?? 'L') === 'C') {
+                                $textX = $x + max(2, ($column['width'] - $lineWidth) / 2);
+                            } elseif (($column['align'] ?? 'L') === 'R') {
+                                $textX = $x + $column['width'] - $lineWidth - $cellPaddingX;
+                            }
+                            $addText($textX, $lineY, $line, $fontId, 7.0, $fontColor);
+                            $lineY -= $lineHeight;
+                        }
                     }
-                    $addText($textX, $lineY, $line, $fontId, 7.0, $fontColor);
+                    $x += $column['width'];
+                }
+            } elseif ($rowPayload['type'] === 'ITEM') {
+                $x = $tableX;
+                foreach ($columns as $colIndex => $column) {
+                    $key = $column['key'];
+                    $cellFill = '1 1 1';
+                    $fontColor = '0.33 0.33 0.33'; // #555555
+                    $fontId = 1; // Helvetica
+
+                    $addRect($x, $rowY, $column['width'], $rowHeight, $cellFill, $borderColor, 0.5);
+                    
+                    if ($colIndex >= 4 && $colIndex <= 9) {
+                        $lineY = $rowY + $rowHeight - 10;
+                        foreach ($wrapped[$key] as $line) {
+                            $lineWidth = strlen($line) * 3.5;
+                            $textX = $x + $cellPaddingX;
+                            if (($column['align'] ?? 'L') === 'C') {
+                                $textX = $x + max(2, ($column['width'] - $lineWidth) / 2);
+                            } elseif (($column['align'] ?? 'L') === 'R') {
+                                $textX = $x + $column['width'] - $lineWidth - $cellPaddingX;
+                            }
+                            $addText($textX, $lineY, $line, $fontId, 7.0, $fontColor);
+                            $lineY -= $lineHeight;
+                        }
+                    }
+                    $x += $column['width'];
+                }
+            } elseif ($rowPayload['type'] === 'SUBTOTAL') {
+                $cellFill = '0.93 0.96 0.99'; // #EEF4FC
+                $fontColor = '0.10 0.23 0.42'; // #1A3A6B
+                
+                // Merged Cell 1: Columns 1-5 (width 394)
+                $addRect($tableX, $rowY, 394, $rowHeight, $cellFill, $borderColor, 0.5);
+                $lineY = $rowY + $rowHeight - 10;
+                foreach ($wrappedMerged as $line) {
+                    $textX = $tableX + $cellPaddingX + 4;
+                    $addText($textX, $lineY, $line, 2, 7.0, $fontColor);
                     $lineY -= $lineHeight;
                 }
-                $x += $column['width'];
+
+                // Cell 6: No Item (width 28)
+                $addRect($tableX + 394, $rowY, 28, $rowHeight, $cellFill, $borderColor, 0.5);
+                $textNoItem = (string) $rowPayload['no_item'];
+                $lineWidth = strlen($textNoItem) * 3.5;
+                $textX = $tableX + 394 + max(2, (28 - $lineWidth) / 2);
+                $textY = $rowY + (($rowHeight - 7) / 2);
+                $addText($textX, $textY, $textNoItem, 2, 7.0, $fontColor);
+
+                // Cell 7: Qty (width 20)
+                $addRect($tableX + 422, $rowY, 20, $rowHeight, $cellFill, $borderColor, 0.5);
+                $textQty = (string) $rowPayload['qty'];
+                $lineWidth = strlen($textQty) * 3.5;
+                $textX = $tableX + 422 + max(2, (20 - $lineWidth) / 2);
+                $textY = $rowY + (($rowHeight - 7) / 2);
+                $addText($textX, $textY, $textQty, 2, 7.0, $fontColor);
+
+                // Merged Cell 8-9 (width 83)
+                $addRect($tableX + 442, $rowY, 83, $rowHeight, $cellFill, $borderColor, 0.5);
+
+                // Cell 10: Harga Total (width 58)
+                $addRect($tableX + 525, $rowY, 58, $rowHeight, $cellFill, $borderColor, 0.5);
+                $text = (string) $rowPayload['harga_total'];
+                $lineWidth = strlen($text) * 3.5;
+                $textX = $tableX + 525 + 58 - $lineWidth - $cellPaddingX;
+                $textY = $rowY + (($rowHeight - 7) / 2);
+                $addText($textX, $textY, $text, 2, 7.0, $fontColor);
+
+                // Merged Cell 11-14 (width 225)
+                $addRect($tableX + 583, $rowY, 225, $rowHeight, $cellFill, $borderColor, 0.5);
+            } elseif ($rowPayload['type'] === 'PPN') {
+                $cellFill = '0.93 0.96 0.99'; // #EEF4FC
+                $fontColor = '0.10 0.23 0.42'; // #1A3A6B
+                
+                // Merged Cell 1: Columns 1-9 (width 525)
+                $addRect($tableX, $rowY, 525, $rowHeight, $cellFill, $borderColor, 0.5);
+                $lineY = $rowY + $rowHeight - 10;
+                foreach ($wrappedMerged as $line) {
+                    $textX = $tableX + $cellPaddingX + 4;
+                    $addText($textX, $lineY, $line, 2, 7.0, $fontColor);
+                    $lineY -= $lineHeight;
+                }
+
+                // Cell 10: Harga Total (width 58)
+                $addRect($tableX + 525, $rowY, 58, $rowHeight, $cellFill, $borderColor, 0.5);
+                $text = (string) $rowPayload['harga_total'];
+                $lineWidth = strlen($text) * 3.5;
+                $textX = $tableX + 525 + 58 - $lineWidth - $cellPaddingX;
+                $textY = $rowY + (($rowHeight - 7) / 2);
+                $addText($textX, $textY, $text, 2, 7.0, $fontColor);
+
+                // Merged Cell 11-14 (width 225)
+                $addRect($tableX + 583, $rowY, 225, $rowHeight, $cellFill, $borderColor, 0.5);
+            } elseif ($rowPayload['type'] === 'GRANDTOTAL') {
+                $cellFill = '0.10 0.23 0.42'; // #1A3A6B (Navy)
+                $fontColor = '1 1 1'; // White
+                
+                // Merged Cell 1: Columns 1-6 (width 422)
+                $addRect($tableX, $rowY, 422, $rowHeight, $cellFill, $borderColor, 0.5);
+                $lineY = $rowY + $rowHeight - 10;
+                foreach ($wrappedMerged as $line) {
+                    $textX = $tableX + $cellPaddingX + 4;
+                    $addText($textX, $lineY, $line, 2, 7.0, $fontColor);
+                    $lineY -= $lineHeight;
+                }
+
+                // Cell 7: Qty (width 20)
+                $addRect($tableX + 422, $rowY, 20, $rowHeight, $cellFill, $borderColor, 0.5);
+                $text = (string) $rowPayload['qty'];
+                $lineWidth = strlen($text) * 3.5;
+                $textX = $tableX + 422 + max(2, (20 - $lineWidth) / 2);
+                $textY = $rowY + (($rowHeight - 7) / 2);
+                $addText($textX, $textY, $text, 2, 7.0, $fontColor);
+
+                // Merged Cell 8-9 (width 83)
+                $addRect($tableX + 442, $rowY, 83, $rowHeight, $cellFill, $borderColor, 0.5);
+
+                // Cell 10: Harga Total (width 58)
+                $addRect($tableX + 525, $rowY, 58, $rowHeight, $cellFill, $borderColor, 0.5);
+                $text = (string) $rowPayload['harga_total'];
+                $lineWidth = strlen($text) * 3.5;
+                $textX = $tableX + 525 + 58 - $lineWidth - $cellPaddingX;
+                $textY = $rowY + (($rowHeight - 7) / 2);
+                $addText($textX, $textY, $text, 2, 7.0, $fontColor);
+
+                // Merged Cell 11-14 (width 225)
+                $addRect($tableX + 583, $rowY, 225, $rowHeight, $cellFill, $borderColor, 0.5);
             }
+
             $y = $rowY - $rowGap;
         }
-
-        $totalText = 'Total Transaksi: ' . count($rows) . ' data';
-        if (($y - 24) < $bottomMargin) {
-            $finishPage();
-            $startPage();
-            $drawHeader();
-        }
-        $addRect($margin, $y - 18, $pageWidth - ($margin * 2), 18, $lightBlue, $borderColor, 0.8);
-        $addText($margin + 10, $y - 12, $totalText, 2, 8, $textColor);
-        $y -= 28;
 
         $finishPage();
         if (empty($streams)) {
@@ -5683,16 +6045,23 @@ SQL);
             $finishPage();
         }
 
+        // Apply dynamic page numbering to footers
+        $totalPages = count($streams);
+        foreach ($streams as $index => &$stream) {
+            $pageNo = $index + 1;
+            $footerText = "Hal. {$pageNo} dari {$totalPages}  |  Dicetak: " . date('d-m-Y H:i:s');
+            $escapedFooter = str_replace(["\\", "(", ")"], ["\\\\", "\(", "\)"], $footerText);
+            $stream .= "\nBT\n/F1 7.0 Tf\n0.46 0.46 0.46 rg\n1 0 0 1 33.00 20.00 Tm\n({$escapedFooter}) Tj\nET";
+        }
+        unset($stream);
+
         $nextId = 3;
         $contentIds = [];
         $pageIds = [];
         foreach ($streams as $stream) {
             $contentId = $nextId++;
             $pageId = $nextId++;
-            $objects[$contentId] = "<< /Length " . strlen($stream) . " >>
-stream
-" . $stream . "
-endstream";
+            $objects[$contentId] = "<< /Length " . strlen($stream) . " >>\nstream\n" . $stream . "\nendstream";
             $objects[$pageId] = "";
             $contentIds[] = $contentId;
             $pageIds[] = $pageId;

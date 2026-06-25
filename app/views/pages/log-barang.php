@@ -650,6 +650,15 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
                                             title="Edit Log">
                                         <i class="fa-solid fa-pencil" style="font-size: 12px;"></i>
                                     </button>
+                                    <?php if (!empty($row['pdf'])): ?>
+                                        <a href="index.php?page=log-barang&action=download_po&file=<?= urlencode($row['pdf']); ?>"
+                                           target="_blank"
+                                           class="btn-action"
+                                           style="border: none; background: #fce8e6; color: #c5221f; width: 32px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none;"
+                                           title="Lihat PDF">
+                                            <i class="fa-solid fa-file-pdf" style="font-size: 12px;"></i>
+                                        </a>
+                                    <?php endif; ?>
                                     <form method="post" action="index.php?page=log-barang" class="js-confirm-delete" data-confirm-message="Hapus log mutasi aset ini?" style="margin: 0;">
                                         <input type="hidden" name="action" value="delete_log_barang">
                                         <input type="hidden" name="id" value="<?= e((string) $row['id']); ?>">
@@ -668,6 +677,15 @@ $isAllMonths = (($selected['month'] ?? 0) === 0);
                                            title="Lihat Dokumen PO">
                                             <i class="fa-solid fa-eye" style="font-size: 12px;"></i>
                                         </a>
+                                        <?php if (!empty($row['pdf'])): ?>
+                                            <a href="index.php?page=log-barang&action=download_po&file=<?= urlencode($row['pdf']); ?>"
+                                               target="_blank"
+                                               class="btn-action"
+                                               style="border: none; background: #fce8e6; color: #c5221f; width: 32px; height: 32px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none;"
+                                               title="Lihat PDF">
+                                                <i class="fa-solid fa-file-pdf" style="font-size: 12px;"></i>
+                                            </a>
+                                        <?php endif; ?>
                                     </div>
                                 <?php endif; ?>
                             </td>

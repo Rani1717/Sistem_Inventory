@@ -2305,33 +2305,33 @@ SQL);
             }
 
             // Count BARANG MASUK in active period
-            $whereMasuk = ['YEAR(tanggal_masuk) = :year'];
+            $whereMasuk = ['YEAR(l.tanggal_masuk) = :year'];
             $paramsMasuk = ['year' => $state['year']];
             if ($state['month'] > 0) {
-                $whereMasuk[] = 'MONTH(tanggal_masuk) = :month';
+                $whereMasuk[] = 'MONTH(l.tanggal_masuk) = :month';
                 $paramsMasuk['month'] = $state['month'];
             }
             if ($state['date'] !== '') {
-                $whereMasuk[] = 'tanggal_masuk = :date';
+                $whereMasuk[] = 'l.tanggal_masuk = :date';
                 $paramsMasuk['date'] = $state['date'];
             }
-            $sqlMasuk = 'SELECT COALESCE(SUM(qty), 0) FROM log_barang WHERE ' . implode(' AND ', $whereMasuk);
+            $sqlMasuk = 'SELECT COALESCE(SUM(COALESCE((SELECT SUM(qty) FROM log_barang_items WHERE log_id = l.id), l.qty)), 0) FROM log_barang l WHERE ' . implode(' AND ', $whereMasuk);
             $stmtM = $pdo->prepare($sqlMasuk);
             $stmtM->execute($paramsMasuk);
             $masuk = (int) $stmtM->fetchColumn();
 
             // Count BARANG KELUAR in active period (based on tanggal_keluar)
-            $whereKeluar = ['YEAR(tanggal_keluar) = :year'];
+            $whereKeluar = ['YEAR(l.tanggal_keluar) = :year'];
             $paramsKeluar = ['year' => $state['year']];
             if ($state['month'] > 0) {
-                $whereKeluar[] = 'MONTH(tanggal_keluar) = :month';
+                $whereKeluar[] = 'MONTH(l.tanggal_keluar) = :month';
                 $paramsKeluar['month'] = $state['month'];
             }
             if ($state['date'] !== '') {
-                $whereKeluar[] = 'tanggal_keluar = :date';
+                $whereKeluar[] = 'l.tanggal_keluar = :date';
                 $paramsKeluar['date'] = $state['date'];
             }
-            $sqlKeluar = 'SELECT COALESCE(SUM(qty), 0) FROM log_barang WHERE ' . implode(' AND ', $whereKeluar);
+            $sqlKeluar = 'SELECT COALESCE(SUM(COALESCE((SELECT SUM(qty) FROM log_barang_items WHERE log_id = l.id), l.qty)), 0) FROM log_barang l WHERE ' . implode(' AND ', $whereKeluar);
             $stmtK = $pdo->prepare($sqlKeluar);
             $stmtK->execute($paramsKeluar);
             $keluar = (int) $stmtK->fetchColumn();
@@ -2631,7 +2631,7 @@ SQL);
             $stats['barang_masuk_qty'] = $itemsQtyTotal;
 
             // 5. Barang Keluar Qty (Global — qty yang sudah diserahkan)
-            $stmt = $pdo->query("SELECT SUM(qty) FROM log_barang WHERE tanggal_keluar IS NOT NULL AND tanggal_keluar <> '0000-00-00'");
+            $stmt = $pdo->query("SELECT COALESCE(SUM(COALESCE((SELECT SUM(qty) FROM log_barang_items WHERE log_id = l.id), l.qty)), 0) FROM log_barang l WHERE l.tanggal_keluar IS NOT NULL AND l.tanggal_keluar <> '0000-00-00'");
             $stats['barang_keluar_qty'] = (int) ($stmt ? $stmt->fetchColumn() : 0);
 
             // 6. Total Nilai Masuk (Global)
